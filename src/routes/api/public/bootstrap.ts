@@ -1,9 +1,22 @@
-// One-time admin bootstrap. Creates desotod@gmail.com as owner+admin of the demo org.
-// Safe to call repeatedly; no-op once an owner exists.
+// One-time admin bootstrap. Idempotent.
+// - Creates desotod@gmail.com as owner+admin of the demo org.
+// - Creates rangerstatellc@gmail.com as platform super_admin AND owner+admin of the demo org.
+// Each user is bootstrapped at most once; if already present, their org/role/platform-role
+// rows are ensured but their password is rotated and returned so the caller has a usable credential.
 import { createFileRoute } from "@tanstack/react-router";
 
 const DEMO_ORG_ID = "00000000-0000-0000-0000-000000000001";
-const ADMIN_EMAIL = "desotod@gmail.com";
+
+type Seed = {
+  email: string;
+  fullName: string;
+  platformSuperAdmin: boolean;
+};
+
+const SEEDS: Seed[] = [
+  { email: "desotod@gmail.com", fullName: "ManuManuals Admin", platformSuperAdmin: false },
+  { email: "rangerstatellc@gmail.com", fullName: "ManuManuals Super Admin", platformSuperAdmin: true },
+];
 
 export const Route = createFileRoute("/api/public/bootstrap")({
   server: {
@@ -19,66 +32,89 @@ async function handle() {
     "@/integrations/supabase/client.server"
   );
 
-  // Already bootstrapped?
-  const { data: existing } = await supabaseAdmin
-    .from("org_roles")
-    .select("user_id")
-    .eq("organization_id", DEMO_ORG_ID)
-    .eq("role", "owner")
-    .maybeSingle();
-  if (existing) {
-    return Response.json({
-      ok: true,
-      status: "already_bootstrapped",
-      message:
-        "Admin already exists. Use the password you set, or reset via Cloud auth.",
-    });
-  }
+  const results: Array<{
+    email: string;
+    status: "created" | "rotated" | "ensured";
+    tempPassword?: string;
+    superAdmin: boolean;
+  }> = [];
 
-  // Find or create the auth user
+  // Find all existing users once
   const { data: list } = await supabaseAdmin.auth.admin.listUsers();
-  let user = list.users.find(
-    (u) => u.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase(),
-  );
-  const tempPassword = generatePassword();
-  if (!user) {
-    const { data: created, error } =
-      await supabaseAdmin.auth.admin.createUser({
-        email: ADMIN_EMAIL,
+
+  for (const seed of SEEDS) {
+    let user = list?.users.find(
+      (u) => u.email?.toLowerCase() === seed.email.toLowerCase(),
+    );
+    const tempPassword = generatePassword();
+
+    if (!user) {
+      const { data: created, error } = await supabaseAdmin.auth.admin.createUser({
+        email: seed.email,
         password: tempPassword,
         email_confirm: true,
-        user_metadata: { full_name: "ManuManuals Admin" },
+        user_metadata: { full_name: seed.fullName },
       });
-    if (error || !created?.user) {
-      return Response.json(
-        { ok: false, error: error?.message ?? "createUser failed" },
-        { status: 500 },
-      );
+      if (error || !created?.user) {
+        results.push({
+          email: seed.email,
+          status: "ensured",
+          superAdmin: seed.platformSuperAdmin,
+        });
+        continue;
+      }
+      user = created.user;
+      results.push({
+        email: seed.email,
+        status: "created",
+        tempPassword,
+        superAdmin: seed.platformSuperAdmin,
+      });
+    } else {
+      await supabaseAdmin.auth.admin.updateUserById(user.id, {
+        password: tempPassword,
+      });
+      results.push({
+        email: seed.email,
+        status: "rotated",
+        tempPassword,
+        superAdmin: seed.platformSuperAdmin,
+      });
     }
-    user = created.user;
-  } else {
-    // Existing user: rotate password so the caller always gets a usable credential.
-    await supabaseAdmin.auth.admin.updateUserById(user.id, {
-      password: tempPassword,
-    });
-  }
 
-  await supabaseAdmin.from("memberships").insert({
-    organization_id: DEMO_ORG_ID,
-    user_id: user.id,
-  });
-  await supabaseAdmin.from("org_roles").insert([
-    { organization_id: DEMO_ORG_ID, user_id: user.id, role: "owner" },
-    { organization_id: DEMO_ORG_ID, user_id: user.id, role: "admin" },
-  ]);
+    // Ensure membership + org roles in demo org (idempotent)
+    await supabaseAdmin
+      .from("memberships")
+      .upsert(
+        { organization_id: DEMO_ORG_ID, user_id: user.id },
+        { onConflict: "organization_id,user_id", ignoreDuplicates: true },
+      );
+    await supabaseAdmin
+      .from("org_roles")
+      .upsert(
+        [
+          { organization_id: DEMO_ORG_ID, user_id: user.id, role: "owner" },
+          { organization_id: DEMO_ORG_ID, user_id: user.id, role: "admin" },
+        ],
+        { onConflict: "organization_id,user_id,role", ignoreDuplicates: true },
+      );
+
+    // Ensure platform role
+    if (seed.platformSuperAdmin) {
+      await supabaseAdmin
+        .from("platform_roles")
+        .upsert(
+          { user_id: user.id, role: "super_admin" },
+          { onConflict: "user_id,role", ignoreDuplicates: true },
+        );
+    }
+  }
 
   return Response.json({
     ok: true,
-    status: "bootstrapped",
-    email: ADMIN_EMAIL,
-    tempPassword,
     message:
-      "Save this temporary password — it will not be shown again. Sign in at /auth and change it from your profile.",
+      "Save any tempPassword values — they will not be shown again. Sign in at /auth and change them from your profile.",
+    results,
   });
 }
 

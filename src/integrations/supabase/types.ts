@@ -556,6 +556,30 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_roles: {
+        Row: {
+          created_at: string
+          granted_by: string | null
+          id: string
+          role: Database["public"]["Enums"]["platform_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          granted_by?: string | null
+          id?: string
+          role: Database["public"]["Enums"]["platform_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          granted_by?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["platform_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
       products: {
         Row: {
           created_at: string
@@ -718,6 +742,14 @@ export type Database = {
         }
         Returns: boolean
       }
+      has_platform_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["platform_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_super_admin: { Args: never; Returns: boolean }
       next_manual_version_number: {
         Args: { _manual_id: string }
         Returns: number
@@ -750,6 +782,7 @@ export type Database = {
         | "published"
         | "superseded"
       org_role: "owner" | "admin" | "editor" | "viewer"
+      platform_role: "super_admin"
       sync_event_type:
         | "bom_sync_started"
         | "bom_sync_succeeded"
@@ -909,6 +942,7 @@ export const Constants = {
         "superseded",
       ],
       org_role: ["owner", "admin", "editor", "viewer"],
+      platform_role: ["super_admin"],
       sync_event_type: [
         "bom_sync_started",
         "bom_sync_succeeded",
