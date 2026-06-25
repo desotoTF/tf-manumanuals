@@ -1,27 +1,78 @@
-# Phase III-B — Shipped
+# Two Tasks
 
-## What's new
+## 1. Get the one-time password for rangerstatellc@gmail.com
 
-- **Manual editor** at `/products/$productId` — 3-column layout:
-  - Left rail: latest BOM snapshot (first 20 items), version list.
-  - Main: tabbed structured-content editor (Steps · Tools · Parts · Warnings · Torque · Images) with row reorder/add/delete.
-  - Right rail: version state badge, change summary, drift warning when product is out_of_sync, state-transition buttons, link to public page after publish.
-- **Version state machine**: `draft → in_review → approved → published` (older `published` auto-superseded by trigger). Editors can submit/discard; owners or admins approve/publish. Each transition logs a `sync_events` row.
-- **New draft from latest**: clones content forward and re-binds to the latest BOM snapshot. First-time manual creation pre-fills `parts[]` from the BOM.
-- **Image assets**: attach by URL with optional caption (private storage bucket `manual-assets` created for future direct uploads).
-- **Public SSR route** `/manuals/$slug` — anyone can read the latest **published** version. Uses `supabaseAdmin` server-side, gated to `state='published' AND product.is_active`. Includes warnings, tools, parts, ordered steps, torque specs, reference images, SEO/OG metadata, lazy-loaded images.
-- **Dashboard** "Open" links now jump straight to the editor.
+The bootstrap endpoint at `src/routes/api/public/bootstrap.ts` is idempotent. When called, if the user already exists it **rotates** their password and returns the new temp value in the JSON response. Nothing to change in code — you just need to call it once.
 
-## Server functions added
-- `getProductWorkspace`, `getManualVersion`, `createManualDraft`, `saveDraftContent`, `transitionManualVersion`, `addManualAsset`, `removeManualAsset` — `src/lib/manuals.functions.ts`
-- `getPublishedManualBySlug` (public, no auth) — `src/lib/public-manuals.functions.ts`
+**How to run it** (pick either):
 
-## Try it
-1. Dashboard → click **Open** on a product.
-2. **Create manual** → edit Steps + Parts + Warnings → **Save draft** → **Submit for review** → **Approve** → **Publish**.
-3. After publish, click **View public page →** to see the SSR-rendered manual at `/manuals/<sku-slug>`.
+- **Browser**: open `https://id-preview--9ef353a3-ccb6-4767-99d7-c0cf84e7bb5c.lovable.app/api/public/bootstrap` (GET works).
+- **Terminal**:
+  ```bash
+  curl -X POST https://id-preview--9ef353a3-ccb6-4767-99d7-c0cf84e7bb5c.lovable.app/api/public/bootstrap
+  ```
 
-## Not yet
-- Direct image upload to the `manual-assets` bucket (currently URL-paste only).
-- PDF generation (`pdf_url` field exists but is unused).
-- Per-step image association (asset_ids are stored in content but the UI doesn't link them yet).
+The response JSON has a `results` array. Find the entry where `email` is `rangerstatellc@gmail.com` and copy `tempPassword`. Sign in at `/auth`, then change the password from the profile area. The password will not be shown again — save it immediately.
+
+Note: this will also rotate `desotod@gmail.com`'s password (also returned in the same response), since the endpoint touches every seed user. If you want to avoid that, I can change the endpoint to take an `?email=` filter in build mode instead.
+
+## 2. Hosting on Render.com
+
+The app is a TanStack Start v1 project built with Vite, currently configured for the Cloudflare Workers edge target. Render.com does not run Workers — it runs Node.js services. So hosting on Render requires switching the server target to Node, then deploying as a Render **Web Service**.
+
+### Steps
+
+**a. Switch the server target to Node**
+- Update `vite.config.ts` to use the Node target for `@tanstack/react-start` instead of the Cloudflare/Workers target. Output goes to `.output/server/index.mjs` (Node-compatible bundle).
+- Verify `src/server.ts` doesn't rely on Workers-only globals.
+- Keep all `createServerFn` code as-is — it's runtime-agnostic.
+
+**b. Add a Render service manifest** (`render.yaml` at repo root):
+```yaml
+services:
+  - type: web
+    name: manumanuals
+    runtime: node
+    plan: starter
+    buildCommand: bun install && bun run build
+    startCommand: node .output/server/index.mjs
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: VITE_SUPABASE_PROJECT_ID
+        sync: false
+      - key: LOVABLE_API_KEY
+        sync: false
+```
+
+**c. Render dashboard steps** (you do these):
+1. Render → **New** → **Web Service** → connect the GitHub repo (`desotoTF/tf-manumanuals` mirror or primary).
+2. Render auto-detects `render.yaml`. Confirm.
+3. In **Environment**, paste values for each secret. Copy them from the Lovable Cloud backend (Supabase) project. `SUPABASE_SERVICE_ROLE_KEY` is **not** retrievable via Lovable — you'll need it from the Supabase dashboard of the project, which Lovable Cloud doesn't expose. **This is the one blocker**: if you stay on Lovable Cloud's managed Supabase, the service role key isn't available to you, so server-side admin features (bootstrap route, `supabaseAdmin` usage) won't work on Render.
+4. Deploy. First build takes ~3–5 min.
+5. Add your custom domain under **Settings → Custom Domains** and update DNS as Render instructs.
+
+### The Supabase / service-role caveat (important)
+
+Lovable Cloud hides the service-role key. To host this on Render with full feature parity (bootstrap, public manual SSR via `supabaseAdmin`, etc.) you have two options:
+
+- **Option A — Migrate to your own Supabase project.** Create a new Supabase project on supabase.com, run all the existing migrations from `supabase/migrations/` against it, copy storage buckets, then point Render's env vars at the new project. You own all keys.
+- **Option B — Keep Lovable Cloud's Supabase, drop admin features.** Remove or rework anything that uses `supabaseAdmin` (the bootstrap route, public manual SSR). Render gets only the publishable/anon key.
+
+### What I'd build (in build mode)
+
+1. `vite.config.ts` change to Node target.
+2. `render.yaml` at repo root.
+3. A short `RENDER_DEPLOY.md` with the steps above + the Supabase migration path.
+
+Tell me which Supabase option (A or B) you want before I start, and confirm you want both tasks implemented.
