@@ -11,7 +11,7 @@ so the Lovable preview keeps working).
 ## 1. Prerequisites
 
 - The GitHub mirror at `desotoTF/tf-manumanuals` (or your primary repo) is
-  up to date.
+  up to date — including `render.yaml` at the repo root.
 - You have a Render account with billing enabled (the free tier sleeps and
   will be slow for SSR).
 - You have access to the Supabase keys this app uses. See the **Supabase**
@@ -46,14 +46,43 @@ Option A is what we recommend.
 
 ## 3. Create the Render service
 
-1. Render dashboard → **New +** → **Web Service**.
+You have two ways to do this. **Use the Blueprint path** — it reads
+`render.yaml` and fills everything in for you.
+
+### Option 1 — Blueprint (recommended, zero manual fields)
+
+1. Render dashboard → **New +** → **Blueprint**.
 2. Connect the GitHub repo. Pick the `main` branch.
-3. Render detects `render.yaml` at the repo root and pre-fills:
-   - Runtime: Node
-   - Build command (installs Bun, then runs `NITRO_PRESET=node-server bun run build`)
-   - Start command: `node .output/server/index.mjs`
-   - Health check: `/`
-4. Click **Create Web Service**.
+3. Render finds `render.yaml` at the repo root, shows a preview of the
+   `manumanuals` web service, and pre-fills runtime, build command, start
+   command, and health check. You don't fill in Root Directory / Build
+   Command / Start Command by hand.
+4. Click **Apply**. Then go to **Environment** and set the secret values
+   listed in §4.
+
+### Option 2 — Web Service (manual fields)
+
+If you create a **Web Service** instead of a Blueprint, Render's form does
+NOT auto-load `render.yaml`. Fill the fields in by hand exactly as below:
+
+| Field                | Value                                          |
+| -------------------- | ---------------------------------------------- |
+| **Root Directory**   | *(leave blank — repo root)*                    |
+| **Runtime**          | Node                                           |
+| **Build Command**    | see one-line copy-paste below                  |
+| **Start Command**    | `node .output/server/index.mjs`                |
+| **Health Check Path**| `/`                                            |
+
+**Build Command** (copy-paste as one line):
+
+```
+curl -fsSL https://bun.sh/install | bash && export PATH="$HOME/.bun/bin:$PATH" && bun install && NITRO_PRESET=node-server bun run build
+```
+
+`bun install` alone is NOT a valid build — it only installs dependencies,
+it doesn't produce `.output/server/index.mjs` for the start command to run.
+
+Then add the env vars from §4 in the **Environment** tab.
 
 ## 4. Set environment variables
 
@@ -61,6 +90,8 @@ In the Render service's **Environment** tab, paste values for each:
 
 | Key                              | Where to get it                                |
 | -------------------------------- | ---------------------------------------------- |
+| `NODE_VERSION`                   | `20`                                           |
+| `NITRO_PRESET`                   | `node-server`                                  |
 | `SUPABASE_URL`                   | Supabase project → Settings → API → Project URL |
 | `SUPABASE_PUBLISHABLE_KEY`       | Same page → `anon` / `publishable` key          |
 | `SUPABASE_SERVICE_ROLE_KEY`      | Same page → `service_role` key (Option A only) |
@@ -69,8 +100,12 @@ In the Render service's **Environment** tab, paste values for each:
 | `VITE_SUPABASE_PROJECT_ID`       | The subdomain part of the URL                  |
 | `LOVABLE_API_KEY`                | Lovable AI gateway key (only if using AI features) |
 
-The `VITE_*` ones get baked into the client JS bundle at build time. Changing
-them later requires a redeploy.
+The Blueprint path pre-creates the `NODE_VERSION` and `NITRO_PRESET` rows
+(with default values) and stub rows for every secret — you only paste
+values into the Render dashboard.
+
+The `VITE_*` ones get baked into the client JS bundle at build time.
+Changing them later requires a redeploy.
 
 ## 5. Deploy
 
@@ -89,7 +124,7 @@ https://YOUR-APP.onrender.com/api/public/bootstrap
 ```
 
 Copy the `tempPassword` for each user from the JSON response, then sign in at
-`/auth` and change the passwords from the profile area.
+`/auth` and change the passwords from **Account** (in the sidebar).
 
 ## 7. Custom domain
 
@@ -107,6 +142,10 @@ Render build step via the env var.
 ---
 
 ## Troubleshooting
+
+**Build succeeds but start fails with `Cannot find module '.../.output/server/index.mjs'`**
+Your build command was `bun install` only. Replace it with the full one-line
+build command in §3 Option 2 so the Vite/Nitro build actually runs.
 
 **Build fails with `nitro: unknown preset`**
 The `NITRO_PRESET` env var was not picked up. Verify it's set both in the
