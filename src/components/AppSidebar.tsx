@@ -8,6 +8,7 @@ import {
   ShieldCheck,
   ScrollText,
   Factory,
+  UserCircle2,
 } from "lucide-react";
 import {
   Sidebar,
@@ -28,6 +29,7 @@ const mainItems = [
 ];
 
 const settingsItems = [
+  { title: "Account", url: "/account", icon: UserCircle2 },
   { title: "Team", url: "/settings/team", icon: Users },
   { title: "ERP", url: "/settings/erp", icon: Plug },
 ];
