@@ -18,7 +18,23 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Push to Secondary Repo
+      - name: Verify secondary token is present
+        env:
+          SECONDARY_REPO_TOKEN: ${{ secrets.SECONDARY_REPO_TOKEN }}
         run: |
-          git remote add secondary https://x-access-token:${{ secrets.SECONDARY_REPO_TOKEN }}@github.com/desotoTF/tf-manumanuals.git
+          if [ -z "$SECONDARY_REPO_TOKEN" ]; then
+            echo "ERROR: SECONDARY_REPO_TOKEN secret is empty or not available to this workflow."
+            echo "Add it under the PRIMARY repo: Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+          echo "Token present (length: ${#SECONDARY_REPO_TOKEN})."
+
+      - name: Push to Secondary Repo
+        env:
+          SECONDARY_REPO_TOKEN: ${{ secrets.SECONDARY_REPO_TOKEN }}
+        run: |
+          # Fine-grained PATs authenticate as the token owner; the URL username
+          # must be that GitHub account (desotoTF), not "x-access-token"
+          # (which is reserved for GitHub App installation tokens).
+          git remote add secondary "https://desotoTF:${SECONDARY_REPO_TOKEN}@github.com/desotoTF/tf-manumanuals.git"
           git push secondary main --force
