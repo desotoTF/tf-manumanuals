@@ -176,7 +176,7 @@ export const createManualDraft = createServerFn({ method: "POST" })
         version_number: nextNum ?? 1,
         bom_snapshot_id: latestBom?.id ?? null,
         state: "draft",
-        content: seedContent as unknown as object,
+        content: seedContent as never,
         created_by: userId,
       })
       .select("id")
@@ -212,7 +212,7 @@ export const saveDraftContent = createServerFn({ method: "POST" })
     const { error } = await supabase
       .from("manual_versions")
       .update({
-        content: data.content as object,
+        content: data.content as never,
         change_summary: data.changeSummary ?? null,
       })
       .eq("id", data.versionId);
@@ -291,7 +291,7 @@ export const transitionManualVersion = createServerFn({ method: "POST" })
 
     const { error: uErr } = await supabase
       .from("manual_versions")
-      .update(update)
+      .update(update as never)
       .eq("id", data.versionId);
     if (uErr) throw uErr;
 
