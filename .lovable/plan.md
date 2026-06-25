@@ -1,78 +1,54 @@
-# Two Tasks
+# Three things
 
-## 1. Get the one-time password for rangerstatellc@gmail.com
+## 1. Add an Account page so you can change your temp password
 
-The bootstrap endpoint at `src/routes/api/public/bootstrap.ts` is idempotent. When called, if the user already exists it **rotates** their password and returns the new temp value in the JSON response. Nothing to change in code — you just need to call it once.
+There is no profile/account route today — that's the gap. I'll add:
 
-**How to run it** (pick either):
+- **New route** `src/routes/_authenticated/account.tsx` at `/account` with:
+  - Read-only **Email** and **Full name** (full name editable, saved to `profiles`).
+  - **Change password** form: new password + confirm. Calls `supabase.auth.updateUser({ password })` directly from the client (the user is already authenticated, no server fn needed).
+  - Success/error toasts; on success, the temp password is replaced immediately.
+- **Sidebar link**: add "Account" to `src/components/AppSidebar.tsx` under the user section (or as its own item) so it's reachable.
 
-- **Browser**: open `https://id-preview--9ef353a3-ccb6-4767-99d7-c0cf84e7bb5c.lovable.app/api/public/bootstrap` (GET works).
-- **Terminal**:
-  ```bash
-  curl -X POST https://id-preview--9ef353a3-ccb6-4767-99d7-c0cf84e7bb5c.lovable.app/api/public/bootstrap
+After this ships you'd sign in once with the temp password from `/api/public/bootstrap`, go to **Account**, set a real password, done.
+
+## 2. ERP settings — yes, per-org; yes, that's where the Odoo key goes
+
+Confirmed from `src/routes/_authenticated/settings.erp.tsx`:
+
+- The page reads `orgId` from `useActiveOrg()` and scopes every query/mutation to it. Each organization has its own ERP connections; switching orgs in the org switcher shows a different set.
+- **Connect Odoo** dialog (admin-only) is exactly where the Odoo **API key** goes, along with Base URL, Database, and Username. Create the key in Odoo via **Preferences → Account Security → New API Key**, paste it here, click **Test connection**, then **Save**. The key is validated against Odoo, then stored encrypted in the DB vault (not as a Lovable secret).
+- You can rotate or revoke the key later from the same page.
+
+No code change needed for this one — just confirming.
+
+## 3. Render web service — exact field values
+
+Render's form fields, filled from `render.yaml`:
+
+- **Root Directory**: *leave blank* (repo root — `render.yaml`, `package.json`, and `vite.config.ts` are all there).
+- **Runtime**: Node
+- **Build Command**:
   ```
+  curl -fsSL https://bun.sh/install | bash && export PATH="$HOME/.bun/bin:$PATH" && bun install && NITRO_PRESET=node-server bun run build
+  ```
+  (`bun install` alone is not enough — it skips the actual Vite/Nitro build, so there's nothing to start.)
+- **Start Command**:
+  ```
+  node .output/server/index.mjs
+  ```
+- **Health Check Path**: `/`
+- **Node Version** (env var): `20`
+- Plus the Supabase env vars from `RENDER_DEPLOY.md` §4.
 
-The response JSON has a `results` array. Find the entry where `email` is `rangerstatellc@gmail.com` and copy `tempPassword`. Sign in at `/auth`, then change the password from the profile area. The password will not be shown again — save it immediately.
+If you committed `render.yaml` at the repo root and used **New + → Blueprint** instead of **Web Service**, Render reads all of this automatically and you don't fill any of those fields in by hand. I'll also tighten the wording in `RENDER_DEPLOY.md` to call out the Blueprint path and make the build/start commands copy-pasteable as single lines.
 
-Note: this will also rotate `desotod@gmail.com`'s password (also returned in the same response), since the endpoint touches every seed user. If you want to avoid that, I can change the endpoint to take an `?email=` filter in build mode instead.
+---
 
-## 2. Hosting on Render.com
+## Files
 
-The app is a TanStack Start v1 project built with Vite, currently configured for the Cloudflare Workers edge target. Render.com does not run Workers — it runs Node.js services. So hosting on Render requires switching the server target to Node, then deploying as a Render **Web Service**.
+- **New**: `src/routes/_authenticated/account.tsx`
+- **Edit**: `src/components/AppSidebar.tsx` (add Account link)
+- **Edit**: `RENDER_DEPLOY.md` (copy-pasteable single-line build cmd, Blueprint note, explicit "Root Directory: blank")
 
-### Steps
-
-**a. Switch the server target to Node**
-- Update `vite.config.ts` to use the Node target for `@tanstack/react-start` instead of the Cloudflare/Workers target. Output goes to `.output/server/index.mjs` (Node-compatible bundle).
-- Verify `src/server.ts` doesn't rely on Workers-only globals.
-- Keep all `createServerFn` code as-is — it's runtime-agnostic.
-
-**b. Add a Render service manifest** (`render.yaml` at repo root):
-```yaml
-services:
-  - type: web
-    name: manumanuals
-    runtime: node
-    plan: starter
-    buildCommand: bun install && bun run build
-    startCommand: node .output/server/index.mjs
-    envVars:
-      - key: NODE_VERSION
-        value: "20"
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_PUBLISHABLE_KEY
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: VITE_SUPABASE_URL
-        sync: false
-      - key: VITE_SUPABASE_PUBLISHABLE_KEY
-        sync: false
-      - key: VITE_SUPABASE_PROJECT_ID
-        sync: false
-      - key: LOVABLE_API_KEY
-        sync: false
-```
-
-**c. Render dashboard steps** (you do these):
-1. Render → **New** → **Web Service** → connect the GitHub repo (`desotoTF/tf-manumanuals` mirror or primary).
-2. Render auto-detects `render.yaml`. Confirm.
-3. In **Environment**, paste values for each secret. Copy them from the Lovable Cloud backend (Supabase) project. `SUPABASE_SERVICE_ROLE_KEY` is **not** retrievable via Lovable — you'll need it from the Supabase dashboard of the project, which Lovable Cloud doesn't expose. **This is the one blocker**: if you stay on Lovable Cloud's managed Supabase, the service role key isn't available to you, so server-side admin features (bootstrap route, `supabaseAdmin` usage) won't work on Render.
-4. Deploy. First build takes ~3–5 min.
-5. Add your custom domain under **Settings → Custom Domains** and update DNS as Render instructs.
-
-### The Supabase / service-role caveat (important)
-
-Lovable Cloud hides the service-role key. To host this on Render with full feature parity (bootstrap, public manual SSR via `supabaseAdmin`, etc.) you have two options:
-
-- **Option A — Migrate to your own Supabase project.** Create a new Supabase project on supabase.com, run all the existing migrations from `supabase/migrations/` against it, copy storage buckets, then point Render's env vars at the new project. You own all keys.
-- **Option B — Keep Lovable Cloud's Supabase, drop admin features.** Remove or rework anything that uses `supabaseAdmin` (the bootstrap route, public manual SSR). Render gets only the publishable/anon key.
-
-### What I'd build (in build mode)
-
-1. `vite.config.ts` change to Node target.
-2. `render.yaml` at repo root.
-3. A short `RENDER_DEPLOY.md` with the steps above + the Supabase migration path.
-
-Tell me which Supabase option (A or B) you want before I start, and confirm you want both tasks implemented.
+No DB migration, no new server functions, no new secrets.
