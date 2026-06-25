@@ -1,4 +1,4 @@
-import { Link, useNavigate, useRouter } from "@tanstack/react-router";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -12,7 +12,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Factory, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/AppSidebar";
+import { createContext, useContext } from "react";
 
 const ACTIVE_ORG_KEY = "mm.activeOrgId";
 
@@ -49,12 +56,14 @@ export function AppShell({ children }: { children: ReactNode }) {
     queryFn: () => fetchOrgs(),
   });
 
-  // Default active org to first one
+  const orgs = orgsQuery.data?.orgs ?? [];
+  const isSuperAdmin = !!orgsQuery.data?.isSuperAdmin;
+
   useEffect(() => {
-    if (!orgId && orgsQuery.data && orgsQuery.data.length > 0) {
-      setOrgId(orgsQuery.data[0].id);
+    if (!orgId && orgs.length > 0) {
+      setOrgId(orgs[0].id);
     }
-  }, [orgId, orgsQuery.data, setOrgId]);
+  }, [orgId, orgs, setOrgId]);
 
   const signOut = async () => {
     await supabase.auth.signOut();
@@ -62,33 +71,25 @@ export function AppShell({ children }: { children: ReactNode }) {
     navigate({ to: "/auth" });
   };
 
-  const orgs = orgsQuery.data ?? [];
   const activeOrg = orgs.find((o) => o.id === orgId);
   const isAdmin =
     activeOrg?.roles.includes("owner") || activeOrg?.roles.includes("admin");
 
+  // For super admins with no org membership, still show the shell so they can
+  // reach /admin/* routes.
+  const hasShellAccess = orgs.length > 0 || isSuperAdmin;
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-3">
-          <div className="flex items-center gap-6">
-            <Link
-              to="/products"
-              className="flex items-center gap-2 text-lg font-semibold tracking-tight text-foreground"
-            >
-              <Factory className="h-5 w-5 text-primary" />
-              ManuManuals
-            </Link>
-            <nav className="hidden items-center gap-1 md:flex">
-              <NavLink to="/products">Products</NavLink>
-              <NavLink to="/settings/team">Team</NavLink>
-              <NavLink to="/settings/erp">ERP</NavLink>
-            </nav>
-          </div>
-          <div className="flex items-center gap-2">
+    <SidebarProvider>
+      <div className="flex min-h-screen w-full bg-background">
+        <AppSidebar isSuperAdmin={isSuperAdmin} />
+        <SidebarInset className="flex flex-1 flex-col">
+          <header className="flex h-14 items-center gap-3 border-b border-border bg-card px-4">
+            <SidebarTrigger />
+            <div className="flex-1" />
             {orgs.length > 0 && (
               <Select value={orgId ?? undefined} onValueChange={setOrgId}>
-                <SelectTrigger className="h-9 w-48">
+                <SelectTrigger className="h-9 w-56">
                   <SelectValue placeholder="Select organization" />
                 </SelectTrigger>
                 <SelectContent>
@@ -103,49 +104,49 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Button variant="ghost" size="sm" onClick={signOut}>
               <LogOut className="mr-2 h-4 w-4" /> Sign out
             </Button>
-          </div>
-        </div>
-      </header>
-      <main className="mx-auto max-w-7xl px-6 py-8">
-        {orgsQuery.isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : orgs.length === 0 ? (
-          <div className="rounded-md border border-border bg-card p-6">
-            <h2 className="text-base font-semibold">No organizations</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              You're signed in but not a member of any organization. Ask an
-              admin to invite you.
-            </p>
-          </div>
-        ) : (
-          <OrgContext.Provider
-            value={{ orgId: orgId!, orgName: activeOrg?.name ?? "", isAdmin: !!isAdmin }}
-          >
-            {children}
-          </OrgContext.Provider>
-        )}
-      </main>
-    </div>
+          </header>
+          <main className="flex-1 px-6 py-8">
+            {orgsQuery.isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            ) : !hasShellAccess ? (
+              <div className="rounded-md border border-border bg-card p-6">
+                <h2 className="text-base font-semibold">No organizations</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  You're signed in but not a member of any organization. Ask an
+                  admin to invite you.
+                </p>
+              </div>
+            ) : (
+              <OrgContext.Provider
+                value={{
+                  orgId: orgId ?? "",
+                  orgName: activeOrg?.name ?? "",
+                  isAdmin: !!isAdmin,
+                  isSuperAdmin,
+                  hasActiveOrg: !!activeOrg,
+                }}
+              >
+                {children}
+              </OrgContext.Provider>
+            )}
+          </main>
+        </SidebarInset>
+      </div>
+    </SidebarProvider>
   );
 }
 
-function NavLink({ to, children }: { to: string; children: ReactNode }) {
-  return (
-    <Link
-      to={to}
-      className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-      activeProps={{ className: "bg-accent text-foreground" }}
-    >
-      {children}
-    </Link>
-  );
-}
-
-import { createContext, useContext } from "react";
-type OrgCtx = { orgId: string; orgName: string; isAdmin: boolean };
+type OrgCtx = {
+  orgId: string;
+  orgName: string;
+  isAdmin: boolean;
+  isSuperAdmin: boolean;
+  hasActiveOrg: boolean;
+};
 const OrgContext = createContext<OrgCtx | null>(null);
 export function useActiveOrg() {
   const ctx = useContext(OrgContext);
-  if (!ctx) throw new Error("useActiveOrg must be inside AppShell org-scoped content");
+  if (!ctx)
+    throw new Error("useActiveOrg must be inside AppShell org-scoped content");
   return ctx;
 }
