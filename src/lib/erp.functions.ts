@@ -365,8 +365,8 @@ export const syncBoms = createServerFn({ method: "POST" })
             erp_connection_id: conn.id,
             erp_bom_id: String(bom.id),
             erp_bom_revision: bom.code ? String(bom.code) : null,
-            raw_payload: { bom, lines } as unknown as object,
-            normalized_items: normalized as unknown as object,
+            raw_payload: { bom, lines } as never,
+            normalized_items: normalized as never,
             content_hash: hash,
             captured_at: new Date().toISOString(),
           })
