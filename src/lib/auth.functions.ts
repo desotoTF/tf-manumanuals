@@ -1,4 +1,4 @@
-// Server functions for tenancy: list current user's orgs, fetch org members.
+// Server functions for tenancy: list current user's orgs, fetch org members, super-admin gate.
 // Auth gating itself is handled by the integration-managed _authenticated layout.
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -17,7 +17,6 @@ export const listMyOrgs = createServerFn({ method: "GET" })
     const orgs = (data ?? [])
       .map((m) => m.organizations)
       .filter((o): o is NonNullable<typeof o> => !!o);
-    // Fetch roles
     const { data: roles } = await supabase
       .from("org_roles")
       .select("organization_id, role")
@@ -28,7 +27,13 @@ export const listMyOrgs = createServerFn({ method: "GET" })
       list.push(r.role);
       roleMap.set(r.organization_id, list);
     });
-    return orgs.map((o) => ({ ...o, roles: roleMap.get(o.id) ?? [] }));
+
+    const { data: isSuper } = await supabase.rpc("is_super_admin");
+
+    return {
+      isSuperAdmin: !!isSuper,
+      orgs: orgs.map((o) => ({ ...o, roles: roleMap.get(o.id) ?? [] })),
+    };
   });
 
 export const getOrgMembers = createServerFn({ method: "GET" })
@@ -57,4 +62,14 @@ export const getOrgMembers = createServerFn({ method: "GET" })
       profile: m.profiles,
       roles: roleMap.get(m.user_id) ?? [],
     }));
+  });
+
+// Used by /admin/* routes' beforeLoad to gate access before render.
+export const assertSuperAdmin = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data, error } = await context.supabase.rpc("is_super_admin");
+    if (error) throw error;
+    if (!data) throw new Error("Forbidden: super_admin required");
+    return { ok: true as const };
   });

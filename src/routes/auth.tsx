@@ -41,7 +41,7 @@ function AuthPage() {
   // Redirect away if already signed in
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
-      if (data.user) navigate({ to: "/products" });
+      if (data.user) navigate({ to: "/dashboard" });
     });
   }, [navigate]);
 
@@ -57,7 +57,7 @@ function AuthPage() {
       toast.error(error.message);
       return;
     }
-    navigate({ to: "/products" });
+    navigate({ to: "/dashboard" });
   };
 
   const handleAccept = async (e: React.FormEvent) => {
@@ -74,7 +74,7 @@ function AuthPage() {
         password,
       });
       if (error) throw error;
-      navigate({ to: "/products" });
+      navigate({ to: "/dashboard" });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to accept invitation");
     } finally {
