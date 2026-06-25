@@ -14,9 +14,15 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedProductsRouteImport } from './routes/_authenticated/products'
+import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedSuperadminRouteImport } from './routes/_authenticated/_superadmin'
 import { Route as ApiPublicBootstrapRouteImport } from './routes/api/public/bootstrap'
 import { Route as AuthenticatedSettingsTeamRouteImport } from './routes/_authenticated/settings.team'
 import { Route as AuthenticatedSettingsErpRouteImport } from './routes/_authenticated/settings.erp'
+import { Route as AuthenticatedSuperadminAdminUsersRouteImport } from './routes/_authenticated/_superadmin.admin.users'
+import { Route as AuthenticatedSuperadminAdminOrgsRouteImport } from './routes/_authenticated/_superadmin.admin.orgs'
+import { Route as AuthenticatedSuperadminAdminAuditRouteImport } from './routes/_authenticated/_superadmin.admin.audit'
+import { Route as AuthenticatedSuperadminAdminOrgsOrgIdRouteImport } from './routes/_authenticated/_superadmin.admin.orgs.$orgId'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -42,6 +48,15 @@ const AuthenticatedProductsRoute = AuthenticatedProductsRouteImport.update({
   path: '/products',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedSuperadminRoute = AuthenticatedSuperadminRouteImport.update({
+  id: '/_superadmin',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const ApiPublicBootstrapRoute = ApiPublicBootstrapRouteImport.update({
   id: '/api/public/bootstrap',
   path: '/api/public/bootstrap',
@@ -59,65 +74,121 @@ const AuthenticatedSettingsErpRoute =
     path: '/erp',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
+const AuthenticatedSuperadminAdminUsersRoute =
+  AuthenticatedSuperadminAdminUsersRouteImport.update({
+    id: '/admin/users',
+    path: '/admin/users',
+    getParentRoute: () => AuthenticatedSuperadminRoute,
+  } as any)
+const AuthenticatedSuperadminAdminOrgsRoute =
+  AuthenticatedSuperadminAdminOrgsRouteImport.update({
+    id: '/admin/orgs',
+    path: '/admin/orgs',
+    getParentRoute: () => AuthenticatedSuperadminRoute,
+  } as any)
+const AuthenticatedSuperadminAdminAuditRoute =
+  AuthenticatedSuperadminAdminAuditRouteImport.update({
+    id: '/admin/audit',
+    path: '/admin/audit',
+    getParentRoute: () => AuthenticatedSuperadminRoute,
+  } as any)
+const AuthenticatedSuperadminAdminOrgsOrgIdRoute =
+  AuthenticatedSuperadminAdminOrgsOrgIdRouteImport.update({
+    id: '/$orgId',
+    path: '/$orgId',
+    getParentRoute: () => AuthenticatedSuperadminAdminOrgsRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/dashboard': typeof AuthenticatedDashboardRoute
   '/products': typeof AuthenticatedProductsRoute
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/settings/erp': typeof AuthenticatedSettingsErpRoute
   '/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/api/public/bootstrap': typeof ApiPublicBootstrapRoute
+  '/admin/audit': typeof AuthenticatedSuperadminAdminAuditRoute
+  '/admin/orgs': typeof AuthenticatedSuperadminAdminOrgsRouteWithChildren
+  '/admin/users': typeof AuthenticatedSuperadminAdminUsersRoute
+  '/admin/orgs/$orgId': typeof AuthenticatedSuperadminAdminOrgsOrgIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/dashboard': typeof AuthenticatedDashboardRoute
   '/products': typeof AuthenticatedProductsRoute
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/settings/erp': typeof AuthenticatedSettingsErpRoute
   '/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/api/public/bootstrap': typeof ApiPublicBootstrapRoute
+  '/admin/audit': typeof AuthenticatedSuperadminAdminAuditRoute
+  '/admin/orgs': typeof AuthenticatedSuperadminAdminOrgsRouteWithChildren
+  '/admin/users': typeof AuthenticatedSuperadminAdminUsersRoute
+  '/admin/orgs/$orgId': typeof AuthenticatedSuperadminAdminOrgsOrgIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/_authenticated/_superadmin': typeof AuthenticatedSuperadminRouteWithChildren
+  '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/products': typeof AuthenticatedProductsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/_authenticated/settings/erp': typeof AuthenticatedSettingsErpRoute
   '/_authenticated/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/api/public/bootstrap': typeof ApiPublicBootstrapRoute
+  '/_authenticated/_superadmin/admin/audit': typeof AuthenticatedSuperadminAdminAuditRoute
+  '/_authenticated/_superadmin/admin/orgs': typeof AuthenticatedSuperadminAdminOrgsRouteWithChildren
+  '/_authenticated/_superadmin/admin/users': typeof AuthenticatedSuperadminAdminUsersRoute
+  '/_authenticated/_superadmin/admin/orgs/$orgId': typeof AuthenticatedSuperadminAdminOrgsOrgIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/auth'
+    | '/dashboard'
     | '/products'
     | '/settings'
     | '/settings/erp'
     | '/settings/team'
     | '/api/public/bootstrap'
+    | '/admin/audit'
+    | '/admin/orgs'
+    | '/admin/users'
+    | '/admin/orgs/$orgId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth'
+    | '/dashboard'
     | '/products'
     | '/settings'
     | '/settings/erp'
     | '/settings/team'
     | '/api/public/bootstrap'
+    | '/admin/audit'
+    | '/admin/orgs'
+    | '/admin/users'
+    | '/admin/orgs/$orgId'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/_authenticated/_superadmin'
+    | '/_authenticated/dashboard'
     | '/_authenticated/products'
     | '/_authenticated/settings'
     | '/_authenticated/settings/erp'
     | '/_authenticated/settings/team'
     | '/api/public/bootstrap'
+    | '/_authenticated/_superadmin/admin/audit'
+    | '/_authenticated/_superadmin/admin/orgs'
+    | '/_authenticated/_superadmin/admin/users'
+    | '/_authenticated/_superadmin/admin/orgs/$orgId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -164,6 +235,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProductsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/dashboard': {
+      id: '/_authenticated/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/_superadmin': {
+      id: '/_authenticated/_superadmin'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedSuperadminRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/api/public/bootstrap': {
       id: '/api/public/bootstrap'
       path: '/api/public/bootstrap'
@@ -185,8 +270,72 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsErpRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
+    '/_authenticated/_superadmin/admin/users': {
+      id: '/_authenticated/_superadmin/admin/users'
+      path: '/admin/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AuthenticatedSuperadminAdminUsersRouteImport
+      parentRoute: typeof AuthenticatedSuperadminRoute
+    }
+    '/_authenticated/_superadmin/admin/orgs': {
+      id: '/_authenticated/_superadmin/admin/orgs'
+      path: '/admin/orgs'
+      fullPath: '/admin/orgs'
+      preLoaderRoute: typeof AuthenticatedSuperadminAdminOrgsRouteImport
+      parentRoute: typeof AuthenticatedSuperadminRoute
+    }
+    '/_authenticated/_superadmin/admin/audit': {
+      id: '/_authenticated/_superadmin/admin/audit'
+      path: '/admin/audit'
+      fullPath: '/admin/audit'
+      preLoaderRoute: typeof AuthenticatedSuperadminAdminAuditRouteImport
+      parentRoute: typeof AuthenticatedSuperadminRoute
+    }
+    '/_authenticated/_superadmin/admin/orgs/$orgId': {
+      id: '/_authenticated/_superadmin/admin/orgs/$orgId'
+      path: '/$orgId'
+      fullPath: '/admin/orgs/$orgId'
+      preLoaderRoute: typeof AuthenticatedSuperadminAdminOrgsOrgIdRouteImport
+      parentRoute: typeof AuthenticatedSuperadminAdminOrgsRoute
+    }
   }
 }
+
+interface AuthenticatedSuperadminAdminOrgsRouteChildren {
+  AuthenticatedSuperadminAdminOrgsOrgIdRoute: typeof AuthenticatedSuperadminAdminOrgsOrgIdRoute
+}
+
+const AuthenticatedSuperadminAdminOrgsRouteChildren: AuthenticatedSuperadminAdminOrgsRouteChildren =
+  {
+    AuthenticatedSuperadminAdminOrgsOrgIdRoute:
+      AuthenticatedSuperadminAdminOrgsOrgIdRoute,
+  }
+
+const AuthenticatedSuperadminAdminOrgsRouteWithChildren =
+  AuthenticatedSuperadminAdminOrgsRoute._addFileChildren(
+    AuthenticatedSuperadminAdminOrgsRouteChildren,
+  )
+
+interface AuthenticatedSuperadminRouteChildren {
+  AuthenticatedSuperadminAdminAuditRoute: typeof AuthenticatedSuperadminAdminAuditRoute
+  AuthenticatedSuperadminAdminOrgsRoute: typeof AuthenticatedSuperadminAdminOrgsRouteWithChildren
+  AuthenticatedSuperadminAdminUsersRoute: typeof AuthenticatedSuperadminAdminUsersRoute
+}
+
+const AuthenticatedSuperadminRouteChildren: AuthenticatedSuperadminRouteChildren =
+  {
+    AuthenticatedSuperadminAdminAuditRoute:
+      AuthenticatedSuperadminAdminAuditRoute,
+    AuthenticatedSuperadminAdminOrgsRoute:
+      AuthenticatedSuperadminAdminOrgsRouteWithChildren,
+    AuthenticatedSuperadminAdminUsersRoute:
+      AuthenticatedSuperadminAdminUsersRoute,
+  }
+
+const AuthenticatedSuperadminRouteWithChildren =
+  AuthenticatedSuperadminRoute._addFileChildren(
+    AuthenticatedSuperadminRouteChildren,
+  )
 
 interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsErpRoute: typeof AuthenticatedSettingsErpRoute
@@ -204,11 +353,15 @@ const AuthenticatedSettingsRouteWithChildren =
   )
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedSuperadminRoute: typeof AuthenticatedSuperadminRouteWithChildren
+  AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedProductsRoute: typeof AuthenticatedProductsRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRouteWithChildren
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedSuperadminRoute: AuthenticatedSuperadminRouteWithChildren,
+  AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedProductsRoute: AuthenticatedProductsRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRouteWithChildren,
 }

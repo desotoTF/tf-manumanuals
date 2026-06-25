@@ -174,7 +174,7 @@ export const adminUpdateOrganization = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import(
       "@/integrations/supabase/client.server"
     );
-    const patch: Record<string, string> = {};
+    const patch: { name?: string; slug?: string } = {};
     if (data.name) patch.name = data.name;
     if (data.slug) patch.slug = data.slug;
     const { error } = await supabaseAdmin
