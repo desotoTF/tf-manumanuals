@@ -214,7 +214,7 @@ function PublicManualPage() {
           <section>
             <h2 className="mb-3 text-lg font-semibold">Reference images</h2>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {assets
+              {(assets as Array<{ id: string; type: string; url: string | null; metadata: Record<string, unknown> | null }>)
                 .filter((a) => a.url)
                 .map((a) => (
                   <figure
