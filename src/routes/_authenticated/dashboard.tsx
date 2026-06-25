@@ -272,7 +272,8 @@ function DashboardPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <Link
-                      to="/products"
+                      to="/products/$productId"
+                      params={{ productId: p.id }}
                       className="text-sm font-medium text-primary hover:underline"
                     >
                       Open

@@ -1,32 +1,27 @@
-## Problem
+# Phase III-B — Shipped
 
-The workflow's push step is being rejected with `403 Permission denied to github-actions[bot]`. That bot identity is the default `GITHUB_TOKEN`, not your `SECONDARY_REPO_TOKEN` PAT. The PAT never gets used.
+## What's new
 
-**Why:** `actions/checkout@v4` defaults to `persist-credentials: true`, which installs a git credential helper that automatically supplies `GITHUB_TOKEN` for any `github.com` URL — overriding the token we embedded in the `secondary` remote URL.
+- **Manual editor** at `/products/$productId` — 3-column layout:
+  - Left rail: latest BOM snapshot (first 20 items), version list.
+  - Main: tabbed structured-content editor (Steps · Tools · Parts · Warnings · Torque · Images) with row reorder/add/delete.
+  - Right rail: version state badge, change summary, drift warning when product is out_of_sync, state-transition buttons, link to public page after publish.
+- **Version state machine**: `draft → in_review → approved → published` (older `published` auto-superseded by trigger). Editors can submit/discard; owners or admins approve/publish. Each transition logs a `sync_events` row.
+- **New draft from latest**: clones content forward and re-binds to the latest BOM snapshot. First-time manual creation pre-fills `parts[]` from the BOM.
+- **Image assets**: attach by URL with optional caption (private storage bucket `manual-assets` created for future direct uploads).
+- **Public SSR route** `/manuals/$slug` — anyone can read the latest **published** version. Uses `supabaseAdmin` server-side, gated to `state='published' AND product.is_active`. Includes warnings, tools, parts, ordered steps, torque specs, reference images, SEO/OG metadata, lazy-loaded images.
+- **Dashboard** "Open" links now jump straight to the editor.
 
-## Fix
+## Server functions added
+- `getProductWorkspace`, `getManualVersion`, `createManualDraft`, `saveDraftContent`, `transitionManualVersion`, `addManualAsset`, `removeManualAsset` — `src/lib/manuals.functions.ts`
+- `getPublishedManualBySlug` (public, no auth) — `src/lib/public-manuals.functions.ts`
 
-Add `persist-credentials: false` to the checkout step in `.github/workflows/mirror.yml`:
+## Try it
+1. Dashboard → click **Open** on a product.
+2. **Create manual** → edit Steps + Parts + Warnings → **Save draft** → **Submit for review** → **Approve** → **Publish**.
+3. After publish, click **View public page →** to see the SSR-rendered manual at `/manuals/<sku-slug>`.
 
-```yaml
-- name: Checkout Primary Code
-  uses: actions/checkout@v4
-  with:
-    fetch-depth: 0
-    persist-credentials: false
-```
-
-That's the only change. The push step already embeds the PAT correctly; it just needs the credential helper out of the way.
-
-## Verification
-
-After the change syncs to GitHub:
-1. Re-run the workflow (Actions → Auto Push to Secondary Repo → Run workflow), or wait for the next push.
-2. Expect green ✅. Confirm `desotoTF/tf-manumanuals` has the new commit.
-
-## If it still fails
-
-Possible follow-ups (only if the 403 returns under a different identity):
-- PAT was created on the wrong account — must be created while logged in as **desotoTF**.
-- PAT lacks `repo` scope.
-- Secret name typo — must be exactly `SECONDARY_REPO_TOKEN` at the **repository** secret level (not environment-scoped).
+## Not yet
+- Direct image upload to the `manual-assets` bucket (currently URL-paste only).
+- PDF generation (`pdf_url` field exists but is unused).
+- Per-step image association (asset_ids are stored in content but the UI doesn't link them yet).
