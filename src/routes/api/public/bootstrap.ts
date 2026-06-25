@@ -46,6 +46,18 @@ async function handle() {
     "@/integrations/supabase/client.server"
   );
 
+  // Self-heal: ensure the demo org row exists. A fresh Supabase project may
+  // not have it; the membership/org_roles upserts below would FK-fail without it.
+  {
+    const { error: orgErr } = await supabaseAdmin
+      .from("organizations")
+      .upsert(
+        { id: DEMO_ORG_ID, name: "ManuManuals Demo", slug: "demo" },
+        { onConflict: "id", ignoreDuplicates: true },
+      );
+    if (orgErr) throw new Error(`Failed to ensure demo org: ${orgErr.message}`);
+  }
+
   const results: Array<{
     email: string;
     status: "created" | "rotated" | "ensured";
