@@ -556,6 +556,36 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_audit: {
+        Row: {
+          action: string
+          actor_user_id: string | null
+          id: string
+          occurred_at: string
+          payload: Json
+          target_id: string | null
+          target_type: string | null
+        }
+        Insert: {
+          action: string
+          actor_user_id?: string | null
+          id?: string
+          occurred_at?: string
+          payload?: Json
+          target_id?: string | null
+          target_type?: string | null
+        }
+        Update: {
+          action?: string
+          actor_user_id?: string | null
+          id?: string
+          occurred_at?: string
+          payload?: Json
+          target_id?: string | null
+          target_type?: string | null
+        }
+        Relationships: []
+      }
       platform_roles: {
         Row: {
           created_at: string
