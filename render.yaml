@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: manumanuals
+    runtime: node
+    plan: starter
+    region: oregon
+    branch: main
+    buildCommand: |
+      curl -fsSL https://bun.sh/install | bash
+      export PATH="$HOME/.bun/bin:$PATH"
+      bun install
+      NITRO_PRESET=node-server bun run build
+    startCommand: node .output/server/index.mjs
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NITRO_PRESET
+        value: node-server
+      # --- Server-only (set values in Render dashboard) ---
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: LOVABLE_API_KEY
+        sync: false
+      # --- Client-visible (baked into the JS bundle at build time) ---
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: VITE_SUPABASE_PROJECT_ID
+        sync: false
