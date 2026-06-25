@@ -16,6 +16,7 @@ import { Route as ManualsSlugRouteImport } from './routes/manuals.$slug'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedProductsRouteImport } from './routes/_authenticated/products'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedAccountRouteImport } from './routes/_authenticated/account'
 import { Route as AuthenticatedSuperadminRouteImport } from './routes/_authenticated/_superadmin'
 import { Route as ApiPublicBootstrapRouteImport } from './routes/api/public/bootstrap'
 import { Route as AuthenticatedSettingsTeamRouteImport } from './routes/_authenticated/settings.team'
@@ -58,6 +59,11 @@ const AuthenticatedProductsRoute = AuthenticatedProductsRouteImport.update({
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedAccountRoute = AuthenticatedAccountRouteImport.update({
+  id: '/account',
+  path: '/account',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedSuperadminRoute = AuthenticatedSuperadminRouteImport.update({
@@ -115,6 +121,7 @@ const AuthenticatedSuperadminAdminOrgsOrgIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/account': typeof AuthenticatedAccountRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/products': typeof AuthenticatedProductsRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
@@ -131,6 +138,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/account': typeof AuthenticatedAccountRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/products': typeof AuthenticatedProductsRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
@@ -150,6 +158,7 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/_authenticated/_superadmin': typeof AuthenticatedSuperadminRouteWithChildren
+  '/_authenticated/account': typeof AuthenticatedAccountRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/products': typeof AuthenticatedProductsRouteWithChildren
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteWithChildren
@@ -168,6 +177,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/account'
     | '/dashboard'
     | '/products'
     | '/settings'
@@ -184,6 +194,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/account'
     | '/dashboard'
     | '/products'
     | '/settings'
@@ -202,6 +213,7 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/auth'
     | '/_authenticated/_superadmin'
+    | '/_authenticated/account'
     | '/_authenticated/dashboard'
     | '/_authenticated/products'
     | '/_authenticated/settings'
@@ -273,6 +285,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/account': {
+      id: '/_authenticated/account'
+      path: '/account'
+      fullPath: '/account'
+      preLoaderRoute: typeof AuthenticatedAccountRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/_superadmin': {
@@ -407,6 +426,7 @@ const AuthenticatedSettingsRouteWithChildren =
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedSuperadminRoute: typeof AuthenticatedSuperadminRouteWithChildren
+  AuthenticatedAccountRoute: typeof AuthenticatedAccountRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedProductsRoute: typeof AuthenticatedProductsRouteWithChildren
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRouteWithChildren
@@ -414,6 +434,7 @@ interface AuthenticatedRouteRouteChildren {
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSuperadminRoute: AuthenticatedSuperadminRouteWithChildren,
+  AuthenticatedAccountRoute: AuthenticatedAccountRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedProductsRoute: AuthenticatedProductsRouteWithChildren,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRouteWithChildren,
