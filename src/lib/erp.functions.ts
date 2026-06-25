@@ -297,6 +297,7 @@ export const syncBoms = createServerFn({ method: "POST" })
           .replace(/^-|-$/g, "") || `tmpl-${tmplRow.id}`;
 
         // Upsert product
+        let productId: string;
         const { data: prod, error: pErr } = await context.supabase
           .from("products")
           .upsert(
@@ -338,9 +339,9 @@ export const syncBoms = createServerFn({ method: "POST" })
             .select("id")
             .single();
           if (pErr2) throw pErr2;
-          var productId = prod2.id;
+          productId = prod2.id;
         } else {
-          var productId = prod.id;
+          productId = prod.id;
         }
         productsTouched += 1;
 
