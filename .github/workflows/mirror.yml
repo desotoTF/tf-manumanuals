@@ -1,0 +1,21 @@
+name: Auto Push to Secondary Repo
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  copy_to_secondary:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Primary Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to Secondary Repo
+        run: |
+          git remote add secondary https://x-access-token:${{ secrets.SECONDARY_REPO_TOKEN }}@github.com/desotoTF/tf-manumanuals.git
+          git push secondary main --force
