@@ -17,9 +17,11 @@ import { Factory, LogOut } from "lucide-react";
 const ACTIVE_ORG_KEY = "mm.activeOrgId";
 
 export function useActiveOrgId() {
-  const [orgId, setOrgId] = useState<string | null>(() =>
-    typeof window === "undefined" ? null : localStorage.getItem(ACTIVE_ORG_KEY),
-  );
+  const [orgId, setOrgId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    const v = localStorage.getItem(ACTIVE_ORG_KEY);
+    return v && v !== "null" && v !== "undefined" ? v : null;
+  });
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key === ACTIVE_ORG_KEY) setOrgId(e.newValue);

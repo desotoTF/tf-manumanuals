@@ -77,13 +77,15 @@ export type Database = {
           id: string
           is_active: boolean
           last_sync_at: string | null
+          last_sync_error: string | null
           last_sync_status: string | null
           name: string
           organization_id: string
           provider: Database["public"]["Enums"]["erp_provider"]
-          secret_name: string
+          secret_name: string | null
           updated_at: string
           username: string
+          vault_secret_id: string | null
         }
         Insert: {
           base_url: string
@@ -93,13 +95,15 @@ export type Database = {
           id?: string
           is_active?: boolean
           last_sync_at?: string | null
+          last_sync_error?: string | null
           last_sync_status?: string | null
           name: string
           organization_id: string
           provider?: Database["public"]["Enums"]["erp_provider"]
-          secret_name: string
+          secret_name?: string | null
           updated_at?: string
           username: string
+          vault_secret_id?: string | null
         }
         Update: {
           base_url?: string
@@ -109,13 +113,15 @@ export type Database = {
           id?: string
           is_active?: boolean
           last_sync_at?: string | null
+          last_sync_error?: string | null
           last_sync_status?: string | null
           name?: string
           organization_id?: string
           provider?: Database["public"]["Enums"]["erp_provider"]
-          secret_name?: string
+          secret_name?: string | null
           updated_at?: string
           username?: string
+          vault_secret_id?: string | null
         }
         Relationships: [
           {
@@ -688,6 +694,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      erp_delete_credentials: {
+        Args: { _connection_id: string }
+        Returns: undefined
+      }
+      erp_read_credentials: { Args: { _connection_id: string }; Returns: Json }
+      erp_store_credentials: {
+        Args: { _api_key: string; _connection_id: string }
+        Returns: string
+      }
       has_org_access: { Args: { _org_id: string }; Returns: boolean }
       has_org_any_role: {
         Args: {
