@@ -21,11 +21,25 @@ const SEEDS: Seed[] = [
 export const Route = createFileRoute("/api/public/bootstrap")({
   server: {
     handlers: {
-      POST: async () => handle(),
-      GET: async () => handle(),
+      POST: async () => safeHandle(),
+      GET: async () => safeHandle(),
     },
   },
 });
+
+async function safeHandle() {
+  try {
+    return await handle();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : undefined;
+    console.error("[bootstrap] failed:", message, stack);
+    return Response.json(
+      { ok: false, error: message, stack },
+      { status: 500 },
+    );
+  }
+}
 
 async function handle() {
   const { supabaseAdmin } = await import(
