@@ -1,3 +1,4 @@
+# Mirrors main to desotoTF/tf-manumanuals on every push
 name: Auto Push to Secondary Repo
 
 on:
