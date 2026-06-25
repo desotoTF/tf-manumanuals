@@ -131,15 +131,48 @@ All tables in `public` schema get explicit `GRANT`s + RLS enabled + policies sco
 
 ---
 
-## Phase III — InstallOps dashboard + manual editor shell
+## Phase III — InstallOps dashboard + manual editor shell + super-admin console
+
+### Super-admin foundations (already shipped, recap)
+
+- `platform_roles` table + `platform_role` enum (currently: `super_admin`), separate from per-org `org_roles` so org RLS stays uncoupled.
+- `has_platform_role(user, role)` + `is_super_admin()` security-definer helpers.
+- "Super admin full access" RLS policies on `organizations`, `memberships`, `org_roles`, `invitations`, `products`, `bom_snapshots`, `manuals`, `manual_versions`, `manual_assets`, `manual_sync_status`, `erp_connections`, `erp_credential_audit`, `sync_events`.
+- ERP Vault RPCs (`erp_store_credentials`, `erp_read_credentials`, `erp_delete_credentials`) accept super_admin as authorized caller.
+- Bootstrap endpoint seeds `desotod@gmail.com` (org owner) and `rangerstatellc@gmail.com` (super_admin + demo-org owner).
+
+### Super-admin console — `/_authenticated/admin/*` (new in Phase III)
+
+Gated by a pathless `/_authenticated/_superadmin/` layout whose `beforeLoad` calls an `assertSuperAdmin` server fn (uses `is_super_admin()` RPC). Nav entry only shown when `listMyOrgs` returns `isSuperAdmin: true` on the active profile.
+
+- `/admin/orgs` — table of all organizations (name, slug, member count, ERP connections count, created_at). Actions: rename, archive, delete (cascade-protected), "Impersonate org" (sets active org id without requiring membership).
+- `/admin/orgs/new` — create organization (name, slug); optionally seed an initial owner by email (creates auth user via admin API + invites).
+- `/admin/orgs/$orgId` — drill-in: members list with roles (promote/demote/remove across any role including owner), pending invitations, ERP connections summary, recent sync_events.
+- `/admin/users` — cross-org user search (by email/name), shows their memberships + roles + platform roles. Grant/revoke `super_admin`.
+- `/admin/audit` — read-only feed merging `sync_events` + `erp_credential_audit` + (new) `platform_audit` entries for super-admin actions.
+
+### Super-admin server functions (new)
+
+All use `requireSupabaseAuth` + `is_super_admin()` check before any privileged action; non-super-admins get 403. Privileged ops load `supabaseAdmin` inside the handler.
+
+- `adminListOrganizations()`, `adminCreateOrganization({ name, slug, initialOwnerEmail? })`, `adminUpdateOrganization`, `adminArchiveOrganization`, `adminDeleteOrganization`
+- `adminListOrgMembers(orgId)`, `adminAddMember({ orgId, email, roles[] })`, `adminSetMemberRoles({ orgId, userId, roles[] })`, `adminRemoveMember({ orgId, userId })`
+- `adminListUsers({ search })`, `adminGrantSuperAdmin({ userId })`, `adminRevokeSuperAdmin({ userId })`
+- `adminListAudit({ filters })`
+- All write actions insert a `platform_audit` row (`actor_user_id`, `action`, `target_type`, `target_id`, `payload jsonb`, `occurred_at`).
+
+### New schema (Phase III migration)
+
+- `platform_audit` (id, actor_user_id, action text, target_type text, target_id uuid nullable, payload jsonb, occurred_at) — append-only, super-admin readable, service-role writable. RLS: `SELECT` to `is_super_admin()`, no client `INSERT` (server fns use admin client).
 
 ### `/_authenticated/dashboard`
 
-- Summary tiles: In-sync, Out-of-sync, No manual, Pending review (counts queried from `manual_sync_status`).
+- Summary tiles: In-sync, Out-of-sync, No manual, Pending review (counts from `manual_sync_status`).
 - Filters: search (SKU/name), status, ERP connection.
 - Sortable table: SKU, Name, Status badge, Last BOM change, Last manual publish, Out-of-sync since (relative time), Actions ("Open manual" / "Create manual", "View BOM").
 - Out-of-sync rows pinned/highlighted at top by default.
-- Side panel for "View BOM": shows `normalized_items` of latest snapshot with revision + captured_at.
+- Side panel "View BOM": shows `normalized_items` of latest snapshot with revision + captured_at.
+- Super-admin extra: org filter at the top (defaults to active org; "All orgs" option only when `is_super_admin`).
 
 ### `/_authenticated/products/$productId/manuals/$manualId?`
 
@@ -173,7 +206,7 @@ All tables in `public` schema get explicit `GRANT`s + RLS enabled + policies sco
 
 - `/manuals/$slug` — public SSR route, renders the latest `published` `manual_versions.content` for the product's `web_slug`. Read via a public `createServerFn` using the server publishable Supabase client + a narrow `TO anon` SELECT policy that only exposes published versions. Sets per-page `head()` meta (title, description, og:title, og:description, og:image when a hero image exists).
 
-**Phase III exit:** end-to-end loop works — Odoo sync → out_of_sync product → create/edit manual → publish → status back to in_sync → public `/manuals/<slug>` shows the new version.
+**Phase III exit:** end-to-end loop works — Odoo sync → out_of_sync product → create/edit manual → publish → status back to in_sync → public `/manuals/<slug>` shows the new version. Super admin can create/rename orgs, manage members across any org, grant/revoke `super_admin`, and view a unified audit feed.
 
 ---
 
