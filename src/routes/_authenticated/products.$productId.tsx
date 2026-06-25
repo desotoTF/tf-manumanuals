@@ -510,7 +510,7 @@ function ContentEditor({
               { key: "name", label: "Tool", placeholder: "10mm wrench" },
               { key: "spec", label: "Spec", placeholder: "Torque-rated" },
             ]}
-            empty={() => ({ name: "" })}
+            empty={(): ManualContent["tools"][number] => ({ name: "" })}
           />
         )}
         {tab === "parts" && (
@@ -524,7 +524,7 @@ function ContentEditor({
               { key: "description", label: "Description" },
               { key: "notes", label: "Notes" },
             ]}
-            empty={() => ({ part_number: "", qty: 1 })}
+            empty={(): ManualContent["parts"][number] => ({ part_number: "", qty: 1 })}
           />
         )}
         {tab === "warnings" && (
@@ -545,7 +545,7 @@ function ContentEditor({
               { key: "unit", label: "Unit", placeholder: "Nm" },
               { key: "sequence", label: "Sequence" },
             ]}
-            empty={() => ({ fastener: "", value: 0, unit: "Nm" })}
+            empty={(): ManualContent["torque_specs"][number] => ({ fastener: "", value: 0, unit: "Nm" })}
           />
         )}
         {tab === "images" && (
