@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ManualsSlugRouteImport } from './routes/manuals.$slug'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedProductsRouteImport } from './routes/_authenticated/products'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
@@ -19,6 +20,7 @@ import { Route as AuthenticatedSuperadminRouteImport } from './routes/_authentic
 import { Route as ApiPublicBootstrapRouteImport } from './routes/api/public/bootstrap'
 import { Route as AuthenticatedSettingsTeamRouteImport } from './routes/_authenticated/settings.team'
 import { Route as AuthenticatedSettingsErpRouteImport } from './routes/_authenticated/settings.erp'
+import { Route as AuthenticatedProductsProductIdRouteImport } from './routes/_authenticated/products.$productId'
 import { Route as AuthenticatedSuperadminAdminUsersRouteImport } from './routes/_authenticated/_superadmin.admin.users'
 import { Route as AuthenticatedSuperadminAdminOrgsRouteImport } from './routes/_authenticated/_superadmin.admin.orgs'
 import { Route as AuthenticatedSuperadminAdminAuditRouteImport } from './routes/_authenticated/_superadmin.admin.audit'
@@ -36,6 +38,11 @@ const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ManualsSlugRoute = ManualsSlugRouteImport.update({
+  id: '/manuals/$slug',
+  path: '/manuals/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
@@ -74,6 +81,12 @@ const AuthenticatedSettingsErpRoute =
     path: '/erp',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
+const AuthenticatedProductsProductIdRoute =
+  AuthenticatedProductsProductIdRouteImport.update({
+    id: '/$productId',
+    path: '/$productId',
+    getParentRoute: () => AuthenticatedProductsRoute,
+  } as any)
 const AuthenticatedSuperadminAdminUsersRoute =
   AuthenticatedSuperadminAdminUsersRouteImport.update({
     id: '/admin/users',
@@ -103,8 +116,10 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
-  '/products': typeof AuthenticatedProductsRoute
+  '/products': typeof AuthenticatedProductsRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
+  '/manuals/$slug': typeof ManualsSlugRoute
+  '/products/$productId': typeof AuthenticatedProductsProductIdRoute
   '/settings/erp': typeof AuthenticatedSettingsErpRoute
   '/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/api/public/bootstrap': typeof ApiPublicBootstrapRoute
@@ -117,8 +132,10 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
-  '/products': typeof AuthenticatedProductsRoute
+  '/products': typeof AuthenticatedProductsRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
+  '/manuals/$slug': typeof ManualsSlugRoute
+  '/products/$productId': typeof AuthenticatedProductsProductIdRoute
   '/settings/erp': typeof AuthenticatedSettingsErpRoute
   '/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/api/public/bootstrap': typeof ApiPublicBootstrapRoute
@@ -134,8 +151,10 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/_superadmin': typeof AuthenticatedSuperadminRouteWithChildren
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
-  '/_authenticated/products': typeof AuthenticatedProductsRoute
+  '/_authenticated/products': typeof AuthenticatedProductsRouteWithChildren
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteWithChildren
+  '/manuals/$slug': typeof ManualsSlugRoute
+  '/_authenticated/products/$productId': typeof AuthenticatedProductsProductIdRoute
   '/_authenticated/settings/erp': typeof AuthenticatedSettingsErpRoute
   '/_authenticated/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/api/public/bootstrap': typeof ApiPublicBootstrapRoute
@@ -152,6 +171,8 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/products'
     | '/settings'
+    | '/manuals/$slug'
+    | '/products/$productId'
     | '/settings/erp'
     | '/settings/team'
     | '/api/public/bootstrap'
@@ -166,6 +187,8 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/products'
     | '/settings'
+    | '/manuals/$slug'
+    | '/products/$productId'
     | '/settings/erp'
     | '/settings/team'
     | '/api/public/bootstrap'
@@ -182,6 +205,8 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/products'
     | '/_authenticated/settings'
+    | '/manuals/$slug'
+    | '/_authenticated/products/$productId'
     | '/_authenticated/settings/erp'
     | '/_authenticated/settings/team'
     | '/api/public/bootstrap'
@@ -195,6 +220,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  ManualsSlugRoute: typeof ManualsSlugRoute
   ApiPublicBootstrapRoute: typeof ApiPublicBootstrapRoute
 }
 
@@ -219,6 +245,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/manuals/$slug': {
+      id: '/manuals/$slug'
+      path: '/manuals/$slug'
+      fullPath: '/manuals/$slug'
+      preLoaderRoute: typeof ManualsSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/settings': {
@@ -269,6 +302,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings/erp'
       preLoaderRoute: typeof AuthenticatedSettingsErpRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
+    }
+    '/_authenticated/products/$productId': {
+      id: '/_authenticated/products/$productId'
+      path: '/$productId'
+      fullPath: '/products/$productId'
+      preLoaderRoute: typeof AuthenticatedProductsProductIdRouteImport
+      parentRoute: typeof AuthenticatedProductsRoute
     }
     '/_authenticated/_superadmin/admin/users': {
       id: '/_authenticated/_superadmin/admin/users'
@@ -337,6 +377,19 @@ const AuthenticatedSuperadminRouteWithChildren =
     AuthenticatedSuperadminRouteChildren,
   )
 
+interface AuthenticatedProductsRouteChildren {
+  AuthenticatedProductsProductIdRoute: typeof AuthenticatedProductsProductIdRoute
+}
+
+const AuthenticatedProductsRouteChildren: AuthenticatedProductsRouteChildren = {
+  AuthenticatedProductsProductIdRoute: AuthenticatedProductsProductIdRoute,
+}
+
+const AuthenticatedProductsRouteWithChildren =
+  AuthenticatedProductsRoute._addFileChildren(
+    AuthenticatedProductsRouteChildren,
+  )
+
 interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsErpRoute: typeof AuthenticatedSettingsErpRoute
   AuthenticatedSettingsTeamRoute: typeof AuthenticatedSettingsTeamRoute
@@ -355,14 +408,14 @@ const AuthenticatedSettingsRouteWithChildren =
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedSuperadminRoute: typeof AuthenticatedSuperadminRouteWithChildren
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
-  AuthenticatedProductsRoute: typeof AuthenticatedProductsRoute
+  AuthenticatedProductsRoute: typeof AuthenticatedProductsRouteWithChildren
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRouteWithChildren
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSuperadminRoute: AuthenticatedSuperadminRouteWithChildren,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
-  AuthenticatedProductsRoute: AuthenticatedProductsRoute,
+  AuthenticatedProductsRoute: AuthenticatedProductsRouteWithChildren,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRouteWithChildren,
 }
 
@@ -373,6 +426,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  ManualsSlugRoute: ManualsSlugRoute,
   ApiPublicBootstrapRoute: ApiPublicBootstrapRoute,
 }
 export const routeTree = rootRouteImport
