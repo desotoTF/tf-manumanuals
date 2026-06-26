@@ -1,86 +1,81 @@
-## Where we are
+# Keeping the two Supabase projects in sync
 
-Done already: Odoo connect & BOM sync, products list, per-product 3-column manual editor (draft → in_review → approved → published), public manual page, image asset attach.
-
-Three slices remain. We'll plan all three; build slice 1 first, then check in.
+Every schema change I make goes through one file: a new SQL file in `supabase/migrations/`. Nothing else mutates the DB. That means "sync the second project" reduces to "run the same migration files against the second project, in order." Three viable options, from least to most automation.
 
 ---
 
-## Slice 1 — Legacy manual import + Manual Templates
+## Option A — Manual paste (zero setup, what you do today)
 
-Two related pieces shipped together because they share the editor surface.
+After I run a migration, you:
 
-### 1a. Manual Templates (admin-managed)
+1. Open the newest file in `supabase/migrations/` (it's already in the repo via the GitHub mirror).
+2. Paste it into the **SQL Editor** of your external Supabase project and run it.
+3. Done.
 
-New concept: a **template** is a reusable manual skeleton (predefined sections, default fields, a layout preset) that authors pick from when starting a manual — whether from scratch or from an imported PDF.
+Pros: no tooling, no secrets, no risk of accidental writes.
+Cons: you have to remember; easy to skip one and drift.
 
-**DB additions** (migration):
-- `manual_templates` table
-  - `id`, `organization_id`, `name`, `description`, `layout` (enum: `classic`, `compact`, `field_guide`, `service_card` — controls rendering on `/manuals/$slug`)
-  - `default_content` JSONB — pre-seeded `ManualContent` skeleton (tools/parts/steps/warnings/torque/images stubs)
-  - `is_default` bool, `created_by`, timestamps
-- `manuals.template_id` nullable FK → `manual_templates.id`
-- RLS: org members read; owner/admin write. GRANTs added per project rules.
-
-**Server fns** (`src/lib/templates.functions.ts`):
-- `listTemplates({organizationId})`, `getTemplate({id})`, `upsertTemplate({...})`, `deleteTemplate({id})`, `setDefaultTemplate({id})`
-
-**UI**:
-- New route `_authenticated/settings.templates.tsx` — list / create / edit templates (admin only). Form for name, description, layout, plus a JSON-driven section editor that mirrors the structured content editor.
-- Template picker added to "Create manual" / "New draft version" flow on `products.$productId.tsx`.
-- Public renderer (`manuals.$slug.tsx`) honors `template.layout` for visual differences.
-
-### 1b. Legacy manual import (PDF → editor + images)
-
-**Storage**: reuse existing private `manual-assets` bucket for both extracted images and the original source PDF.
-
-**Server fn** `importLegacyManualFromPdf` in `src/lib/manuals.functions.ts`:
-1. Accept `{productId, templateId?, fileUrl|signedPath, originalFilename}`.
-2. Download the PDF from storage (server-side) using `supabaseAdmin` after role check.
-3. Use Lovable AI Gateway with `google/gemini-2.5-flash` to extract structured content from the PDF (`type: file` content block) — prompt asks for `{tools, parts, steps, warnings, torque_specs}` matching our `ManualContent` schema.
-4. Use `pdf-lib` / a pure-JS extractor compatible with the Worker runtime to pull embedded raster images; upload each to `manual-assets` and create `manual_assets` rows.
-5. Merge AI-extracted text into the chosen template's `default_content`; create a new `manual_versions` row in `draft` state pre-filled with that content + image references.
-6. Stamp `manuals.source` = `'imported_pdf'` and store the source PDF path on the version (`source_pdf_path` column — small migration add).
-
-**UI** on `products.$productId.tsx`:
-- "Import from PDF" button next to "Create manual".
-- Modal: file input (PDF only, ≤20 MB), template select, then progress while the server fn runs. On success, navigate to the new draft.
-
-**Worker runtime guardrails**: PDF text+image extraction must be pure JS, no native deps. We'll use `pdfjs-dist` (legacy build) — known to work in Workers — and fall back to AI text extraction if image-only/scanned.
+Best if migrations are rare (a few per week).
 
 ---
 
-## Slice 2 — Products filter/search + BOM browser
+## Option B — GitHub Action that auto-applies migrations to project #2 (recommended)
 
-### Filters on `/products`
-- Search box (debounced) over `sku` + `name`.
-- Status filter chips: All / In sync / Out of sync / No manual / Pending review.
-- "ERP connection" filter (when org has >1 connection).
-- Client-side filter on top of `listProductsWithStatus` (data set is small — no extra round trips).
+Extend the existing `.github/workflows/mirror.yml` (or add a sibling workflow) so that after the mirror push, a job connects to your **external** Supabase and runs any new migration files via `psql`.
 
-### Dedicated BOM browser
-- New route `_authenticated/products.$productId.bom.tsx` (or a tab inside the editor) — full-width view of all BOM snapshots for a product, with diff between consecutive snapshots.
-- New route `_authenticated/boms.tsx` — org-wide BOM search: by part number, with product roll-up ("this part appears in N products").
-- Server fn `searchBomLines({organizationId, query})` reads `bom_snapshots.normalized_items` via JSONB containment.
+What you'd do once:
 
-### Sidebar
-- Add "BOMs" entry under Products in `AppSidebar.tsx`.
+1. In your external Supabase project: **Settings → Database → Connection string** → copy the `postgresql://...` URI (the pooled "Session" one is fine for DDL).
+2. In the **primary** GitHub repo: **Settings → Secrets → Actions** → add `EXTERNAL_SUPABASE_DB_URL` with that URI.
+3. I add a workflow step that runs on every push to `main`:
+  - Checks out the repo.
+  - Tracks which migrations were already applied (via a small `_lovable_applied_migrations` table it creates in the external DB on first run).
+  - For each `supabase/migrations/*.sql` not yet applied, runs it inside a transaction against `EXTERNAL_SUPABASE_DB_URL` and records the filename.
 
----
+Pros: fully automatic, ordered, idempotent, auditable in Actions logs.
+Cons: a bad migration fails the workflow — you'd fix and re-push. Service-grade DB URL lives in GitHub secrets (standard practice).
 
-## Slice 3 — Editor polish
-
-- "Pull from BOM" button in the editor's Parts tab: inserts all BOM lines (or selected subset) into `content.parts`, deduped by `part_number`.
-- BOM drift highlighting: parts present in BOM but missing from the manual are flagged inline.
-- Keyboard shortcuts: Cmd/Ctrl+S saves, Cmd/Ctrl+Enter submits for review.
-- Auto-save draft on blur (debounced) — current flow is manual save only.
+This is the best fit for "as seamless as possible."  
+  
+Let's do Option B. Provide me the '`postgresql://' URI and/or anything else I need to do on my end as a one-off.`
 
 ---
 
-## Build order
+## Option C — Supabase CLI on your laptop
 
-1. Build Slice 1a (templates) then 1b (PDF import) — same turn or split if 1a gets large.
-2. Pause for review, then Slice 2.
-3. Pause for review, then Slice 3.
+Install the Supabase CLI locally, then after each pull:
 
-After Slice 1 you'll need to: create at least one template in Settings → Templates, then test "Import from PDF" on a product.
+```
+supabase link --project-ref <external-project-ref>
+supabase db push
+```
+
+The CLI tracks applied migrations in a `supabase_migrations.schema_migrations` table on the target. Same effect as Option B but driven from your machine instead of CI.
+
+Pros: no CI secret; you control timing.
+Cons: requires you to remember to run it; needs the external DB password locally.
+
+---
+
+## What is NOT included
+
+- **Data sync.** All three options replicate *schema, RLS, functions, triggers* — anything I put in a migration. They do **not** copy rows from your Lovable Cloud DB into the external one. Row data (products, manuals, BOM snapshots, uploaded PDFs in the `manual-assets` bucket) is separate. If you also need data parity, that's a different conversation (one-off `pg_dump`-style export, or a periodic sync job) — let me know and I'll plan it separately.
+- **Storage bucket policies.** The SQL `CREATE POLICY ... ON storage.objects` statements I write *are* in migrations, so those copy over. The bucket itself (`manual-assets`) you'd create once in the external project (same name, private).
+- **Edge function secrets / connections.** Things like `LOVABLE_API_KEY` and the ERP vault secrets live outside migrations. You'd set them once in the external project's dashboard.
+
+---
+
+## Recommendation
+
+Go with **Option B**. It matches the spirit of the existing `mirror.yml` (one push → both repos stay in sync) and extends it to one push → both *databases* stay in sync. Manual paste is fine as a fallback while you set the secret up.
+
+## My next step if you approve
+
+Pick A, B, or C. If **B**, I'll:
+
+1. Add `.github/workflows/sync-external-db.yml` that runs after pushes to `main`.
+2. Have it bootstrap a `_lovable_applied_migrations(filename text primary key, applied_at timestamptz default now())` ledger in the external DB on first run.
+3. Apply any unapplied `.sql` files in lexical order, each in its own transaction, failing loudly on error.
+4. Tell you exactly which GitHub secret to set and where to get its value.
+
+No changes to the Lovable Cloud DB itself, and the Lovable preview keeps working unchanged.
