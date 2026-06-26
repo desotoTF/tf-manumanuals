@@ -15,7 +15,10 @@ import {
   transitionManualVersion,
   addManualAsset,
   removeManualAsset,
+  importLegacyManualFromPdf,
 } from "@/lib/manuals.functions";
+import { listTemplates } from "@/lib/templates.functions";
+import { useActiveOrg } from "@/components/AppShell";
 import { emptyManualContent, type ManualContent } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +32,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import {
   AlertTriangle,
@@ -38,6 +50,7 @@ import {
   CheckCircle2,
   Globe,
   Trash2,
+  Upload,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -57,6 +70,7 @@ function ProductEditorPage() {
   const { productId } = Route.useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { orgId } = useActiveOrg();
   const fetchWorkspace = useServerFn(getProductWorkspace);
   const fetchVersion = useServerFn(getManualVersion);
   const createDraft = useServerFn(createManualDraft);
@@ -64,11 +78,21 @@ function ProductEditorPage() {
   const transition = useServerFn(transitionManualVersion);
   const addAsset = useServerFn(addManualAsset);
   const removeAsset = useServerFn(removeManualAsset);
+  const importPdf = useServerFn(importLegacyManualFromPdf);
+  const fetchTemplates = useServerFn(listTemplates);
 
   const workspaceQuery = useQuery({
     queryKey: ["product-workspace", productId],
     queryFn: () => fetchWorkspace({ data: { productId } }),
   });
+
+  const templatesQuery = useQuery({
+    queryKey: ["manual-templates", orgId],
+    queryFn: () => fetchTemplates({ data: { organizationId: orgId } }),
+  });
+
+  const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
 
@@ -110,12 +134,28 @@ function ProductEditorPage() {
     activeVersion?.state === "draft" || activeVersion?.state === "in_review";
 
   const createMut = useMutation({
-    mutationFn: (input: { manualId?: string }) =>
+    mutationFn: (input: { manualId?: string; templateId?: string }) =>
       createDraft({ data: { productId, ...input } }),
     onSuccess: ({ versionId }) => {
       setActiveVersionId(versionId);
       qc.invalidateQueries({ queryKey: ["product-workspace", productId] });
+      setCreateOpen(false);
       toast.success("Draft created");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const importMut = useMutation({
+    mutationFn: (input: {
+      filename: string;
+      pdfBase64: string;
+      templateId?: string;
+    }) => importPdf({ data: { productId, ...input } }),
+    onSuccess: ({ versionId }) => {
+      setActiveVersionId(versionId);
+      qc.invalidateQueries({ queryKey: ["product-workspace", productId] });
+      setImportOpen(false);
+      toast.success("Manual imported — review the draft");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -209,9 +249,14 @@ function ProductEditorPage() {
         </div>
         <div className="flex gap-2">
           {!primaryManual && (
-            <Button onClick={() => createMut.mutate({})} disabled={createMut.isPending}>
-              <Plus className="mr-2 h-4 w-4" /> Create manual
-            </Button>
+            <>
+              <Button onClick={() => setCreateOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" /> Create manual
+              </Button>
+              <Button variant="outline" onClick={() => setImportOpen(true)}>
+                <Upload className="mr-2 h-4 w-4" /> Import from PDF
+              </Button>
+            </>
           )}
           {primaryManual &&
             !ws.versions.some((v) => v.state === "draft") && (
@@ -225,6 +270,22 @@ function ProductEditorPage() {
             )}
         </div>
       </header>
+
+      <CreateManualDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        templates={templatesQuery.data ?? []}
+        onSubmit={(templateId) => createMut.mutate({ templateId })}
+        submitting={createMut.isPending}
+      />
+      <ImportPdfDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        templates={templatesQuery.data ?? []}
+        onSubmit={(payload) => importMut.mutate(payload)}
+        submitting={importMut.isPending}
+      />
+
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_minmax(0,1fr)_300px]">
         {/* LEFT RAIL */}
@@ -865,3 +926,206 @@ function ImagesPanel({
     </div>
   );
 }
+
+// ---------- Create / Import dialogs ----------
+
+type TemplateOption = {
+  id: string;
+  name: string;
+  layout: string;
+  is_default: boolean;
+};
+
+function TemplatePicker({
+  templates,
+  value,
+  onChange,
+}: {
+  templates: TemplateOption[];
+  value: string | undefined;
+  onChange: (v: string | undefined) => void;
+}) {
+  if (templates.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        No templates yet — the draft will start blank. Admins can create
+        templates in Settings → Templates.
+      </p>
+    );
+  }
+  return (
+    <Select
+      value={value ?? "__none__"}
+      onValueChange={(v) => onChange(v === "__none__" ? undefined : v)}
+    >
+      <SelectTrigger>
+        <SelectValue placeholder="Pick a template" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="__none__">No template (blank)</SelectItem>
+        {templates.map((t) => (
+          <SelectItem key={t.id} value={t.id}>
+            {t.name}
+            {t.is_default ? " · default" : ""}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function CreateManualDialog({
+  open,
+  onOpenChange,
+  templates,
+  onSubmit,
+  submitting,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  templates: TemplateOption[];
+  onSubmit: (templateId: string | undefined) => void;
+  submitting: boolean;
+}) {
+  const defaultId = templates.find((t) => t.is_default)?.id;
+  const [templateId, setTemplateId] = useState<string | undefined>(defaultId);
+  useEffect(() => {
+    if (open) setTemplateId(defaultId);
+  }, [open, defaultId]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Create manual</DialogTitle>
+          <DialogDescription>
+            Pick a template to pre-fill sections, or start blank.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <Label>Template</Label>
+          <TemplatePicker
+            templates={templates}
+            value={templateId}
+            onChange={setTemplateId}
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => onSubmit(templateId)}
+            disabled={submitting}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            {submitting ? "Creating…" : "Create draft"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ImportPdfDialog({
+  open,
+  onOpenChange,
+  templates,
+  onSubmit,
+  submitting,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  templates: TemplateOption[];
+  onSubmit: (input: {
+    filename: string;
+    pdfBase64: string;
+    templateId?: string;
+  }) => void;
+  submitting: boolean;
+}) {
+  const defaultId = templates.find((t) => t.is_default)?.id;
+  const [templateId, setTemplateId] = useState<string | undefined>(defaultId);
+  const [file, setFile] = useState<File | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setTemplateId(defaultId);
+      setFile(null);
+    }
+  }, [open, defaultId]);
+
+  const handleSubmit = async () => {
+    if (!file) {
+      toast.error("Pick a PDF file");
+      return;
+    }
+    if (file.type !== "application/pdf") {
+      toast.error("Only PDF files are supported");
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error("PDF too large (max 20 MB)");
+      return;
+    }
+    // base64 encode in-browser
+    const buf = await file.arrayBuffer();
+    let binary = "";
+    const bytes = new Uint8Array(buf);
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode(
+        ...bytes.subarray(i, Math.min(i + chunk, bytes.length)),
+      );
+    }
+    const pdfBase64 = btoa(binary);
+    onSubmit({ filename: file.name, pdfBase64, templateId });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Import legacy manual from PDF</DialogTitle>
+          <DialogDescription>
+            We'll upload the PDF, extract the steps / parts / warnings with
+            AI, and create a new draft for you to clean up.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <Label>PDF file (max 20 MB)</Label>
+            <Input
+              type="file"
+              accept="application/pdf"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            />
+            {file && (
+              <p className="text-xs text-muted-foreground">
+                {file.name} · {(file.size / 1024 / 1024).toFixed(2)} MB
+              </p>
+            )}
+          </div>
+          <div className="space-y-1">
+            <Label>Template</Label>
+            <TemplatePicker
+              templates={templates}
+              value={templateId}
+              onChange={setTemplateId}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={submitting || !file}>
+            <Upload className="mr-2 h-4 w-4" />
+            {submitting ? "Importing…" : "Import"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+

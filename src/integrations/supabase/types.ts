@@ -332,6 +332,53 @@ export type Database = {
           },
         ]
       }
+      manual_templates: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          default_content: Json
+          description: string | null
+          id: string
+          is_default: boolean
+          layout: Database["public"]["Enums"]["manual_template_layout"]
+          name: string
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          default_content?: Json
+          description?: string | null
+          id?: string
+          is_default?: boolean
+          layout?: Database["public"]["Enums"]["manual_template_layout"]
+          name: string
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          default_content?: Json
+          description?: string | null
+          id?: string
+          is_default?: boolean
+          layout?: Database["public"]["Enums"]["manual_template_layout"]
+          name?: string
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manual_templates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       manual_versions: {
         Row: {
           approved_by: string | null
@@ -344,6 +391,7 @@ export type Database = {
           manual_id: string
           pdf_url: string | null
           published_at: string | null
+          source_pdf_path: string | null
           state: Database["public"]["Enums"]["manual_version_state"]
           updated_at: string
           version_number: number
@@ -359,6 +407,7 @@ export type Database = {
           manual_id: string
           pdf_url?: string | null
           published_at?: string | null
+          source_pdf_path?: string | null
           state?: Database["public"]["Enums"]["manual_version_state"]
           updated_at?: string
           version_number: number
@@ -374,6 +423,7 @@ export type Database = {
           manual_id?: string
           pdf_url?: string | null
           published_at?: string | null
+          source_pdf_path?: string | null
           state?: Database["public"]["Enums"]["manual_version_state"]
           updated_at?: string
           version_number?: number
@@ -416,6 +466,8 @@ export type Database = {
           id: string
           lifecycle: Database["public"]["Enums"]["manual_lifecycle"]
           product_id: string
+          source: string
+          template_id: string | null
           title: string
           updated_at: string
         }
@@ -425,6 +477,8 @@ export type Database = {
           id?: string
           lifecycle?: Database["public"]["Enums"]["manual_lifecycle"]
           product_id: string
+          source?: string
+          template_id?: string | null
           title: string
           updated_at?: string
         }
@@ -434,6 +488,8 @@ export type Database = {
           id?: string
           lifecycle?: Database["public"]["Enums"]["manual_lifecycle"]
           product_id?: string
+          source?: string
+          template_id?: string | null
           title?: string
           updated_at?: string
         }
@@ -450,6 +506,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "manuals_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "manual_templates"
             referencedColumns: ["id"]
           },
         ]
@@ -805,6 +868,11 @@ export type Database = {
         | "out_of_sync"
         | "no_manual"
         | "pending_review"
+      manual_template_layout:
+        | "classic"
+        | "compact"
+        | "field_guide"
+        | "service_card"
       manual_version_state:
         | "draft"
         | "in_review"
@@ -963,6 +1031,12 @@ export const Constants = {
         "out_of_sync",
         "no_manual",
         "pending_review",
+      ],
+      manual_template_layout: [
+        "classic",
+        "compact",
+        "field_guide",
+        "service_card",
       ],
       manual_version_state: [
         "draft",

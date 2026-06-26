@@ -21,13 +21,26 @@ export const getPublishedManualBySlug = createServerFn({ method: "GET" })
 
     const { data: manualRow } = await supabaseAdmin
       .from("manuals")
-      .select("id, title")
+      .select("id, title, template_id")
       .eq("product_id", product.id)
       .eq("lifecycle", "active")
       .limit(1)
       .maybeSingle();
     if (!manualRow)
-      return { product, manual: null, version: null, assets: [] };
+      return { product, manual: null, version: null, assets: [], layout: "classic" as const };
+
+    let layout: "classic" | "compact" | "field_guide" | "service_card" =
+      "classic";
+    const tplId = (manualRow as { template_id?: string | null }).template_id;
+    if (tplId) {
+      const { data: tpl } = await supabaseAdmin
+        .from("manual_templates" as never)
+        .select("layout")
+        .eq("id", tplId)
+        .maybeSingle();
+      const tplLayout = (tpl as { layout?: typeof layout } | null)?.layout;
+      if (tplLayout) layout = tplLayout;
+    }
 
     const { data: version } = await supabaseAdmin
       .from("manual_versions")
@@ -40,7 +53,7 @@ export const getPublishedManualBySlug = createServerFn({ method: "GET" })
       .limit(1)
       .maybeSingle();
     if (!version)
-      return { product, manual: manualRow, version: null, assets: [] };
+      return { product, manual: manualRow, version: null, assets: [], layout };
 
     const { data: assets } = await supabaseAdmin
       .from("manual_assets")
@@ -55,5 +68,6 @@ export const getPublishedManualBySlug = createServerFn({ method: "GET" })
         content: (version.content ?? {}) as Partial<ManualContent>,
       },
       assets: assets ?? [],
+      layout,
     };
   });

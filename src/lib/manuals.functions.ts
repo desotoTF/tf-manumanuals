@@ -99,6 +99,7 @@ export const createManualDraft = createServerFn({ method: "POST" })
       .object({
         productId: uuid,
         manualId: uuid.optional(),
+        templateId: uuid.optional(),
         title: z.string().min(1).max(200).optional(),
       })
       .parse(d),
@@ -118,6 +119,37 @@ export const createManualDraft = createServerFn({ method: "POST" })
     let manualId = data.manualId;
     let seedContent: ManualContent = emptyManualContent();
 
+    // Resolve template (explicit, or org default) when creating a new manual.
+    let resolvedTemplateId: string | null = null;
+    if (!manualId) {
+      if (data.templateId) {
+        resolvedTemplateId = data.templateId;
+      } else {
+        const { data: defTpl } = await supabase
+          .from("manual_templates" as never)
+          .select("id")
+          .eq("organization_id", product.organization_id)
+          .eq("is_default", true)
+          .maybeSingle();
+        resolvedTemplateId = (defTpl as { id: string } | null)?.id ?? null;
+      }
+      if (resolvedTemplateId) {
+        const { data: tpl } = await supabase
+          .from("manual_templates" as never)
+          .select("default_content")
+          .eq("id", resolvedTemplateId)
+          .maybeSingle();
+        const tplContent = (tpl as { default_content: unknown } | null)
+          ?.default_content;
+        if (tplContent && typeof tplContent === "object") {
+          seedContent = {
+            ...emptyManualContent(),
+            ...(tplContent as object),
+          } as ManualContent;
+        }
+      }
+    }
+
     if (!manualId) {
       const { data: newManual, error: mErr } = await supabase
         .from("manuals")
@@ -125,7 +157,8 @@ export const createManualDraft = createServerFn({ method: "POST" })
           product_id: product.id,
           title: data.title ?? `${product.name} — Installation Manual`,
           created_by: userId,
-        })
+          ...(resolvedTemplateId ? { template_id: resolvedTemplateId } : {}),
+        } as never)
         .select("id")
         .single();
       if (mErr) throw mErr;
@@ -152,8 +185,12 @@ export const createManualDraft = createServerFn({ method: "POST" })
       .limit(1)
       .maybeSingle();
 
-    // If seeding a new manual, pre-fill parts from the BOM.
-    if (!data.manualId && latestBom?.normalized_items) {
+    // If seeding a new manual AND template didn't already supply parts, pre-fill from BOM.
+    if (
+      !data.manualId &&
+      latestBom?.normalized_items &&
+      seedContent.parts.length === 0
+    ) {
       const items = (latestBom.normalized_items as any[]) ?? [];
       seedContent.parts = items.map((it) => ({
         part_number: String(it.part_number ?? ""),
@@ -184,6 +221,210 @@ export const createManualDraft = createServerFn({ method: "POST" })
     if (vErr) throw vErr;
 
     return { manualId, versionId: version.id };
+  });
+
+// ---------- Legacy PDF import ----------
+// Accepts a base64-encoded PDF, uploads it to storage, asks Lovable AI to
+// extract structured manual content, and creates a new draft manual version
+// pre-filled with that content. The new manual is tagged source='imported_pdf'.
+export const importLegacyManualFromPdf = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        productId: uuid,
+        templateId: uuid.optional(),
+        filename: z.string().min(1).max(255),
+        // base64-encoded PDF bytes (no data: prefix)
+        pdfBase64: z.string().min(100),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+
+    const { data: product, error: pErr } = await supabase
+      .from("products")
+      .select("id, name, organization_id")
+      .eq("id", data.productId)
+      .maybeSingle();
+    if (pErr) throw pErr;
+    if (!product) throw new Error("Product not found");
+
+    // Size guard: 20MB raw
+    const pdfBytes = Buffer.from(data.pdfBase64, "base64");
+    if (pdfBytes.byteLength > 20 * 1024 * 1024)
+      throw new Error("PDF too large (max 20MB)");
+
+    // 1. Upload PDF via admin client (storage policies separately allow
+    //    auth uploads, but admin avoids surprise RLS failures).
+    const { supabaseAdmin } = await import(
+      "@/integrations/supabase/client.server"
+    );
+    const safeName = data.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const path = `legacy-pdfs/${product.organization_id}/${product.id}/${Date.now()}-${safeName}`;
+    const { error: upErr } = await supabaseAdmin.storage
+      .from("manual-assets")
+      .upload(path, pdfBytes, {
+        contentType: "application/pdf",
+        upsert: false,
+      });
+    if (upErr) throw new Error(`PDF upload failed: ${upErr.message}`);
+
+    // 2. Ask Lovable AI to extract structured content from the PDF.
+    const apiKey = process.env.LOVABLE_API_KEY;
+    if (!apiKey)
+      throw new Error("LOVABLE_API_KEY not configured on the server.");
+    const dataUri = `data:application/pdf;base64,${data.pdfBase64}`;
+    const systemPrompt =
+      "You extract installation/service manual content from a PDF into a strict JSON schema. " +
+      "Output ONLY valid JSON. Schema keys: tools (array of {name, spec}), parts (array of " +
+      "{part_number, qty, description?, notes?}), steps (array of {id, title, body}), warnings " +
+      "(array of {severity: 'info'|'caution'|'danger', body}), torque_specs (array of " +
+      "{fastener, value, unit, sequence?}). Use empty arrays when a section is missing. " +
+      "Generate stable step ids like 'step-1','step-2'. Do not invent values.";
+    const aiRes = await fetch(
+      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            { role: "system", content: systemPrompt },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: `Extract the installation manual content for product "${product.name}".`,
+                },
+                {
+                  type: "file",
+                  file: { filename: safeName, file_data: dataUri },
+                },
+              ],
+            },
+          ],
+          response_format: { type: "json_object" },
+        }),
+      },
+    );
+    if (!aiRes.ok) {
+      const errText = await aiRes.text();
+      throw new Error(
+        `AI extraction failed (${aiRes.status}): ${errText.slice(0, 500)}`,
+      );
+    }
+    const aiJson = (await aiRes.json()) as {
+      choices?: { message?: { content?: string } }[];
+    };
+    const raw = aiJson.choices?.[0]?.message?.content ?? "{}";
+    let extracted: Partial<ManualContent> = {};
+    try {
+      extracted = JSON.parse(raw);
+    } catch {
+      // Sometimes the model wraps JSON in code fences.
+      const m = raw.match(/\{[\s\S]*\}/);
+      if (m) extracted = JSON.parse(m[0]);
+    }
+
+    // 3. Resolve template (explicit or org default).
+    let templateId = data.templateId ?? null;
+    let templateContent: Partial<ManualContent> = {};
+    if (!templateId) {
+      const { data: defTpl } = await supabase
+        .from("manual_templates" as never)
+        .select("id, default_content")
+        .eq("organization_id", product.organization_id)
+        .eq("is_default", true)
+        .maybeSingle();
+      const t = defTpl as
+        | { id: string; default_content: unknown }
+        | null;
+      if (t) {
+        templateId = t.id;
+        templateContent =
+          (t.default_content as Partial<ManualContent>) ?? {};
+      }
+    } else {
+      const { data: tpl } = await supabase
+        .from("manual_templates" as never)
+        .select("default_content")
+        .eq("id", templateId)
+        .maybeSingle();
+      templateContent =
+        ((tpl as { default_content?: Partial<ManualContent> } | null)
+          ?.default_content as Partial<ManualContent>) ?? {};
+    }
+
+    // Merge template defaults <- AI-extracted (AI wins on conflicts).
+    const merged: ManualContent = {
+      ...emptyManualContent(),
+      ...templateContent,
+      ...extracted,
+    } as ManualContent;
+    // Sanity: ensure arrays
+    merged.tools = Array.isArray(merged.tools) ? merged.tools : [];
+    merged.parts = Array.isArray(merged.parts) ? merged.parts : [];
+    merged.steps = Array.isArray(merged.steps) ? merged.steps : [];
+    merged.warnings = Array.isArray(merged.warnings) ? merged.warnings : [];
+    merged.torque_specs = Array.isArray(merged.torque_specs)
+      ? merged.torque_specs
+      : [];
+    merged.images = Array.isArray(merged.images) ? merged.images : [];
+
+    // 4. Create manual + draft version pointing at the latest BOM.
+    const { data: latestBom } = await supabase
+      .from("bom_snapshots")
+      .select("id")
+      .eq("product_id", product.id)
+      .order("captured_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const { data: newManual, error: mErr } = await supabase
+      .from("manuals")
+      .insert({
+        product_id: product.id,
+        title: `${product.name} — Imported manual`,
+        created_by: userId,
+        ...(templateId ? { template_id: templateId } : {}),
+        source: "imported_pdf",
+      } as never)
+      .select("id")
+      .single();
+    if (mErr) throw mErr;
+
+    const { data: nextNum } = await supabase.rpc(
+      "next_manual_version_number",
+      { _manual_id: newManual.id },
+    );
+
+    const { data: version, error: vErr } = await supabase
+      .from("manual_versions")
+      .insert({
+        manual_id: newManual.id,
+        version_number: nextNum ?? 1,
+        bom_snapshot_id: latestBom?.id ?? null,
+        state: "draft",
+        content: merged as never,
+        change_summary: `Imported from ${data.filename}`,
+        created_by: userId,
+        source_pdf_path: path,
+      } as never)
+      .select("id")
+      .single();
+    if (vErr) throw vErr;
+
+    return {
+      manualId: newManual.id,
+      versionId: version.id,
+      pdfStoragePath: path,
+    };
   });
 
 export const saveDraftContent = createServerFn({ method: "POST" })

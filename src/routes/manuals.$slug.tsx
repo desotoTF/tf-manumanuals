@@ -48,16 +48,33 @@ export const Route = createFileRoute("/manuals/$slug")({
 });
 
 function PublicManualPage() {
-  const { product, version, assets } = Route.useLoaderData();
+  const { product, version, assets, layout } = Route.useLoaderData();
   const content = (version!.content ?? {}) as Partial<ManualContent>;
   const publishedAt = version!.published_at
     ? format(new Date(version!.published_at), "MMM d, yyyy")
     : null;
 
+  // Layout presets (template-driven).
+  const maxW =
+    layout === "compact"
+      ? "max-w-2xl"
+      : layout === "field_guide"
+        ? "max-w-4xl"
+        : layout === "service_card"
+          ? "max-w-xl"
+          : "max-w-3xl";
+  const titleSize =
+    layout === "field_guide"
+      ? "text-4xl"
+      : layout === "service_card"
+        ? "text-2xl"
+        : "text-3xl";
+  const spacing = layout === "compact" || layout === "service_card" ? "space-y-5" : "space-y-8";
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card">
-        <div className="mx-auto flex max-w-3xl items-center gap-2 px-6 py-4 text-sm">
+        <div className={`mx-auto flex ${maxW} items-center gap-2 px-6 py-4 text-sm`}>
           <Factory className="h-4 w-4 text-primary" />
           <span className="font-medium">ManuManuals</span>
           <span className="text-muted-foreground">·</span>
@@ -67,9 +84,9 @@ function PublicManualPage() {
         </div>
       </header>
 
-      <article className="mx-auto max-w-3xl space-y-8 px-6 py-10">
+      <article className={`mx-auto ${maxW} ${spacing} px-6 py-10`}>
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">
+          <h1 className={`${titleSize} font-semibold tracking-tight`}>
             {product!.name}
           </h1>
           {product!.description && (
