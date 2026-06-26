@@ -16,7 +16,14 @@ import {
   addManualAsset,
   removeManualAsset,
   importLegacyManualFromPdf,
+  loadBomForManual,
 } from "@/lib/manuals.functions";
+import { listTools, upsertTool } from "@/lib/tools.functions";
+import {
+  PartsListEditor,
+  ToolsListEditor,
+} from "@/components/manual-editor/ManualListEditors";
+
 import { listTemplates } from "@/lib/templates.functions";
 import { useActiveOrg } from "@/components/AppShell";
 import { emptyManualContent, type ManualContent } from "@/lib/types";
@@ -90,6 +97,21 @@ function ProductEditorPage() {
     queryKey: ["manual-templates", orgId],
     queryFn: () => fetchTemplates({ data: { organizationId: orgId } }),
   });
+
+  const fetchTools = useServerFn(listTools);
+  const createTool = useServerFn(upsertTool);
+  const loadBom = useServerFn(loadBomForManual);
+  const toolsQuery = useQuery({
+    queryKey: ["tools", orgId],
+    queryFn: () => fetchTools({ data: { organizationId: orgId } }),
+  });
+  const upsertToolMut = useMutation({
+    mutationFn: (name: string) =>
+      createTool({ data: { organizationId: orgId, name } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tools", orgId] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
 
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -372,7 +394,48 @@ function ProductEditorPage() {
               assets={assets}
               onAddAsset={(url, caption) => addAssetMut.mutate({ url, caption })}
               onRemoveAsset={(id) => removeAssetMut.mutate(id)}
+              tools={toolsQuery.data ?? []}
+              onCreateTool={async (name) => {
+                const created = await upsertToolMut.mutateAsync(name);
+                return created;
+              }}
+              creatingTool={upsertToolMut.isPending}
+              onLoadBom={async () => {
+                const result = await loadBom({ data: { productId } });
+                const hasExisting =
+                  content.parts.length > 0 || content.hardware_kit.length > 0;
+                if (
+                  hasExisting &&
+                  !confirm(
+                    `Replace current Parts (${content.parts.length}) and Hardware Kit (${content.hardware_kit.length}) with ${result.parts.length} + ${result.hardware_kit.length} from the BOM?`,
+                  )
+                ) {
+                  return;
+                }
+                setContent({
+                  ...content,
+                  parts: result.parts,
+                  hardware_kit: result.hardware_kit,
+                });
+                if (result.hardwareBomMissing && result.hardwareSku) {
+                  toast.warning(
+                    `Hardware Kit BOM for ${result.hardwareSku} hasn't been synced yet.`,
+                  );
+                } else if (result.parts.length === 0 && result.hardware_kit.length === 0) {
+                  toast.info("BOM is empty for this product.");
+                } else {
+                  toast.success(
+                    `Loaded ${result.parts.length} parts${
+                      result.hardware_kit.length
+                        ? ` + ${result.hardware_kit.length} hardware`
+                        : ""
+                    }${result.excluded.length ? ` (${result.excluded.length} excluded)` : ""}`,
+                  );
+                }
+              }}
+              productSku={ws.product.sku}
             />
+
           )}
         </section>
 
@@ -509,6 +572,11 @@ function ContentEditor({
   assets,
   onAddAsset,
   onRemoveAsset,
+  tools,
+  onCreateTool,
+  creatingTool,
+  onLoadBom,
+  productSku,
 }: {
   content: ManualContent;
   setContent: (c: ManualContent) => void;
@@ -516,6 +584,13 @@ function ContentEditor({
   assets: { id: string; type: string; url: string | null; metadata: any }[];
   onAddAsset: (url: string, caption?: string) => void;
   onRemoveAsset: (id: string) => void;
+  tools: import("@/lib/tools.functions").ToolRow[];
+  onCreateTool: (
+    name: string,
+  ) => Promise<{ id: string; name: string; spec: string | null }>;
+  creatingTool: boolean;
+  onLoadBom: () => Promise<void>;
+  productSku: string;
 }) {
   const [tab, setTab] = useState<
     "steps" | "tools" | "parts" | "warnings" | "torque" | "images"
@@ -563,30 +638,66 @@ function ContentEditor({
           />
         )}
         {tab === "tools" && (
-          <SimpleListEditor
+          <ToolsListEditor
             items={content.tools}
             setItems={(items) => update("tools", items)}
             editable={editable}
-            columns={[
-              { key: "name", label: "Tool", placeholder: "10mm wrench" },
-              { key: "spec", label: "Spec", placeholder: "Torque-rated" },
-            ]}
-            empty={(): ManualContent["tools"][number] => ({ name: "" })}
+            tools={tools}
+            onCreateTool={onCreateTool}
+            creating={creatingTool}
           />
         )}
         {tab === "parts" && (
-          <SimpleListEditor
-            items={content.parts}
-            setItems={(items) => update("parts", items)}
-            editable={editable}
-            columns={[
-              { key: "part_number", label: "Part #", placeholder: "P-001" },
-              { key: "qty", label: "Qty", placeholder: "1", numeric: true },
-              { key: "description", label: "Description" },
-              { key: "notes", label: "Notes" },
-            ]}
-            empty={(): ManualContent["parts"][number] => ({ part_number: "", qty: 1 })}
-          />
+          <div className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold">Parts</h3>
+                <p className="text-xs text-muted-foreground">
+                  From the BOM of{" "}
+                  <span className="font-mono">{productSku}</span>. Hardware
+                  Kit comes from{" "}
+                  <span className="font-mono">{productSku}.x</span>.
+                </p>
+              </div>
+              {editable && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    onLoadBom().catch((e: Error) =>
+                      toast.error(e.message),
+                    );
+                  }}
+                >
+                  <Upload className="mr-2 h-4 w-4" /> Load from BOM
+                </Button>
+              )}
+            </div>
+            <PartsListEditor
+              items={content.parts}
+              setItems={(items) => update("parts", items)}
+              editable={editable}
+              emptyHint="No parts yet. Click 'Load from BOM' to autofill, or add manually."
+              rowKeyPrefix="part"
+            />
+
+            <Separator />
+
+            <div>
+              <h3 className="text-sm font-semibold">Hardware Kit</h3>
+              <p className="mb-2 text-xs text-muted-foreground">
+                Sourced from{" "}
+                <span className="font-mono">{productSku}.x</span> BOM lines.
+              </p>
+            </div>
+            <PartsListEditor
+              items={content.hardware_kit}
+              setItems={(items) => update("hardware_kit", items)}
+              editable={editable}
+              emptyHint="No hardware kit lines. Load BOM or add manually."
+              rowKeyPrefix="hw"
+            />
+          </div>
         )}
         {tab === "warnings" && (
           <WarningsEditor
@@ -621,6 +732,7 @@ function ContentEditor({
     </Card>
   );
 }
+
 
 function StepsEditor({
   steps,

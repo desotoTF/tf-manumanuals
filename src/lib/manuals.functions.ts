@@ -585,3 +585,139 @@ export const removeManualAsset = createServerFn({ method: "POST" })
     if (error) throw error;
     return { ok: true as const };
   });
+
+// ---------- BOM autofill for the manual editor ----------
+// Loads the latest BOM snapshot for the product, applies the org's
+// exclusion list, and splits lines into:
+//   - hardware_kit: lines from the child product whose sku == `${product.sku}.x`
+//   - parts:         everything else
+// Lines whose part_number ends in `.x` are treated as hardware-kit markers and
+// never appear in the parts list (their child BOM is fetched instead).
+export const loadBomForManual = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ productId: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { isExcluded } = await import("@/lib/bom-exclusions.functions");
+
+    const { data: product, error: pErr } = await supabase
+      .from("products")
+      .select("id, sku, organization_id")
+      .eq("id", data.productId)
+      .maybeSingle();
+    if (pErr) throw pErr;
+    if (!product) throw new Error("Product not found");
+
+    const { data: bom } = await supabase
+      .from("bom_snapshots")
+      .select("normalized_items, captured_at")
+      .eq("product_id", data.productId)
+      .order("captured_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!bom) {
+      return {
+        parts: [],
+        hardware_kit: [],
+        excluded: [] as string[],
+        hardwareSku: null as string | null,
+        hardwareBomMissing: false,
+        bomCapturedAt: null as string | null,
+      };
+    }
+
+    const { data: rules } = await supabase
+      .from("bom_exclusions")
+      .select("pattern, match_type")
+      .eq("organization_id", product.organization_id);
+    const exclusionRules = rules ?? [];
+
+    const items = (bom.normalized_items as unknown as Array<{
+      part_number: string;
+      qty: number;
+      description?: string;
+      unit?: string;
+      notes?: string;
+    }>) ?? [];
+
+    const excluded: string[] = [];
+    const parts: typeof items = [];
+    const hardwareMarkers: typeof items = [];
+
+    for (const it of items) {
+      const pn = String(it.part_number ?? "");
+      if (isExcluded(pn, exclusionRules)) {
+        excluded.push(pn);
+        continue;
+      }
+      if (pn.toLowerCase().endsWith(".x")) {
+        hardwareMarkers.push(it);
+        continue;
+      }
+      parts.push(it);
+    }
+
+    // Hardware kit = BOM of the `.x` child product. Prefer the one matching
+    // `${parent_sku}.x`; otherwise just take the first marker.
+    const expectedHardwareSku = `${product.sku}.x`;
+    const hardwareMarker =
+      hardwareMarkers.find(
+        (m) => m.part_number.toLowerCase() === expectedHardwareSku.toLowerCase(),
+      ) ?? hardwareMarkers[0] ?? null;
+
+    let hardware_kit: typeof items = [];
+    let hardwareBomMissing = false;
+    if (hardwareMarker) {
+      const { data: childProduct } = await supabase
+        .from("products")
+        .select("id")
+        .eq("organization_id", product.organization_id)
+        .ilike("sku", hardwareMarker.part_number)
+        .maybeSingle();
+      if (childProduct) {
+        const { data: childBom } = await supabase
+          .from("bom_snapshots")
+          .select("normalized_items")
+          .eq("product_id", childProduct.id)
+          .order("captured_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (childBom) {
+          const childItems =
+            (childBom.normalized_items as unknown as typeof items) ?? [];
+          hardware_kit = childItems.filter((it) => {
+            const pn = String(it.part_number ?? "");
+            if (isExcluded(pn, exclusionRules)) {
+              excluded.push(pn);
+              return false;
+            }
+            return true;
+          });
+        } else {
+          hardwareBomMissing = true;
+        }
+      } else {
+        hardwareBomMissing = true;
+      }
+    }
+
+    return {
+      parts: parts.map((it) => ({
+        part_number: it.part_number,
+        qty: Number(it.qty ?? 1),
+        description: it.description,
+        notes: it.notes,
+      })),
+      hardware_kit: hardware_kit.map((it) => ({
+        part_number: it.part_number,
+        qty: Number(it.qty ?? 1),
+        description: it.description,
+        notes: it.notes,
+      })),
+      excluded,
+      hardwareSku: hardwareMarker?.part_number ?? null,
+      hardwareBomMissing,
+      bomCapturedAt: bom.captured_at,
+    };
+  });
+

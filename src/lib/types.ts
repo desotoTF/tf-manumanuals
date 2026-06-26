@@ -15,6 +15,10 @@ export type ManualSyncStatusKind =
   Database["public"]["Enums"]["manual_sync_status_kind"];
 export type ErpConnection = Tables["erp_connections"]["Row"];
 export type ErpProvider = Database["public"]["Enums"]["erp_provider"];
+export type Tool = Tables["tools"]["Row"];
+export type BomExclusion = Tables["bom_exclusions"]["Row"];
+export type BomExclusionMatchType =
+  Database["public"]["Enums"]["bom_exclusion_match_type"];
 
 // Normalized BOM line item shape stored in bom_snapshots.normalized_items
 export interface NormalizedBomItem {
@@ -25,10 +29,19 @@ export interface NormalizedBomItem {
   notes?: string;
 }
 
-// Manual content schema stored in manual_versions.content (JSONB)
+export interface ManualPart {
+  part_number: string;
+  qty: number;
+  description?: string;
+  notes?: string;
+}
+
+// Manual content schema stored in manual_versions.content (JSONB).
+// `hardware_kit` is sourced from the BOM of the {parent_sku}.x child product.
 export interface ManualContent {
   tools: { name: string; spec?: string }[];
-  parts: { part_number: string; qty: number; description?: string; notes?: string }[];
+  parts: ManualPart[];
+  hardware_kit: ManualPart[];
   steps: {
     id: string;
     title: string;
@@ -48,6 +61,7 @@ export interface ManualContent {
 export const emptyManualContent = (): ManualContent => ({
   tools: [],
   parts: [],
+  hardware_kit: [],
   steps: [],
   warnings: [],
   torque_specs: [],

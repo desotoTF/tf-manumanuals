@@ -175,6 +175,35 @@ function PublicManualPage() {
           </section>
         )}
 
+        {content.hardware_kit && content.hardware_kit.length > 0 && (
+          <section>
+            <h2 className="mb-3 text-lg font-semibold">Hardware kit</h2>
+            <div className="overflow-x-auto rounded-md border border-border">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-left text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2">Part #</th>
+                    <th className="px-3 py-2">Qty</th>
+                    <th className="px-3 py-2">Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {content.hardware_kit.map((p, i) => (
+                    <tr key={i} className="border-t border-border">
+                      <td className="px-3 py-2 font-mono">{p.part_number}</td>
+                      <td className="px-3 py-2">{p.qty}</td>
+                      <td className="px-3 py-2 text-muted-foreground">
+                        {p.description ?? "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+
         {content.steps && content.steps.length > 0 && (
           <section>
             <h2 className="mb-3 text-lg font-semibold">Installation steps</h2>

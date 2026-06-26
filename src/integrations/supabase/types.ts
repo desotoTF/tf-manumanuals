@@ -14,6 +14,47 @@ export type Database = {
   }
   public: {
     Tables: {
+      bom_exclusions: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          is_seed: boolean
+          match_type: Database["public"]["Enums"]["bom_exclusion_match_type"]
+          note: string | null
+          organization_id: string
+          pattern: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_seed?: boolean
+          match_type?: Database["public"]["Enums"]["bom_exclusion_match_type"]
+          note?: string | null
+          organization_id: string
+          pattern: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_seed?: boolean
+          match_type?: Database["public"]["Enums"]["bom_exclusion_match_type"]
+          note?: string | null
+          organization_id?: string
+          pattern?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bom_exclusions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bom_snapshots: {
         Row: {
           captured_at: string
@@ -806,6 +847,44 @@ export type Database = {
           },
         ]
       }
+      tools: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          organization_id: string
+          spec: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          organization_id: string
+          spec?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          organization_id?: string
+          spec?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tools_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -853,6 +932,7 @@ export type Database = {
       }
     }
     Enums: {
+      bom_exclusion_match_type: "exact" | "prefix" | "suffix" | "contains"
       erp_credential_action: "created" | "rotated" | "revoked"
       erp_provider:
         | "odoo"
@@ -1015,6 +1095,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      bom_exclusion_match_type: ["exact", "prefix", "suffix", "contains"],
       erp_credential_action: ["created", "rotated", "revoked"],
       erp_provider: [
         "odoo",
