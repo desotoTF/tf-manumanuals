@@ -926,3 +926,206 @@ function ImagesPanel({
     </div>
   );
 }
+
+// ---------- Create / Import dialogs ----------
+
+type TemplateOption = {
+  id: string;
+  name: string;
+  layout: string;
+  is_default: boolean;
+};
+
+function TemplatePicker({
+  templates,
+  value,
+  onChange,
+}: {
+  templates: TemplateOption[];
+  value: string | undefined;
+  onChange: (v: string | undefined) => void;
+}) {
+  if (templates.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        No templates yet — the draft will start blank. Admins can create
+        templates in Settings → Templates.
+      </p>
+    );
+  }
+  return (
+    <Select
+      value={value ?? "__none__"}
+      onValueChange={(v) => onChange(v === "__none__" ? undefined : v)}
+    >
+      <SelectTrigger>
+        <SelectValue placeholder="Pick a template" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="__none__">No template (blank)</SelectItem>
+        {templates.map((t) => (
+          <SelectItem key={t.id} value={t.id}>
+            {t.name}
+            {t.is_default ? " · default" : ""}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function CreateManualDialog({
+  open,
+  onOpenChange,
+  templates,
+  onSubmit,
+  submitting,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  templates: TemplateOption[];
+  onSubmit: (templateId: string | undefined) => void;
+  submitting: boolean;
+}) {
+  const defaultId = templates.find((t) => t.is_default)?.id;
+  const [templateId, setTemplateId] = useState<string | undefined>(defaultId);
+  useEffect(() => {
+    if (open) setTemplateId(defaultId);
+  }, [open, defaultId]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Create manual</DialogTitle>
+          <DialogDescription>
+            Pick a template to pre-fill sections, or start blank.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <Label>Template</Label>
+          <TemplatePicker
+            templates={templates}
+            value={templateId}
+            onChange={setTemplateId}
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => onSubmit(templateId)}
+            disabled={submitting}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            {submitting ? "Creating…" : "Create draft"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ImportPdfDialog({
+  open,
+  onOpenChange,
+  templates,
+  onSubmit,
+  submitting,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  templates: TemplateOption[];
+  onSubmit: (input: {
+    filename: string;
+    pdfBase64: string;
+    templateId?: string;
+  }) => void;
+  submitting: boolean;
+}) {
+  const defaultId = templates.find((t) => t.is_default)?.id;
+  const [templateId, setTemplateId] = useState<string | undefined>(defaultId);
+  const [file, setFile] = useState<File | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setTemplateId(defaultId);
+      setFile(null);
+    }
+  }, [open, defaultId]);
+
+  const handleSubmit = async () => {
+    if (!file) {
+      toast.error("Pick a PDF file");
+      return;
+    }
+    if (file.type !== "application/pdf") {
+      toast.error("Only PDF files are supported");
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error("PDF too large (max 20 MB)");
+      return;
+    }
+    // base64 encode in-browser
+    const buf = await file.arrayBuffer();
+    let binary = "";
+    const bytes = new Uint8Array(buf);
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode(
+        ...bytes.subarray(i, Math.min(i + chunk, bytes.length)),
+      );
+    }
+    const pdfBase64 = btoa(binary);
+    onSubmit({ filename: file.name, pdfBase64, templateId });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Import legacy manual from PDF</DialogTitle>
+          <DialogDescription>
+            We'll upload the PDF, extract the steps / parts / warnings with
+            AI, and create a new draft for you to clean up.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <Label>PDF file (max 20 MB)</Label>
+            <Input
+              type="file"
+              accept="application/pdf"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            />
+            {file && (
+              <p className="text-xs text-muted-foreground">
+                {file.name} · {(file.size / 1024 / 1024).toFixed(2)} MB
+              </p>
+            )}
+          </div>
+          <div className="space-y-1">
+            <Label>Template</Label>
+            <TemplatePicker
+              templates={templates}
+              value={templateId}
+              onChange={setTemplateId}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={submitting || !file}>
+            <Upload className="mr-2 h-4 w-4" />
+            {submitting ? "Importing…" : "Import"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
