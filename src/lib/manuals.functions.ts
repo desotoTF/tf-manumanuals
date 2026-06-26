@@ -10,6 +10,75 @@ import { emptyManualContent, type ManualContent } from "@/lib/types";
 
 const uuid = z.string().uuid();
 
+export interface ManualListRow {
+  manual_id: string;
+  product_id: string;
+  sku: string;
+  product_name: string;
+  manual_title: string;
+  latest_version_number: number | null;
+  latest_version_state: string | null;
+  last_published_at: string | null;
+  last_bom_change_at: string | null;
+  sync_status: string;
+}
+
+// Manuals list for the org, joined with product (SKU/name), latest version,
+// and sync status. Powers the new "Manuals" page.
+export const listManualsWithStatus = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { organizationId: string }) => d)
+  .handler(async ({ data, context }): Promise<ManualListRow[]> => {
+    const { supabase } = context;
+    const { data: manuals, error } = await supabase
+      .from("manuals")
+      .select(
+        `id, title, product_id,
+         products!inner(id, sku, name, organization_id),
+         manual_versions(version_number, state, published_at)`,
+      )
+      .eq("products.organization_id", data.organizationId);
+    if (error) throw error;
+
+    const productIds = (manuals ?? []).map((m: any) => m.product_id);
+    const { data: statuses } = productIds.length
+      ? await supabase
+          .from("manual_sync_status")
+          .select("product_id, status, last_bom_change_at, last_manual_publish_at")
+          .in("product_id", productIds)
+      : { data: [] as any[] };
+    const statusByProduct = new Map(
+      (statuses ?? []).map((s: any) => [s.product_id, s]),
+    );
+
+    const rows: ManualListRow[] = (manuals ?? []).map((m: any) => {
+      const versions = (m.manual_versions ?? []) as {
+        version_number: number;
+        state: string;
+        published_at: string | null;
+      }[];
+      const latest = versions
+        .slice()
+        .sort((a, b) => b.version_number - a.version_number)[0];
+      const status = statusByProduct.get(m.product_id);
+      return {
+        manual_id: m.id,
+        product_id: m.product_id,
+        sku: m.products.sku,
+        product_name: m.products.name,
+        manual_title: m.title,
+        latest_version_number: latest?.version_number ?? null,
+        latest_version_state: latest?.state ?? null,
+        last_published_at: status?.last_manual_publish_at ?? null,
+        last_bom_change_at: status?.last_bom_change_at ?? null,
+        sync_status: status?.status ?? "no_manual",
+      };
+    });
+
+    rows.sort((a, b) => a.sku.localeCompare(b.sku));
+    return rows;
+  });
+
 export const getProductWorkspace = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ productId: uuid }).parse(d))

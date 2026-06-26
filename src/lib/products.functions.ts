@@ -30,6 +30,30 @@ export const listProductsWithStatus = createServerFn({ method: "GET" })
     }));
   });
 
+// Products in the org that don't yet have a manual attached.
+// Used by the "Create manual" picker so we don't accidentally duplicate.
+export const listProductsWithoutManual = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { organizationId: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { data: products, error } = await supabase
+      .from("products")
+      .select("id, sku, name")
+      .eq("organization_id", data.organizationId)
+      .eq("is_active", true)
+      .order("sku");
+    if (error) throw error;
+    const ids = (products ?? []).map((p) => p.id);
+    if (ids.length === 0) return [];
+    const { data: existing } = await supabase
+      .from("manuals")
+      .select("product_id")
+      .in("product_id", ids);
+    const taken = new Set((existing ?? []).map((m) => m.product_id));
+    return (products ?? []).filter((p) => !taken.has(p.id));
+  });
+
 export const getProductDetail = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ productId: z.string().uuid() }).parse(d))
