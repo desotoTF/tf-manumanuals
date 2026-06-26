@@ -19,6 +19,7 @@ import { Route as AuthenticatedDashboardRouteImport } from './routes/_authentica
 import { Route as AuthenticatedAccountRouteImport } from './routes/_authenticated/account'
 import { Route as AuthenticatedSuperadminRouteImport } from './routes/_authenticated/_superadmin'
 import { Route as ApiPublicBootstrapRouteImport } from './routes/api/public/bootstrap'
+import { Route as AuthenticatedSettingsTemplatesRouteImport } from './routes/_authenticated/settings.templates'
 import { Route as AuthenticatedSettingsTeamRouteImport } from './routes/_authenticated/settings.team'
 import { Route as AuthenticatedSettingsErpRouteImport } from './routes/_authenticated/settings.erp'
 import { Route as AuthenticatedProductsProductIdRouteImport } from './routes/_authenticated/products.$productId'
@@ -75,6 +76,12 @@ const ApiPublicBootstrapRoute = ApiPublicBootstrapRouteImport.update({
   path: '/api/public/bootstrap',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedSettingsTemplatesRoute =
+  AuthenticatedSettingsTemplatesRouteImport.update({
+    id: '/templates',
+    path: '/templates',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
 const AuthenticatedSettingsTeamRoute =
   AuthenticatedSettingsTeamRouteImport.update({
     id: '/team',
@@ -129,6 +136,7 @@ export interface FileRoutesByFullPath {
   '/products/$productId': typeof AuthenticatedProductsProductIdRoute
   '/settings/erp': typeof AuthenticatedSettingsErpRoute
   '/settings/team': typeof AuthenticatedSettingsTeamRoute
+  '/settings/templates': typeof AuthenticatedSettingsTemplatesRoute
   '/api/public/bootstrap': typeof ApiPublicBootstrapRoute
   '/admin/audit': typeof AuthenticatedSuperadminAdminAuditRoute
   '/admin/orgs': typeof AuthenticatedSuperadminAdminOrgsRouteWithChildren
@@ -146,6 +154,7 @@ export interface FileRoutesByTo {
   '/products/$productId': typeof AuthenticatedProductsProductIdRoute
   '/settings/erp': typeof AuthenticatedSettingsErpRoute
   '/settings/team': typeof AuthenticatedSettingsTeamRoute
+  '/settings/templates': typeof AuthenticatedSettingsTemplatesRoute
   '/api/public/bootstrap': typeof ApiPublicBootstrapRoute
   '/admin/audit': typeof AuthenticatedSuperadminAdminAuditRoute
   '/admin/orgs': typeof AuthenticatedSuperadminAdminOrgsRouteWithChildren
@@ -166,6 +175,7 @@ export interface FileRoutesById {
   '/_authenticated/products/$productId': typeof AuthenticatedProductsProductIdRoute
   '/_authenticated/settings/erp': typeof AuthenticatedSettingsErpRoute
   '/_authenticated/settings/team': typeof AuthenticatedSettingsTeamRoute
+  '/_authenticated/settings/templates': typeof AuthenticatedSettingsTemplatesRoute
   '/api/public/bootstrap': typeof ApiPublicBootstrapRoute
   '/_authenticated/_superadmin/admin/audit': typeof AuthenticatedSuperadminAdminAuditRoute
   '/_authenticated/_superadmin/admin/orgs': typeof AuthenticatedSuperadminAdminOrgsRouteWithChildren
@@ -185,6 +195,7 @@ export interface FileRouteTypes {
     | '/products/$productId'
     | '/settings/erp'
     | '/settings/team'
+    | '/settings/templates'
     | '/api/public/bootstrap'
     | '/admin/audit'
     | '/admin/orgs'
@@ -202,6 +213,7 @@ export interface FileRouteTypes {
     | '/products/$productId'
     | '/settings/erp'
     | '/settings/team'
+    | '/settings/templates'
     | '/api/public/bootstrap'
     | '/admin/audit'
     | '/admin/orgs'
@@ -221,6 +233,7 @@ export interface FileRouteTypes {
     | '/_authenticated/products/$productId'
     | '/_authenticated/settings/erp'
     | '/_authenticated/settings/team'
+    | '/_authenticated/settings/templates'
     | '/api/public/bootstrap'
     | '/_authenticated/_superadmin/admin/audit'
     | '/_authenticated/_superadmin/admin/orgs'
@@ -307,6 +320,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/public/bootstrap'
       preLoaderRoute: typeof ApiPublicBootstrapRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/settings/templates': {
+      id: '/_authenticated/settings/templates'
+      path: '/templates'
+      fullPath: '/settings/templates'
+      preLoaderRoute: typeof AuthenticatedSettingsTemplatesRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
     }
     '/_authenticated/settings/team': {
       id: '/_authenticated/settings/team'
@@ -412,11 +432,13 @@ const AuthenticatedProductsRouteWithChildren =
 interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsErpRoute: typeof AuthenticatedSettingsErpRoute
   AuthenticatedSettingsTeamRoute: typeof AuthenticatedSettingsTeamRoute
+  AuthenticatedSettingsTemplatesRoute: typeof AuthenticatedSettingsTemplatesRoute
 }
 
 const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
   AuthenticatedSettingsErpRoute: AuthenticatedSettingsErpRoute,
   AuthenticatedSettingsTeamRoute: AuthenticatedSettingsTeamRoute,
+  AuthenticatedSettingsTemplatesRoute: AuthenticatedSettingsTemplatesRoute,
 }
 
 const AuthenticatedSettingsRouteWithChildren =

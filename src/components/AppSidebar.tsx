@@ -9,6 +9,7 @@ import {
   ScrollText,
   Factory,
   UserCircle2,
+  LayoutTemplate,
 } from "lucide-react";
 import {
   Sidebar,
@@ -31,6 +32,7 @@ const mainItems = [
 const settingsItems = [
   { title: "Account", url: "/account", icon: UserCircle2 },
   { title: "Team", url: "/settings/team", icon: Users },
+  { title: "Templates", url: "/settings/templates", icon: LayoutTemplate },
   { title: "ERP", url: "/settings/erp", icon: Plug },
 ];
 

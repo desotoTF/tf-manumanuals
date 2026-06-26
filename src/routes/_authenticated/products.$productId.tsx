@@ -15,7 +15,10 @@ import {
   transitionManualVersion,
   addManualAsset,
   removeManualAsset,
+  importLegacyManualFromPdf,
 } from "@/lib/manuals.functions";
+import { listTemplates } from "@/lib/templates.functions";
+import { useActiveOrg } from "@/components/AppShell";
 import { emptyManualContent, type ManualContent } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +32,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import {
   AlertTriangle,
@@ -38,6 +50,7 @@ import {
   CheckCircle2,
   Globe,
   Trash2,
+  Upload,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -57,6 +70,7 @@ function ProductEditorPage() {
   const { productId } = Route.useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { orgId } = useActiveOrg();
   const fetchWorkspace = useServerFn(getProductWorkspace);
   const fetchVersion = useServerFn(getManualVersion);
   const createDraft = useServerFn(createManualDraft);
@@ -64,11 +78,21 @@ function ProductEditorPage() {
   const transition = useServerFn(transitionManualVersion);
   const addAsset = useServerFn(addManualAsset);
   const removeAsset = useServerFn(removeManualAsset);
+  const importPdf = useServerFn(importLegacyManualFromPdf);
+  const fetchTemplates = useServerFn(listTemplates);
 
   const workspaceQuery = useQuery({
     queryKey: ["product-workspace", productId],
     queryFn: () => fetchWorkspace({ data: { productId } }),
   });
+
+  const templatesQuery = useQuery({
+    queryKey: ["manual-templates", orgId],
+    queryFn: () => fetchTemplates({ data: { organizationId: orgId } }),
+  });
+
+  const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
 
