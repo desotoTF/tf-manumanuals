@@ -22,6 +22,7 @@ import { Route as ApiPublicBootstrapRouteImport } from './routes/api/public/boot
 import { Route as AuthenticatedSettingsTemplatesRouteImport } from './routes/_authenticated/settings.templates'
 import { Route as AuthenticatedSettingsTeamRouteImport } from './routes/_authenticated/settings.team'
 import { Route as AuthenticatedSettingsErpRouteImport } from './routes/_authenticated/settings.erp'
+import { Route as AuthenticatedSettingsBomExclusionsRouteImport } from './routes/_authenticated/settings.bom-exclusions'
 import { Route as AuthenticatedProductsProductIdRouteImport } from './routes/_authenticated/products.$productId'
 import { Route as AuthenticatedSuperadminAdminUsersRouteImport } from './routes/_authenticated/_superadmin.admin.users'
 import { Route as AuthenticatedSuperadminAdminOrgsRouteImport } from './routes/_authenticated/_superadmin.admin.orgs'
@@ -94,6 +95,12 @@ const AuthenticatedSettingsErpRoute =
     path: '/erp',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
+const AuthenticatedSettingsBomExclusionsRoute =
+  AuthenticatedSettingsBomExclusionsRouteImport.update({
+    id: '/bom-exclusions',
+    path: '/bom-exclusions',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
 const AuthenticatedProductsProductIdRoute =
   AuthenticatedProductsProductIdRouteImport.update({
     id: '/$productId',
@@ -134,6 +141,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/manuals/$slug': typeof ManualsSlugRoute
   '/products/$productId': typeof AuthenticatedProductsProductIdRoute
+  '/settings/bom-exclusions': typeof AuthenticatedSettingsBomExclusionsRoute
   '/settings/erp': typeof AuthenticatedSettingsErpRoute
   '/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/settings/templates': typeof AuthenticatedSettingsTemplatesRoute
@@ -152,6 +160,7 @@ export interface FileRoutesByTo {
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/manuals/$slug': typeof ManualsSlugRoute
   '/products/$productId': typeof AuthenticatedProductsProductIdRoute
+  '/settings/bom-exclusions': typeof AuthenticatedSettingsBomExclusionsRoute
   '/settings/erp': typeof AuthenticatedSettingsErpRoute
   '/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/settings/templates': typeof AuthenticatedSettingsTemplatesRoute
@@ -173,6 +182,7 @@ export interface FileRoutesById {
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/manuals/$slug': typeof ManualsSlugRoute
   '/_authenticated/products/$productId': typeof AuthenticatedProductsProductIdRoute
+  '/_authenticated/settings/bom-exclusions': typeof AuthenticatedSettingsBomExclusionsRoute
   '/_authenticated/settings/erp': typeof AuthenticatedSettingsErpRoute
   '/_authenticated/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/_authenticated/settings/templates': typeof AuthenticatedSettingsTemplatesRoute
@@ -193,6 +203,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/manuals/$slug'
     | '/products/$productId'
+    | '/settings/bom-exclusions'
     | '/settings/erp'
     | '/settings/team'
     | '/settings/templates'
@@ -211,6 +222,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/manuals/$slug'
     | '/products/$productId'
+    | '/settings/bom-exclusions'
     | '/settings/erp'
     | '/settings/team'
     | '/settings/templates'
@@ -231,6 +243,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings'
     | '/manuals/$slug'
     | '/_authenticated/products/$productId'
+    | '/_authenticated/settings/bom-exclusions'
     | '/_authenticated/settings/erp'
     | '/_authenticated/settings/team'
     | '/_authenticated/settings/templates'
@@ -342,6 +355,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsErpRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
+    '/_authenticated/settings/bom-exclusions': {
+      id: '/_authenticated/settings/bom-exclusions'
+      path: '/bom-exclusions'
+      fullPath: '/settings/bom-exclusions'
+      preLoaderRoute: typeof AuthenticatedSettingsBomExclusionsRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
     '/_authenticated/products/$productId': {
       id: '/_authenticated/products/$productId'
       path: '/$productId'
@@ -430,12 +450,15 @@ const AuthenticatedProductsRouteWithChildren =
   )
 
 interface AuthenticatedSettingsRouteChildren {
+  AuthenticatedSettingsBomExclusionsRoute: typeof AuthenticatedSettingsBomExclusionsRoute
   AuthenticatedSettingsErpRoute: typeof AuthenticatedSettingsErpRoute
   AuthenticatedSettingsTeamRoute: typeof AuthenticatedSettingsTeamRoute
   AuthenticatedSettingsTemplatesRoute: typeof AuthenticatedSettingsTemplatesRoute
 }
 
 const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
+  AuthenticatedSettingsBomExclusionsRoute:
+    AuthenticatedSettingsBomExclusionsRoute,
   AuthenticatedSettingsErpRoute: AuthenticatedSettingsErpRoute,
   AuthenticatedSettingsTeamRoute: AuthenticatedSettingsTeamRoute,
   AuthenticatedSettingsTemplatesRoute: AuthenticatedSettingsTemplatesRoute,

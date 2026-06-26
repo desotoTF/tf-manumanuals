@@ -56,10 +56,14 @@ function SortableRow({
   };
   return (
     <div ref={setNodeRef} style={style} className="flex items-start gap-2">
-      {children({ attributes: attributes as Record<string, unknown>, listeners })}
+      {children({
+        attributes: attributes as unknown as Record<string, unknown>,
+        listeners,
+      })}
     </div>
   );
 }
+
 
 function DragHandle({
   attributes,
