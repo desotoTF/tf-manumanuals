@@ -16,7 +16,14 @@ import {
   addManualAsset,
   removeManualAsset,
   importLegacyManualFromPdf,
+  loadBomForManual,
 } from "@/lib/manuals.functions";
+import { listTools, upsertTool } from "@/lib/tools.functions";
+import {
+  PartsListEditor,
+  ToolsListEditor,
+} from "@/components/manual-editor/ManualListEditors";
+
 import { listTemplates } from "@/lib/templates.functions";
 import { useActiveOrg } from "@/components/AppShell";
 import { emptyManualContent, type ManualContent } from "@/lib/types";
