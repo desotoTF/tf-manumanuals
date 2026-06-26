@@ -53,7 +53,7 @@ export const getPublishedManualBySlug = createServerFn({ method: "GET" })
       .limit(1)
       .maybeSingle();
     if (!version)
-      return { product, manual: manualRow, version: null, assets: [] };
+      return { product, manual: manualRow, version: null, assets: [], layout };
 
     const { data: assets } = await supabaseAdmin
       .from("manual_assets")
@@ -68,5 +68,6 @@ export const getPublishedManualBySlug = createServerFn({ method: "GET" })
         content: (version.content ?? {}) as Partial<ManualContent>,
       },
       assets: assets ?? [],
+      layout,
     };
   });
