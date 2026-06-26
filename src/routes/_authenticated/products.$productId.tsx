@@ -249,9 +249,14 @@ function ProductEditorPage() {
         </div>
         <div className="flex gap-2">
           {!primaryManual && (
-            <Button onClick={() => createMut.mutate({})} disabled={createMut.isPending}>
-              <Plus className="mr-2 h-4 w-4" /> Create manual
-            </Button>
+            <>
+              <Button onClick={() => setCreateOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" /> Create manual
+              </Button>
+              <Button variant="outline" onClick={() => setImportOpen(true)}>
+                <Upload className="mr-2 h-4 w-4" /> Import from PDF
+              </Button>
+            </>
           )}
           {primaryManual &&
             !ws.versions.some((v) => v.state === "draft") && (
@@ -265,6 +270,22 @@ function ProductEditorPage() {
             )}
         </div>
       </header>
+
+      <CreateManualDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        templates={templatesQuery.data ?? []}
+        onSubmit={(templateId) => createMut.mutate({ templateId })}
+        submitting={createMut.isPending}
+      />
+      <ImportPdfDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        templates={templatesQuery.data ?? []}
+        onSubmit={(payload) => importMut.mutate(payload)}
+        submitting={importMut.isPending}
+      />
+
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_minmax(0,1fr)_300px]">
         {/* LEFT RAIL */}
