@@ -134,12 +134,28 @@ function ProductEditorPage() {
     activeVersion?.state === "draft" || activeVersion?.state === "in_review";
 
   const createMut = useMutation({
-    mutationFn: (input: { manualId?: string }) =>
+    mutationFn: (input: { manualId?: string; templateId?: string }) =>
       createDraft({ data: { productId, ...input } }),
     onSuccess: ({ versionId }) => {
       setActiveVersionId(versionId);
       qc.invalidateQueries({ queryKey: ["product-workspace", productId] });
+      setCreateOpen(false);
       toast.success("Draft created");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const importMut = useMutation({
+    mutationFn: (input: {
+      filename: string;
+      pdfBase64: string;
+      templateId?: string;
+    }) => importPdf({ data: { productId, ...input } }),
+    onSuccess: ({ versionId }) => {
+      setActiveVersionId(versionId);
+      qc.invalidateQueries({ queryKey: ["product-workspace", productId] });
+      setImportOpen(false);
+      toast.success("Manual imported — review the draft");
     },
     onError: (e: Error) => toast.error(e.message),
   });
