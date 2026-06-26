@@ -98,6 +98,21 @@ function ProductEditorPage() {
     queryFn: () => fetchTemplates({ data: { organizationId: orgId } }),
   });
 
+  const fetchTools = useServerFn(listTools);
+  const createTool = useServerFn(upsertTool);
+  const loadBom = useServerFn(loadBomForManual);
+  const toolsQuery = useQuery({
+    queryKey: ["tools", orgId],
+    queryFn: () => fetchTools({ data: { organizationId: orgId } }),
+  });
+  const upsertToolMut = useMutation({
+    mutationFn: (name: string) =>
+      createTool({ data: { organizationId: orgId, name } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tools", orgId] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
 
@@ -379,7 +394,48 @@ function ProductEditorPage() {
               assets={assets}
               onAddAsset={(url, caption) => addAssetMut.mutate({ url, caption })}
               onRemoveAsset={(id) => removeAssetMut.mutate(id)}
+              tools={toolsQuery.data ?? []}
+              onCreateTool={async (name) => {
+                const created = await upsertToolMut.mutateAsync(name);
+                return created;
+              }}
+              creatingTool={upsertToolMut.isPending}
+              onLoadBom={async () => {
+                const result = await loadBom({ data: { productId } });
+                const hasExisting =
+                  content.parts.length > 0 || content.hardware_kit.length > 0;
+                if (
+                  hasExisting &&
+                  !confirm(
+                    `Replace current Parts (${content.parts.length}) and Hardware Kit (${content.hardware_kit.length}) with ${result.parts.length} + ${result.hardware_kit.length} from the BOM?`,
+                  )
+                ) {
+                  return;
+                }
+                setContent({
+                  ...content,
+                  parts: result.parts,
+                  hardware_kit: result.hardware_kit,
+                });
+                if (result.hardwareBomMissing && result.hardwareSku) {
+                  toast.warning(
+                    `Hardware Kit BOM for ${result.hardwareSku} hasn't been synced yet.`,
+                  );
+                } else if (result.parts.length === 0 && result.hardware_kit.length === 0) {
+                  toast.info("BOM is empty for this product.");
+                } else {
+                  toast.success(
+                    `Loaded ${result.parts.length} parts${
+                      result.hardware_kit.length
+                        ? ` + ${result.hardware_kit.length} hardware`
+                        : ""
+                    }${result.excluded.length ? ` (${result.excluded.length} excluded)` : ""}`,
+                  );
+                }
+              }}
+              productSku={ws.product.sku}
             />
+
           )}
         </section>
 
