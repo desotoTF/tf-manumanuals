@@ -1,7 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard,
-  Package,
+  BookOpen,
   Users,
   Plug,
   Building2,
@@ -28,7 +28,7 @@ import {
 
 const mainItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Products", url: "/products", icon: Package },
+  { title: "Manuals", url: "/products", icon: BookOpen },
 ];
 
 const settingsItems = [
