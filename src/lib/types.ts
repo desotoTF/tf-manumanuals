@@ -67,3 +67,7 @@ export const emptyManualContent = (): ManualContent => ({
   torque_specs: [],
   images: [],
 });
+
+// Canonical "SKU | Name" label used in manual lists, breadcrumbs, filters.
+export const formatManualLabel = (sku: string, name: string) =>
+  `${sku} | ${name}`;
