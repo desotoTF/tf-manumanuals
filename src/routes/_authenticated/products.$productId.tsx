@@ -250,6 +250,36 @@ function ProductEditorPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const uploadAssetMut = useMutation({
+    mutationFn: async (input: { file: File; caption?: string }) => {
+      const buf = await input.file.arrayBuffer();
+      // Convert to base64 in chunks to avoid call-stack blowups on large files.
+      let binary = "";
+      const bytes = new Uint8Array(buf);
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode(
+          ...bytes.subarray(i, Math.min(i + chunk, bytes.length)),
+        );
+      }
+      const dataBase64 = btoa(binary);
+      return uploadAsset({
+        data: {
+          versionId: activeVersionId!,
+          filename: input.file.name,
+          contentType: input.file.type || "application/octet-stream",
+          dataBase64,
+          caption: input.caption,
+        },
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["manual-version", activeVersionId] });
+      toast.success("Image uploaded");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   if (workspaceQuery.isLoading)
     return <p className="text-sm text-muted-foreground">Loading…</p>;
   if (workspaceQuery.error)
