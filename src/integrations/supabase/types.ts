@@ -375,36 +375,42 @@ export type Database = {
       }
       manual_templates: {
         Row: {
+          branding: Json
           created_at: string
           created_by: string | null
           default_content: Json
           description: string | null
           id: string
           is_default: boolean
+          is_master: boolean
           layout: Database["public"]["Enums"]["manual_template_layout"]
           name: string
           organization_id: string
           updated_at: string
         }
         Insert: {
+          branding?: Json
           created_at?: string
           created_by?: string | null
           default_content?: Json
           description?: string | null
           id?: string
           is_default?: boolean
+          is_master?: boolean
           layout?: Database["public"]["Enums"]["manual_template_layout"]
           name: string
           organization_id: string
           updated_at?: string
         }
         Update: {
+          branding?: Json
           created_at?: string
           created_by?: string | null
           default_content?: Json
           description?: string | null
           id?: string
           is_default?: boolean
+          is_master?: boolean
           layout?: Database["public"]["Enums"]["manual_template_layout"]
           name?: string
           organization_id?: string

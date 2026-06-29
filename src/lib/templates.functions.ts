@@ -31,10 +31,15 @@ export interface TemplateRow {
   description: string | null;
   layout: "classic" | "compact" | "field_guide" | "service_card";
   is_default: boolean;
+  is_master: boolean;
   default_content: JsonValue;
+  branding: JsonValue;
   created_at: string;
   updated_at: string;
 }
+
+const TEMPLATE_COLUMNS =
+  "id, organization_id, name, description, layout, is_default, is_master, default_content, branding, created_at, updated_at";
 
 export const listTemplates = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -42,12 +47,12 @@ export const listTemplates = createServerFn({ method: "GET" })
   .handler(async ({ data, context }) => {
     const { data: rows, error } = await context.supabase
       .from("manual_templates" as never)
-      .select(
-        "id, organization_id, name, description, layout, is_default, default_content, created_at, updated_at",
-      )
+      .select(TEMPLATE_COLUMNS)
       .eq("organization_id", data.organizationId)
+      .order("is_master", { ascending: false })
       .order("is_default", { ascending: false })
       .order("name", { ascending: true });
+
     if (error) throw error;
     return JSON.parse(JSON.stringify(rows ?? [])) as TemplateRow[];
   });
@@ -154,3 +159,38 @@ export const setDefaultTemplate = createServerFn({ method: "POST" })
     if (error) throw error;
     return { ok: true as const };
   });
+
+// Master template (one per org). Returns null if none seeded yet.
+export const getMasterTemplate = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { organizationId: string }) => d)
+  .handler(async ({ data, context }) => {
+    const { data: row, error } = await context.supabase
+      .from("manual_templates" as never)
+      .select(TEMPLATE_COLUMNS)
+      .eq("organization_id", data.organizationId)
+      .eq("is_master", true)
+      .maybeSingle();
+    if (error) throw error;
+    return row ? (JSON.parse(JSON.stringify(row)) as TemplateRow) : null;
+  });
+
+export const updateTemplateBranding = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        id: uuid,
+        branding: z.record(z.string(), z.unknown()),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase
+      .from("manual_templates" as never)
+      .update({ branding: data.branding } as never)
+      .eq("id", data.id);
+    if (error) throw error;
+    return { ok: true as const };
+  });
+

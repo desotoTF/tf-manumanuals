@@ -41,7 +41,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Plus, Star, Trash2, Pencil } from "lucide-react";
+import { Plus, Star, Trash2, Pencil, Palette } from "lucide-react";
+import { EditBrandingDialog } from "@/components/templates/EditBrandingDialog";
+
 
 export const Route = createFileRoute("/_authenticated/settings/templates")({
   component: TemplatesPage,
@@ -116,6 +118,14 @@ function TemplatesPage() {
     setDialogOpen(true);
   };
 
+  const [brandingTpl, setBrandingTpl] = useState<TemplateRow | null>(null);
+  const [brandingOpen, setBrandingOpen] = useState(false);
+  const openBranding = (t: TemplateRow) => {
+    setBrandingTpl(t);
+    setBrandingOpen(true);
+  };
+
+
   return (
     <div className="space-y-6">
       <header className="flex items-start justify-between gap-4">
@@ -154,12 +164,18 @@ function TemplatesPage() {
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-base">
                 {t.name}
+                {t.is_master && (
+                  <Badge variant="secondary" className="bg-rose-500/15 text-rose-700 dark:text-rose-400">
+                    <Palette className="mr-1 h-3 w-3" /> Master
+                  </Badge>
+                )}
                 {t.is_default && (
                   <Badge variant="secondary" className="bg-amber-500/15 text-amber-700 dark:text-amber-400">
                     <Star className="mr-1 h-3 w-3" /> Default
                   </Badge>
                 )}
               </CardTitle>
+
               <CardDescription className="text-xs">
                 {LAYOUT_LABELS[t.layout] ?? t.layout}
               </CardDescription>
@@ -173,7 +189,13 @@ function TemplatesPage() {
                   <Button size="sm" variant="outline" onClick={() => openEdit(t)}>
                     <Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit
                   </Button>
-                  {!t.is_default && (
+                  {t.is_master && (
+                    <Button size="sm" variant="outline" onClick={() => openBranding(t)}>
+                      <Palette className="mr-1.5 h-3.5 w-3.5" /> Edit branding
+                    </Button>
+                  )}
+                  {!t.is_default && !t.is_master && (
+
                     <Button
                       size="sm"
                       variant="outline"
@@ -183,18 +205,21 @@ function TemplatesPage() {
                       <Star className="mr-1.5 h-3.5 w-3.5" /> Make default
                     </Button>
                   )}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => {
-                      if (confirm(`Delete template "${t.name}"?`))
-                        delMut.mutate(t.id);
-                    }}
-                    disabled={delMut.isPending}
-                  >
-                    <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
-                  </Button>
+                  {!t.is_master && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => {
+                        if (confirm(`Delete template "${t.name}"?`))
+                          delMut.mutate(t.id);
+                      }}
+                      disabled={delMut.isPending}
+                    >
+                      <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
+                    </Button>
+                  )}
+
                 </div>
               )}
             </CardContent>
@@ -211,9 +236,16 @@ function TemplatesPage() {
         }
         submitting={upsertMut.isPending}
       />
+
+      <EditBrandingDialog
+        open={brandingOpen}
+        onOpenChange={setBrandingOpen}
+        template={brandingTpl}
+      />
     </div>
   );
 }
+
 
 function TemplateDialog({
   open,
