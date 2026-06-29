@@ -420,10 +420,11 @@ function ImageBlockEditor({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__none">— No image —</SelectItem>
-            {images.map((img, idx) => (
+            {images.map((img) => (
               <SelectItem key={img.asset_id} value={img.asset_id}>
-                Fig. {idx + 1}
-                {img.caption ? ` — ${img.caption}` : ""}
+                {img.caption?.trim()
+                  ? img.caption
+                  : `Image ${img.asset_id.slice(0, 6)}`}
               </SelectItem>
             ))}
           </SelectContent>

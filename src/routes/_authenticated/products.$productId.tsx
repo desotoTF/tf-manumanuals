@@ -28,7 +28,7 @@ import {
 import { listTemplates } from "@/lib/templates.functions";
 import { useActiveOrg } from "@/components/AppShell";
 import { emptyManualContent, type ManualContent, newStepBlock, type StepBlock } from "@/lib/types";
-import { useFigureMap } from "@/lib/figure-refs";
+import { useStepFigureMap, stepFirstImageNumber } from "@/lib/figure-refs";
 import { FigureRefField } from "@/components/manual-editor/FigureRefField";
 import { StepBlocksEditor } from "@/components/manual-editor/StepBlocksEditor";
 
@@ -158,8 +158,14 @@ function ProductEditorPage() {
   const [content, setContent] = useState<ManualContent>(emptyManualContent());
   const [changeSummary, setChangeSummary] = useState("");
 
+  // Only seed local content state when the *version itself* changes.
+  // Asset refetches (uploads / adds / removes) also invalidate this
+  // query, but we must not clobber unsaved block edits in that case.
+  const loadedVersionRef = useRef<string | null>(null);
   useEffect(() => {
     if (!versionQuery.data) return;
+    if (loadedVersionRef.current === versionQuery.data.version.id) return;
+    loadedVersionRef.current = versionQuery.data.version.id;
     const c = {
       ...emptyManualContent(),
       ...((versionQuery.data.version.content ?? {}) as object),
@@ -671,8 +677,8 @@ function ContentEditor({
     "steps" | "tools" | "parts" | "warnings" | "torque" | "images"
   >("steps");
 
-  // Build the figure source list from attached image assets, in display order.
-  // Numbering reacts to add / remove / reorder via useFigureMap.
+  // Asset list (for image pickers + the Images tab). Figure numbering
+  // is now driven by placement inside steps, not by this list's order.
   const figureSources = useMemo(
     () =>
       assets
@@ -684,7 +690,7 @@ function ContentEditor({
         })),
     [assets],
   );
-  const figMap = useFigureMap(figureSources);
+  const figMap = useStepFigureMap(content.steps);
 
   const update = <K extends keyof ManualContent>(
     key: K,
@@ -1140,7 +1146,7 @@ function ImagesPanel({
               )}
               <figcaption className="mt-1 flex items-center justify-between gap-2 text-xs">
                 <span className="font-semibold text-foreground">
-                  {figNum ? `Fig. ${figNum}` : "—"}
+                  {figNum ? `Fig. ${figNum}` : "Unused"}
                 </span>
                 <span className="truncate text-muted-foreground">
                   {a.metadata?.caption ?? a.url}

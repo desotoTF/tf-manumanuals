@@ -1,7 +1,7 @@
 // Read-only renderer for step blocks. Used by the public manual page and
 // any preview that wants the same output as installers see.
 import { cn } from "@/lib/utils";
-import { FigureRefs } from "@/lib/figure-refs";
+import { FigureRefs, resolveFigureTokensInHtml } from "@/lib/figure-refs";
 import { AlertTriangle, Info, ShieldAlert } from "lucide-react";
 import type {
   CalloutStepBlock,
@@ -22,13 +22,26 @@ interface Props {
   legacyBody?: string;
   assets: AssetMap;
   figMap: Map<string, number>;
+  // Figure number of this step's own first image block, used to resolve
+  // {{fig:step}} / ##Fig. / @Fig. tokens inside this step's text.
+  stepImageNumber?: number | null;
 }
 
-export function StepBlocksView({ blocks, legacyBody, assets, figMap }: Props) {
+export function StepBlocksView({
+  blocks,
+  legacyBody,
+  assets,
+  figMap,
+  stepImageNumber = null,
+}: Props) {
   if ((!blocks || blocks.length === 0) && legacyBody) {
     return (
       <p className="whitespace-pre-line text-sm text-muted-foreground">
-        <FigureRefs text={legacyBody} figMap={figMap} />
+        <FigureRefs
+          text={legacyBody}
+          figMap={figMap}
+          stepImageNumber={stepImageNumber}
+        />
       </p>
     );
   }
@@ -36,7 +49,13 @@ export function StepBlocksView({ blocks, legacyBody, assets, figMap }: Props) {
   return (
     <div className="space-y-3">
       {blocks.map((b) => (
-        <BlockView key={b.id} block={b} assets={assets} figMap={figMap} />
+        <BlockView
+          key={b.id}
+          block={b}
+          assets={assets}
+          figMap={figMap}
+          stepImageNumber={stepImageNumber}
+        />
       ))}
     </div>
   );
@@ -46,34 +65,62 @@ function BlockView({
   block,
   assets,
   figMap,
+  stepImageNumber,
 }: {
   block: StepBlock;
   assets: AssetMap;
   figMap: Map<string, number>;
+  stepImageNumber: number | null;
 }) {
   switch (block.type) {
     case "text":
-      return <TextView block={block} />;
+      return (
+        <TextView
+          block={block}
+          figMap={figMap}
+          stepImageNumber={stepImageNumber}
+        />
+      );
     case "image":
       return <ImageView block={block} assets={assets} />;
     case "callout":
-      return <CalloutView block={block} figMap={figMap} />;
+      return (
+        <CalloutView
+          block={block}
+          figMap={figMap}
+          stepImageNumber={stepImageNumber}
+        />
+      );
     case "two_column":
-      return <TwoColumnView block={block} assets={assets} figMap={figMap} />;
+      return (
+        <TwoColumnView
+          block={block}
+          assets={assets}
+          figMap={figMap}
+          stepImageNumber={stepImageNumber}
+        />
+      );
     default:
       return null;
   }
 }
 
-function TextView({ block }: { block: TextStepBlock }) {
+function TextView({
+  block,
+  figMap,
+  stepImageNumber,
+}: {
+  block: TextStepBlock;
+  figMap: Map<string, number>;
+  stepImageNumber: number | null;
+}) {
   if (!block.html) return null;
-  // Content comes from the editor (TipTap) — render as HTML inside a prose
-  // wrapper. The editor controls allowed marks/nodes via the extension list.
+  const html = resolveFigureTokensInHtml(block.html, figMap, stepImageNumber);
   return (
     <div
       className="prose prose-sm dark:prose-invert max-w-none text-sm"
       // eslint-disable-next-line react/no-danger
-      dangerouslySetInnerHTML={{ __html: block.html }}
+      dangerouslySetInnerHTML={{ __html: html }}
     />
   );
 }
@@ -115,9 +162,11 @@ function ImageView({
 function CalloutView({
   block,
   figMap,
+  stepImageNumber,
 }: {
   block: CalloutStepBlock;
   figMap: Map<string, number>;
+  stepImageNumber: number | null;
 }) {
   const map = {
     info: {
@@ -143,7 +192,11 @@ function CalloutView({
     >
       <Icon className="mt-0.5 h-4 w-4 shrink-0" />
       <p>
-        <FigureRefs text={block.body} figMap={figMap} />
+        <FigureRefs
+          text={block.body}
+          figMap={figMap}
+          stepImageNumber={stepImageNumber}
+        />
       </p>
     </div>
   );
@@ -153,19 +206,32 @@ function TwoColumnView({
   block,
   assets,
   figMap,
+  stepImageNumber,
 }: {
   block: TwoColumnStepBlock;
   assets: AssetMap;
   figMap: Map<string, number>;
+  stepImageNumber: number | null;
 }) {
   return (
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
       <div>
-        <BlockView block={block.left} assets={assets} figMap={figMap} />
+        <BlockView
+          block={block.left}
+          assets={assets}
+          figMap={figMap}
+          stepImageNumber={stepImageNumber}
+        />
       </div>
       <div>
-        <BlockView block={block.right} assets={assets} figMap={figMap} />
+        <BlockView
+          block={block.right}
+          assets={assets}
+          figMap={figMap}
+          stepImageNumber={stepImageNumber}
+        />
       </div>
     </div>
   );
 }
+
