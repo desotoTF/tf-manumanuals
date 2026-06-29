@@ -677,8 +677,8 @@ function ContentEditor({
     "steps" | "tools" | "parts" | "warnings" | "torque" | "images"
   >("steps");
 
-  // Build the figure source list from attached image assets, in display order.
-  // Numbering reacts to add / remove / reorder via useFigureMap.
+  // Asset list (for image pickers + the Images tab). Figure numbering
+  // is now driven by placement inside steps, not by this list's order.
   const figureSources = useMemo(
     () =>
       assets
@@ -690,7 +690,7 @@ function ContentEditor({
         })),
     [assets],
   );
-  const figMap = useFigureMap(figureSources);
+  const figMap = useStepFigureMap(content.steps);
 
   const update = <K extends keyof ManualContent>(
     key: K,
