@@ -29,7 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatDistanceToNow } from "date-fns";
-import { CheckCircle2, AlertTriangle, FileX, Clock } from "lucide-react";
+import { CheckCircle2, AlertTriangle, Clock } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: DashboardPage,
