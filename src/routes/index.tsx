@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { BookOpen, GitCompare, Database } from "lucide-react";
-import thumperFabLogo from "@/assets/thumperfab-logo.png.asset.json";
+import thumperFabLogoUrl from "@/assets/thumperfab-logo.png";
 
 export const Route = createFileRoute("/")({
   head: () => ({
