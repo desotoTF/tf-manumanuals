@@ -1,7 +1,12 @@
 // "Manuals" list page. Lives at /products for URL stability but the user-facing
 // name is Manuals. Lists every manual in the org with status, latest version,
 // and a "Create manual" button — SKU-first flow (no product picker).
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Outlet,
+  useNavigate,
+  useRouterState,
+} from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
@@ -43,7 +48,7 @@ import {
 
 
 export const Route = createFileRoute("/_authenticated/products")({
-  component: ManualsPage,
+  component: ProductsRoutePage,
 });
 
 const STATUS_VARIANT: Record<string, { label: string; className: string }> = {
@@ -64,6 +69,12 @@ const STATUS_VARIANT: Record<string, { label: string; className: string }> = {
     className: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
   },
 };
+
+function ProductsRoutePage() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  if (pathname !== "/products") return <Outlet />;
+  return <ManualsPage />;
+}
 
 function ManualsPage() {
   const { orgId } = useActiveOrg();
@@ -394,13 +405,15 @@ function CreateManualDialog({
           </div>
 
           <div className="space-y-1">
-            <Label>Template (optional)</Label>
+            <Label>Template</Label>
             <Select value={templateId} onValueChange={setTemplateId}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="__none">No template — blank</SelectItem>
+                <SelectItem value="__none">
+                  None — blank{!templatesQuery.data?.some((t) => t.is_default) ? " (default)" : ""}
+                </SelectItem>
                 {templatesQuery.data?.map((t) => (
                   <SelectItem key={t.id} value={t.id}>
                     {t.name}

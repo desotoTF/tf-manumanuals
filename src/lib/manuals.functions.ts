@@ -16,6 +16,7 @@ export interface ManualListRow {
   sku: string;
   product_name: string;
   manual_title: string;
+  created_at: string;
   latest_version_number: number | null;
   latest_version_state: string | null;
   last_published_at: string | null;
@@ -33,11 +34,12 @@ export const listManualsWithStatus = createServerFn({ method: "GET" })
     const { data: manuals, error } = await supabase
       .from("manuals")
       .select(
-        `id, title, product_id,
+        `id, title, product_id, created_at,
          products!inner(id, sku, name, organization_id),
          manual_versions(version_number, state, published_at)`,
       )
-      .eq("products.organization_id", data.organizationId);
+      .eq("products.organization_id", data.organizationId)
+      .order("created_at", { ascending: false });
     if (error) throw error;
 
     const productIds = (manuals ?? []).map((m: any) => m.product_id);
@@ -67,6 +69,7 @@ export const listManualsWithStatus = createServerFn({ method: "GET" })
         sku: m.products.sku,
         product_name: m.products.name,
         manual_title: m.title,
+        created_at: m.created_at,
         latest_version_number: latest?.version_number ?? null,
         latest_version_state: latest?.state ?? null,
         last_published_at: status?.last_manual_publish_at ?? null,
@@ -75,7 +78,6 @@ export const listManualsWithStatus = createServerFn({ method: "GET" })
       };
     });
 
-    rows.sort((a, b) => a.sku.localeCompare(b.sku));
     return rows;
   });
 

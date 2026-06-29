@@ -8,6 +8,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useActiveOrg } from "@/components/AppShell";
 import {
+  clearDefaultTemplate,
   deleteTemplate,
   listTemplates,
   setDefaultTemplate,
@@ -63,6 +64,7 @@ function TemplatesPage() {
   const upsert = useServerFn(upsertTemplate);
   const del = useServerFn(deleteTemplate);
   const setDefault = useServerFn(setDefaultTemplate);
+  const clearDefault = useServerFn(clearDefaultTemplate);
 
   const tplQuery = useQuery({
     queryKey: ["manual-templates", orgId],
@@ -109,6 +111,14 @@ function TemplatesPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const clearDefaultMut = useMutation({
+    mutationFn: () => clearDefault({ data: { organizationId: orgId } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["manual-templates", orgId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const openCreate = () => {
     setEditing(null);
     setDialogOpen(true);
@@ -124,6 +134,8 @@ function TemplatesPage() {
     setBrandingTpl(t);
     setBrandingOpen(true);
   };
+
+  const noneIsDefault = !tplQuery.data?.some((t) => t.is_default);
 
 
   return (
@@ -149,13 +161,35 @@ function TemplatesPage() {
         {tplQuery.isLoading && (
           <p className="text-sm text-muted-foreground">Loading…</p>
         )}
-        {tplQuery.data?.length === 0 && (
-          <Card className="md:col-span-2">
-            <CardContent className="py-10 text-center text-sm text-muted-foreground">
-              No templates yet.{" "}
-              {isAdmin
-                ? "Create one to give authors a head start."
-                : "Ask an admin to create one."}
+        {!tplQuery.isLoading && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                None
+                {noneIsDefault && (
+                  <Badge variant="secondary" className="bg-amber-500/15 text-amber-700 dark:text-amber-400">
+                    <Star className="mr-1 h-3 w-3" /> Default
+                  </Badge>
+                )}
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Blank manual with no pre-filled template content
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <p className="text-muted-foreground">
+                Built in and locked. Use this when new manuals should start blank.
+              </p>
+              {isAdmin && !noneIsDefault && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => clearDefaultMut.mutate()}
+                  disabled={clearDefaultMut.isPending}
+                >
+                  <Star className="mr-1.5 h-3.5 w-3.5" /> Make default
+                </Button>
+              )}
             </CardContent>
           </Card>
         )}
@@ -194,7 +228,7 @@ function TemplatesPage() {
                       <Palette className="mr-1.5 h-3.5 w-3.5" /> Edit branding
                     </Button>
                   )}
-                  {!t.is_default && !t.is_master && (
+                  {!t.is_default && (
 
                     <Button
                       size="sm"

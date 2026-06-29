@@ -1,25 +1,16 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
 import { dashboardSummary } from "@/lib/dashboard.functions";
-import { listProductsWithStatus } from "@/lib/products.functions";
+import { listManualsWithStatus } from "@/lib/manuals.functions";
 import { useActiveOrg } from "@/components/AppShell";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -75,56 +66,23 @@ const STATUS_VARIANT: Record<string, { label: string; className: string }> = {
   },
 };
 
-// Sort priority: out_of_sync first, then pending_review, no_manual, in_sync.
-const STATUS_RANK: Record<string, number> = {
-  out_of_sync: 0,
-  pending_review: 1,
-  no_manual: 2,
-  in_sync: 3,
-};
-
 function DashboardPage() {
   const { orgId, hasActiveOrg } = useActiveOrg();
   const fetchSummary = useServerFn(dashboardSummary);
-  const fetchProducts = useServerFn(listProductsWithStatus);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const fetchManuals = useServerFn(listManualsWithStatus);
 
   const summaryQuery = useQuery({
     queryKey: ["dashboard-summary", orgId],
     queryFn: () => fetchSummary({ data: { organizationId: orgId } }),
     enabled: hasActiveOrg,
   });
-  const productsQuery = useQuery({
-    queryKey: ["products", orgId],
-    queryFn: () => fetchProducts({ data: { organizationId: orgId } }),
+  const manualsQuery = useQuery({
+    queryKey: ["recent-manuals", orgId],
+    queryFn: () => fetchManuals({ data: { organizationId: orgId } }),
     enabled: hasActiveOrg,
   });
 
-  const rows = useMemo(() => {
-    const items = (productsQuery.data ?? [])
-      // Only products that actually have a manual belong on the dashboard.
-      .filter((p) => p.sync_status?.status && p.sync_status.status !== "no_manual")
-      .map((p) => ({
-        ...p,
-        status: p.sync_status!.status as string,
-      }));
-    const filtered = items.filter((p) => {
-      if (statusFilter !== "all" && p.status !== statusFilter) return false;
-      if (!search.trim()) return true;
-      const q = search.trim().toLowerCase();
-      return (
-        p.sku?.toLowerCase().includes(q) ||
-        p.name?.toLowerCase().includes(q)
-      );
-    });
-    filtered.sort(
-      (a, b) =>
-        (STATUS_RANK[a.status] ?? 99) - (STATUS_RANK[b.status] ?? 99) ||
-        a.sku.localeCompare(b.sku),
-    );
-    return filtered;
-  }, [productsQuery.data, search, statusFilter]);
+  const rows = (manualsQuery.data ?? []).slice(0, 10);
 
   if (!hasActiveOrg) {
     return (
@@ -149,8 +107,8 @@ function DashboardPage() {
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
         <p className="text-sm text-muted-foreground">
-          Manual sync status across this organization. Out-of-sync products
-          appear first.
+          Manual sync status across this organization, plus the most recently
+          created manuals.
         </p>
       </header>
 
@@ -175,92 +133,76 @@ function DashboardPage() {
         })}
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <Input
-          placeholder="Search SKU or name…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="sm:max-w-sm"
-        />
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="sm:w-48">
-            <SelectValue placeholder="All statuses" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
-            <SelectItem value="out_of_sync">Out of sync</SelectItem>
-            <SelectItem value="pending_review">Pending review</SelectItem>
-            <SelectItem value="in_sync">In sync</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
       <div className="rounded-md border border-border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>SKU</TableHead>
-              <TableHead>Name</TableHead>
+              <TableHead>Manual</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Last BOM change</TableHead>
+              <TableHead>Latest version</TableHead>
+              <TableHead>Created</TableHead>
               <TableHead>Last publish</TableHead>
-              <TableHead>Out-of-sync since</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {productsQuery.isLoading && (
+            {manualsQuery.isLoading && (
               <TableRow>
                 <TableCell
-                  colSpan={7}
+                  colSpan={6}
                   className="text-center text-sm text-muted-foreground"
                 >
                   Loading…
                 </TableCell>
               </TableRow>
             )}
-            {!productsQuery.isLoading && rows.length === 0 && (
+            {!manualsQuery.isLoading && rows.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={7}
+                  colSpan={6}
                   className="text-center text-sm text-muted-foreground"
                 >
-                  No products match.
+                  No manuals yet.
                 </TableCell>
               </TableRow>
             )}
-            {rows.map((p) => {
+            {rows.map((manual) => {
               const variant =
-                STATUS_VARIANT[p.status] ?? STATUS_VARIANT.no_manual;
+                STATUS_VARIANT[manual.sync_status] ?? STATUS_VARIANT.no_manual;
               return (
-                <TableRow key={p.id}>
-                  <TableCell className="font-mono text-sm">{p.sku}</TableCell>
-                  <TableCell>{p.name}</TableCell>
+                <TableRow key={manual.manual_id}>
+                  <TableCell>
+                    <div className="font-mono text-sm">{manual.sku}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {manual.product_name}
+                    </div>
+                  </TableCell>
                   <TableCell>
                     <Badge className={variant.className} variant="secondary">
                       {variant.label}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {p.sync_status?.last_bom_change_at
-                      ? formatDistanceToNow(
-                          new Date(p.sync_status.last_bom_change_at),
-                          { addSuffix: true },
-                        )
-                      : "—"}
+                  <TableCell className="text-sm">
+                    {manual.latest_version_number != null ? (
+                      <span>
+                        v{manual.latest_version_number}
+                        <span className="ml-1 text-muted-foreground">
+                          · {manual.latest_version_state}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {p.sync_status?.last_manual_publish_at
-                      ? formatDistanceToNow(
-                          new Date(p.sync_status.last_manual_publish_at),
-                          { addSuffix: true },
-                        )
-                      : "—"}
+                    {formatDistanceToNow(new Date(manual.created_at), {
+                      addSuffix: true,
+                    })}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {p.sync_status?.out_of_sync_since
+                    {manual.last_published_at
                       ? formatDistanceToNow(
-                          new Date(p.sync_status.out_of_sync_since),
+                          new Date(manual.last_published_at),
                           { addSuffix: true },
                         )
                       : "—"}
@@ -268,7 +210,7 @@ function DashboardPage() {
                   <TableCell className="text-right">
                     <Link
                       to="/products/$productId"
-                      params={{ productId: p.id }}
+                      params={{ productId: manual.product_id }}
                       className="text-sm font-medium text-primary hover:underline"
                     >
                       Open

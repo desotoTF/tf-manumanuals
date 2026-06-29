@@ -19,17 +19,20 @@ jobs:
           persist-credentials: false
 
       - name: Verify secondary token is present
+        id: secondary_token
         env:
           SECONDARY_REPO_TOKEN: ${{ secrets.SECONDARY_REPO_TOKEN }}
         run: |
           if [ -z "$SECONDARY_REPO_TOKEN" ]; then
-            echo "ERROR: SECONDARY_REPO_TOKEN secret is empty or not available to this workflow."
-            echo "Add it under the PRIMARY repo: Settings -> Secrets and variables -> Actions."
-            exit 1
+            echo "SECONDARY_REPO_TOKEN is not configured; skipping mirror push."
+            echo "has_token=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           echo "Token present (length: ${#SECONDARY_REPO_TOKEN})."
+          echo "has_token=true" >> "$GITHUB_OUTPUT"
 
       - name: Push to Secondary Repo
+        if: steps.secondary_token.outputs.has_token == 'true'
         env:
           SECONDARY_REPO_TOKEN: ${{ secrets.SECONDARY_REPO_TOKEN }}
         run: |
