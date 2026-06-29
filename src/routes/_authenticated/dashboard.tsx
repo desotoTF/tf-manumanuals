@@ -102,10 +102,13 @@ function DashboardPage() {
   });
 
   const rows = useMemo(() => {
-    const items = (productsQuery.data ?? []).map((p) => ({
-      ...p,
-      status: (p.sync_status?.status ?? "no_manual") as string,
-    }));
+    const items = (productsQuery.data ?? [])
+      // Only products that actually have a manual belong on the dashboard.
+      .filter((p) => p.sync_status?.status && p.sync_status.status !== "no_manual")
+      .map((p) => ({
+        ...p,
+        status: p.sync_status!.status as string,
+      }));
     const filtered = items.filter((p) => {
       if (statusFilter !== "all" && p.status !== statusFilter) return false;
       if (!search.trim()) return true;
