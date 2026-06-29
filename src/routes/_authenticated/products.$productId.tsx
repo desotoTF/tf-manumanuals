@@ -27,6 +27,9 @@ import {
 import { listTemplates } from "@/lib/templates.functions";
 import { useActiveOrg } from "@/components/AppShell";
 import { emptyManualContent, type ManualContent } from "@/lib/types";
+import { useFigureMap } from "@/lib/figure-refs";
+import { FigureRefField } from "@/components/manual-editor/FigureRefField";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -596,10 +599,25 @@ function ContentEditor({
     "steps" | "tools" | "parts" | "warnings" | "torque" | "images"
   >("steps");
 
+  // Build the figure source list from attached image assets, in display order.
+  // Numbering reacts to add / remove / reorder via useFigureMap.
+  const figureSources = useMemo(
+    () =>
+      assets
+        .filter((a) => a.type === "image" || a.url)
+        .map((a) => ({
+          asset_id: a.id,
+          caption: (a.metadata?.caption as string | undefined) ?? null,
+        })),
+    [assets],
+  );
+  const figMap = useFigureMap(figureSources);
+
   const update = <K extends keyof ManualContent>(
     key: K,
     value: ManualContent[K],
   ) => setContent({ ...content, [key]: value });
+
 
   return (
     <Card>
@@ -635,8 +653,11 @@ function ContentEditor({
             steps={content.steps}
             setSteps={(s) => update("steps", s)}
             editable={editable}
+            images={figureSources}
+            figMap={figMap}
           />
         )}
+
         {tab === "tools" && (
           <ToolsListEditor
             items={content.tools}
@@ -704,8 +725,11 @@ function ContentEditor({
             warnings={content.warnings}
             setWarnings={(w) => update("warnings", w)}
             editable={editable}
+            images={figureSources}
+            figMap={figMap}
           />
         )}
+
         {tab === "torque" && (
           <SimpleListEditor
             items={content.torque_specs}
@@ -726,8 +750,10 @@ function ContentEditor({
             editable={editable}
             onAdd={onAddAsset}
             onRemove={onRemoveAsset}
+            figMap={figMap}
           />
         )}
+
       </CardContent>
     </Card>
   );
@@ -738,11 +764,16 @@ function StepsEditor({
   steps,
   setSteps,
   editable,
+  images,
+  figMap,
 }: {
   steps: ManualContent["steps"];
   setSteps: (s: ManualContent["steps"]) => void;
   editable: boolean;
+  images: { asset_id: string; caption?: string | null }[];
+  figMap: Map<string, number>;
 }) {
+
   return (
     <div className="space-y-3">
       {steps.map((s, i) => (
@@ -799,17 +830,20 @@ function StepsEditor({
             placeholder="Step title"
             className="mb-2"
           />
-          <Textarea
+          <FigureRefField
             value={s.body}
             rows={3}
-            onChange={(e) => {
+            disabled={!editable}
+            placeholder="Describe what the installer does in this step. Type ##Fig. to insert a figure reference."
+            images={images}
+            figMap={figMap}
+            onChange={(v) => {
               const next = [...steps];
-              next[i] = { ...s, body: e.target.value };
+              next[i] = { ...s, body: v };
               setSteps(next);
             }}
-            disabled={!editable}
-            placeholder="Describe what the installer does in this step."
           />
+
         </div>
       ))}
       {editable && (
@@ -901,10 +935,14 @@ function WarningsEditor({
   warnings,
   setWarnings,
   editable,
+  images,
+  figMap,
 }: {
   warnings: ManualContent["warnings"];
   setWarnings: (w: ManualContent["warnings"]) => void;
   editable: boolean;
+  images: { asset_id: string; caption?: string | null }[];
+  figMap: Map<string, number>;
 }) {
   return (
     <div className="space-y-2">
@@ -928,17 +966,20 @@ function WarningsEditor({
               <SelectItem value="danger">Danger</SelectItem>
             </SelectContent>
           </Select>
-          <Textarea
+          <FigureRefField
             rows={2}
             value={w.body}
-            onChange={(e) => {
-              const next = [...warnings];
-              next[i] = { ...w, body: e.target.value };
-              setWarnings(next);
-            }}
             disabled={!editable}
             className="flex-1"
+            images={images}
+            figMap={figMap}
+            onChange={(v) => {
+              const next = [...warnings];
+              next[i] = { ...w, body: v };
+              setWarnings(next);
+            }}
           />
+
           {editable && (
             <Button
               size="sm"
@@ -969,11 +1010,13 @@ function ImagesPanel({
   editable,
   onAdd,
   onRemove,
+  figMap,
 }: {
   assets: { id: string; type: string; url: string | null; metadata: any }[];
   editable: boolean;
   onAdd: (url: string, caption?: string) => void;
   onRemove: (id: string) => void;
+  figMap: Map<string, number>;
 }) {
   const [url, setUrl] = useState("");
   const [caption, setCaption] = useState("");
@@ -983,31 +1026,40 @@ function ImagesPanel({
         <p className="text-xs text-muted-foreground">No images attached.</p>
       )}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        {assets.map((a) => (
-          <figure key={a.id} className="rounded-md border border-border p-2">
-            {a.url && (
-              <img
-                src={a.url}
-                alt={a.metadata?.caption ?? ""}
-                className="aspect-video w-full rounded object-cover"
-              />
-            )}
-            <figcaption className="mt-1 truncate text-xs text-muted-foreground">
-              {a.metadata?.caption ?? a.url}
-            </figcaption>
-            {editable && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => onRemove(a.id)}
-                className="mt-1 h-7 w-full text-destructive"
-              >
-                <Trash2 className="mr-1 h-3 w-3" /> Remove
-              </Button>
-            )}
-          </figure>
-        ))}
+        {assets.map((a) => {
+          const figNum = figMap.get(a.id);
+          return (
+            <figure key={a.id} className="rounded-md border border-border p-2">
+              {a.url && (
+                <img
+                  src={a.url}
+                  alt={a.metadata?.caption ?? ""}
+                  className="aspect-video w-full rounded object-cover"
+                />
+              )}
+              <figcaption className="mt-1 flex items-center justify-between gap-2 text-xs">
+                <span className="font-semibold text-foreground">
+                  {figNum ? `Fig. ${figNum}` : "—"}
+                </span>
+                <span className="truncate text-muted-foreground">
+                  {a.metadata?.caption ?? a.url}
+                </span>
+              </figcaption>
+              {editable && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onRemove(a.id)}
+                  className="mt-1 h-7 w-full text-destructive"
+                >
+                  <Trash2 className="mr-1 h-3 w-3" /> Remove
+                </Button>
+              )}
+            </figure>
+          );
+        })}
       </div>
+
       {editable && (
         <div className="flex flex-wrap items-center gap-2">
           <Input

@@ -1,17 +1,16 @@
 // "Manuals" list page. Lives at /products for URL stability but the user-facing
 // name is Manuals. Lists every manual in the org with status, latest version,
-// and a "Create manual" button that picks an unassigned product + template.
+// and a "Create manual" button — SKU-first flow (no product picker).
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import { Plus, Check, ChevronsUpDown } from "lucide-react";
+import { Plus, Search, Loader2 } from "lucide-react";
 import { useActiveOrg } from "@/components/AppShell";
-import { listManualsWithStatus } from "@/lib/manuals.functions";
-import { createManualDraft } from "@/lib/manuals.functions";
-import { listProductsWithoutManual } from "@/lib/products.functions";
+import { listManualsWithStatus, createManualFromSku } from "@/lib/manuals.functions";
+import { lookupProductBySku } from "@/lib/products.functions";
 import { listTemplates } from "@/lib/templates.functions";
 import { formatManualLabel } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +31,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -40,20 +40,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import { cn } from "@/lib/utils";
+
 
 export const Route = createFileRoute("/_authenticated/products")({
   component: ManualsPage,
@@ -233,124 +220,180 @@ function CreateManualDialog({
 }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const fetchProducts = useServerFn(listProductsWithoutManual);
   const fetchTemplates = useServerFn(listTemplates);
-  const createDraft = useServerFn(createManualDraft);
+  const lookupSku = useServerFn(lookupProductBySku);
+  const createFromSku = useServerFn(createManualFromSku);
 
-  const [productId, setProductId] = useState<string | null>(null);
+  const [sku, setSku] = useState("");
+  const [name, setName] = useState("");
   const [templateId, setTemplateId] = useState<string>("__none");
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [lookup, setLookup] = useState<{
+    source: "local" | "odoo" | "not_found";
+    productId?: string;
+    odooProductId?: string;
+    erpConnectionId?: string;
+    lookupError?: string;
+  } | null>(null);
+  const [looking, setLooking] = useState(false);
 
-  const productsQuery = useQuery({
-    queryKey: ["products-without-manual", orgId],
-    queryFn: () => fetchProducts({ data: { organizationId: orgId } }),
-    enabled: open,
-  });
+  // Reset on close.
+  useEffect(() => {
+    if (!open) {
+      setSku("");
+      setName("");
+      setTemplateId("__none");
+      setLookup(null);
+      setLooking(false);
+    }
+  }, [open]);
+
   const templatesQuery = useQuery({
     queryKey: ["manual-templates", orgId],
     queryFn: () => fetchTemplates({ data: { organizationId: orgId } }),
     enabled: open,
   });
 
-  const selectedProduct = useMemo(
-    () => productsQuery.data?.find((p) => p.id === productId) ?? null,
-    [productsQuery.data, productId],
-  );
+  // Pre-select default template once the list loads.
+  useEffect(() => {
+    if (templateId !== "__none") return;
+    const def = templatesQuery.data?.find((t) => t.is_default);
+    if (def) setTemplateId(def.id);
+  }, [templatesQuery.data, templateId]);
+
+  const runLookup = async () => {
+    const trimmed = sku.trim();
+    if (!trimmed) return;
+    setLooking(true);
+    try {
+      const res = await lookupSku({
+        data: { organizationId: orgId, sku: trimmed },
+      });
+      setLookup({
+        source: res.source,
+        productId: res.productId,
+        odooProductId: res.odooProductId,
+        erpConnectionId: res.erpConnectionId,
+        lookupError: res.lookupError,
+      });
+      if (res.name) setName(res.name);
+      if (res.source === "local" && res.productId) {
+        // A product exists locally — it may already have a manual.
+        // We still let the user proceed; createManualFromSku surfaces
+        // `alreadyExisted` and we navigate accordingly.
+      }
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setLooking(false);
+    }
+  };
 
   const createMut = useMutation({
-    mutationFn: (input: { productId: string; templateId?: string }) =>
-      createDraft({ data: input }),
-    onSuccess: (res, vars) => {
+    mutationFn: () =>
+      createFromSku({
+        data: {
+          organizationId: orgId,
+          sku: sku.trim(),
+          name: name.trim(),
+          odooProductId: lookup?.odooProductId,
+          erpConnectionId: lookup?.erpConnectionId,
+          templateId: templateId === "__none" ? undefined : templateId,
+        },
+      }),
+    onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["manuals", orgId] });
-      toast.success("Manual created");
+      if (res.alreadyExisted) {
+        toast.info("Manual already exists for this SKU — opening it.");
+      } else {
+        toast.success("Manual created");
+      }
       onOpenChange(false);
-      setProductId(null);
-      setTemplateId("__none");
       navigate({
         to: "/products/$productId",
-        params: { productId: vars.productId },
+        params: { productId: res.productId },
       });
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const handleCreate = () => {
-    if (!productId) return;
-    createMut.mutate({
-      productId,
-      templateId: templateId === "__none" ? undefined : templateId,
-    });
-  };
+  const canCreate = sku.trim().length > 0 && name.trim().length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Create manual</DialogTitle>
+          <DialogDescription>
+            Enter the product SKU. We'll look it up in Odoo to auto-fill the
+            name — edit it if you need to.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div>
-            <Label>Product</Label>
-            <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  className="w-full justify-between"
-                >
-                  {selectedProduct
-                    ? formatManualLabel(
-                        selectedProduct.sku,
-                        selectedProduct.name,
-                      )
-                    : "Select a product…"}
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                <Command>
-                  <CommandInput placeholder="Search SKU or name…" />
-                  <CommandList>
-                    <CommandEmpty>
-                      {productsQuery.isLoading
-                        ? "Loading…"
-                        : productsQuery.data?.length === 0
-                          ? "No products available. Sync from Odoo in Settings → ERP first."
-                          : "No matches."}
-                    </CommandEmpty>
-                    <CommandGroup>
-                      {productsQuery.data?.map((p) => (
-                        <CommandItem
-                          key={p.id}
-                          value={`${p.sku} ${p.name}`}
-                          onSelect={() => {
-                            setProductId(p.id);
-                            setPickerOpen(false);
-                          }}
-                        >
-                          <Check
-                            className={cn(
-                              "mr-2 h-4 w-4",
-                              productId === p.id ? "opacity-100" : "opacity-0",
-                            )}
-                          />
-                          <span className="font-mono text-sm">
-                            {formatManualLabel(p.sku, p.name)}
-                          </span>
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Only products that don't already have a manual are listed.
-            </p>
+          <div className="space-y-1">
+            <Label htmlFor="sku">SKU</Label>
+            <div className="flex gap-2">
+              <Input
+                id="sku"
+                value={sku}
+                onChange={(e) => setSku(e.target.value)}
+                placeholder="e.g. AC-1234"
+                onBlur={runLookup}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    runLookup();
+                  }
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={runLookup}
+                disabled={!sku.trim() || looking}
+              >
+                {looking ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Search className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+            {lookup && (
+              <p className="text-xs text-muted-foreground">
+                {lookup.source === "local" &&
+                  "Matched an existing product in this workspace."}
+                {lookup.source === "odoo" &&
+                  "Found in Odoo — name auto-filled."}
+                {lookup.source === "not_found" && (
+                  <>
+                    Not found{lookup.lookupError ? ` (${lookup.lookupError})` : ""}.
+                    Enter the product name manually below.
+                  </>
+                )}
+              </p>
+            )}
           </div>
 
-          <div>
+          <div className="space-y-1">
+            <Label htmlFor="name">Product name</Label>
+            <Input
+              id="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Auto-fills from Odoo when the SKU is recognized"
+            />
+            {sku && name && (
+              <p className="text-xs text-muted-foreground">
+                Manual will be titled:{" "}
+                <span className="font-mono">
+                  {formatManualLabel(sku.trim(), name.trim())}
+                </span>
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-1">
             <Label>Template (optional)</Label>
             <Select value={templateId} onValueChange={setTemplateId}>
               <SelectTrigger>
@@ -374,8 +417,8 @@ function CreateManualDialog({
             Cancel
           </Button>
           <Button
-            onClick={handleCreate}
-            disabled={!productId || createMut.isPending}
+            onClick={() => createMut.mutate()}
+            disabled={!canCreate || createMut.isPending}
           >
             {createMut.isPending ? "Creating…" : "Create manual"}
           </Button>
@@ -384,3 +427,4 @@ function CreateManualDialog({
     </Dialog>
   );
 }
+

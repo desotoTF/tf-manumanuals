@@ -292,6 +292,182 @@ export const createManualDraft = createServerFn({ method: "POST" })
     return { manualId, versionId: version.id };
   });
 
+
+// SKU-first manual creation. Silently upserts the product (keyed by
+// organization_id+sku) so Manuals are decoupled from picking from a list,
+// then reuses createManualDraft's logic to scaffold v1 with the chosen
+// template.
+export const createManualFromSku = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        organizationId: uuid,
+        sku: z.string().trim().min(1).max(120),
+        name: z.string().trim().min(1).max(200),
+        odooProductId: z.string().optional(),
+        erpConnectionId: uuid.optional(),
+        templateId: uuid.optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+
+    const sku = data.sku.trim();
+    const name = data.name.trim();
+    const slugBase =
+      sku.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") ||
+      `sku-${Date.now()}`;
+
+    // Upsert product on (organization_id, sku).
+    const { data: prod, error: pErr } = await supabase
+      .from("products")
+      .upsert(
+        {
+          organization_id: data.organizationId,
+          sku,
+          name,
+          is_active: true,
+          web_slug: slugBase,
+          ...(data.erpConnectionId
+            ? { erp_connection_id: data.erpConnectionId }
+            : {}),
+          ...(data.odooProductId
+            ? { erp_product_id: data.odooProductId }
+            : {}),
+        },
+        { onConflict: "organization_id,sku" },
+      )
+      .select("id")
+      .single();
+    let productId: string;
+    if (pErr) {
+      // Slug collision fallback: append a short suffix.
+      const { data: prod2, error: pErr2 } = await supabase
+        .from("products")
+        .upsert(
+          {
+            organization_id: data.organizationId,
+            sku,
+            name,
+            is_active: true,
+            web_slug: `${slugBase}-${Date.now().toString(36).slice(-4)}`,
+            ...(data.erpConnectionId
+              ? { erp_connection_id: data.erpConnectionId }
+              : {}),
+            ...(data.odooProductId
+              ? { erp_product_id: data.odooProductId }
+              : {}),
+          },
+          { onConflict: "organization_id,sku" },
+        )
+        .select("id")
+        .single();
+      if (pErr2) throw pErr2;
+      productId = prod2.id;
+    } else {
+      productId = prod.id;
+    }
+
+
+    // Reject if a manual already exists for this product — the UI should
+    // route the user to the existing manual instead.
+    const { data: existing } = await supabase
+      .from("manuals")
+      .select("id")
+      .eq("product_id", productId)
+      .maybeSingle();
+    if (existing) {
+      return { productId, manualId: existing.id, alreadyExisted: true };
+    }
+
+    // Resolve template (explicit or org default).
+    let resolvedTemplateId: string | null = data.templateId ?? null;
+    let seedContent: ManualContent = emptyManualContent();
+    if (!resolvedTemplateId) {
+      const { data: defTpl } = await supabase
+        .from("manual_templates" as never)
+        .select("id")
+        .eq("organization_id", data.organizationId)
+        .eq("is_default", true)
+        .maybeSingle();
+      resolvedTemplateId = (defTpl as { id: string } | null)?.id ?? null;
+    }
+    if (resolvedTemplateId) {
+      const { data: tpl } = await supabase
+        .from("manual_templates" as never)
+        .select("default_content")
+        .eq("id", resolvedTemplateId)
+        .maybeSingle();
+      const tplContent = (tpl as { default_content: unknown } | null)
+        ?.default_content;
+      if (tplContent && typeof tplContent === "object") {
+        seedContent = {
+          ...emptyManualContent(),
+          ...(tplContent as object),
+        } as ManualContent;
+      }
+    }
+
+    const { data: newManual, error: mErr } = await supabase
+      .from("manuals")
+      .insert({
+        product_id: productId,
+        title: `${sku} | ${name}`,
+        created_by: userId,
+        ...(resolvedTemplateId ? { template_id: resolvedTemplateId } : {}),
+      } as never)
+      .select("id")
+      .single();
+    if (mErr) throw mErr;
+
+    const { data: latestBom } = await supabase
+      .from("bom_snapshots")
+      .select("id, normalized_items")
+      .eq("product_id", productId)
+      .order("captured_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (latestBom?.normalized_items && seedContent.parts.length === 0) {
+      const items = (latestBom.normalized_items as Array<Record<string, unknown>>) ?? [];
+      seedContent.parts = items.map((it) => ({
+        part_number: String(it.part_number ?? ""),
+        qty: Number(it.qty ?? 1),
+        description: it.description as string | undefined,
+        notes: it.notes as string | undefined,
+      }));
+    }
+
+    const { data: nextNum } = await supabase.rpc(
+      "next_manual_version_number",
+      { _manual_id: newManual.id },
+    );
+    const { data: version, error: vErr } = await supabase
+      .from("manual_versions")
+      .insert({
+        manual_id: newManual.id,
+        version_number: nextNum ?? 1,
+        bom_snapshot_id: latestBom?.id ?? null,
+        state: "draft",
+        content: seedContent as never,
+        created_by: userId,
+      })
+      .select("id")
+      .single();
+    if (vErr) throw vErr;
+
+    return {
+      productId,
+      manualId: newManual.id,
+      versionId: version.id,
+      alreadyExisted: false,
+    };
+  });
+
+
+
 // ---------- Legacy PDF import ----------
 // Accepts a base64-encoded PDF, uploads it to storage, asks Lovable AI to
 // extract structured manual content, and creates a new draft manual version
