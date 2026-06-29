@@ -305,14 +305,27 @@ function CreateManualDialog({
     }
   };
 
+  // If the lookup returned multiple variants, force the user to pick one
+  // before allowing create. The chosen variant's odooProductId + SKU win.
+  const needsVariantPick =
+    lookup?.source === "odoo_variants" && !selectedVariant;
+  const variantChoice =
+    lookup?.variants?.find((v) => v.odooProductId === selectedVariant) ?? null;
+  const effectiveOdooProductId =
+    variantChoice?.odooProductId ?? lookup?.odooProductId;
+  // When a variant is chosen, store the variant SKU as the local product SKU
+  // (matches Odoo and unblocks BOM sync); keep the template SKU available for
+  // future display fixes (parts list).
+  const effectiveSku = variantChoice?.sku ?? sku.trim();
+
   const createMut = useMutation({
     mutationFn: () =>
       createFromSku({
         data: {
           organizationId: orgId,
-          sku: sku.trim(),
+          sku: effectiveSku,
           name: name.trim(),
-          odooProductId: lookup?.odooProductId,
+          odooProductId: effectiveOdooProductId,
           erpConnectionId: lookup?.erpConnectionId,
           templateId: templateId === "__none" ? undefined : templateId,
         },
@@ -333,7 +346,8 @@ function CreateManualDialog({
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const canCreate = sku.trim().length > 0 && name.trim().length > 0;
+  const canCreate =
+    sku.trim().length > 0 && name.trim().length > 0 && !needsVariantPick;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
