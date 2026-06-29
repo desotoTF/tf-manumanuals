@@ -29,7 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatDistanceToNow } from "date-fns";
-import { CheckCircle2, AlertTriangle, FileX, Clock } from "lucide-react";
+import { CheckCircle2, AlertTriangle, Clock } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: DashboardPage,
@@ -53,12 +53,6 @@ const TILES = [
     label: "Pending review",
     icon: Clock,
     className: "text-amber-600 dark:text-amber-400",
-  },
-  {
-    key: "no_manual",
-    label: "No manual",
-    icon: FileX,
-    className: "text-slate-600 dark:text-slate-300",
   },
 ] as const;
 
@@ -108,10 +102,13 @@ function DashboardPage() {
   });
 
   const rows = useMemo(() => {
-    const items = (productsQuery.data ?? []).map((p) => ({
-      ...p,
-      status: (p.sync_status?.status ?? "no_manual") as string,
-    }));
+    const items = (productsQuery.data ?? [])
+      // Only products that actually have a manual belong on the dashboard.
+      .filter((p) => p.sync_status?.status && p.sync_status.status !== "no_manual")
+      .map((p) => ({
+        ...p,
+        status: p.sync_status!.status as string,
+      }));
     const filtered = items.filter((p) => {
       if (statusFilter !== "all" && p.status !== statusFilter) return false;
       if (!search.trim()) return true;
@@ -144,7 +141,6 @@ function DashboardPage() {
   const counts = summaryQuery.data?.counts ?? {
     in_sync: 0,
     out_of_sync: 0,
-    no_manual: 0,
     pending_review: 0,
   };
 
@@ -158,7 +154,7 @@ function DashboardPage() {
         </p>
       </header>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {TILES.map((t) => {
           const Icon = t.icon;
           return (
@@ -194,7 +190,6 @@ function DashboardPage() {
             <SelectItem value="all">All statuses</SelectItem>
             <SelectItem value="out_of_sync">Out of sync</SelectItem>
             <SelectItem value="pending_review">Pending review</SelectItem>
-            <SelectItem value="no_manual">No manual</SelectItem>
             <SelectItem value="in_sync">In sync</SelectItem>
           </SelectContent>
         </Select>

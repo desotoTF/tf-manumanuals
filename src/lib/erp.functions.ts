@@ -147,7 +147,10 @@ export const revokeOdooConnection = createServerFn({ method: "POST" })
     z.object({ connectionId: z.string().uuid() }).parse(d),
   )
   .handler(async ({ data, context }) => {
-    const { error } = await context.supabase.rpc("erp_delete_credentials", {
+    // Hard delete: removes the vault secret and the connection row.
+    // Related rows (bom_snapshots, sync_events, products) keep their data
+    // because erp_connection_id is ON DELETE SET NULL.
+    const { error } = await context.supabase.rpc("erp_hard_delete_connection", {
       _connection_id: data.connectionId,
     });
     if (error) throw error;

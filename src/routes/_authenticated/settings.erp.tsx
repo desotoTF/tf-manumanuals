@@ -192,7 +192,7 @@ function ConnectionRow({
   const revokeMut = useMutation({
     mutationFn: () => revokeFn({ data: { connectionId: c.id } }),
     onSuccess: () => {
-      toast.success("Connection revoked");
+      toast.success("Connection deleted");
       onChanged();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -247,11 +247,11 @@ function ConnectionRow({
           <Button
             size="sm"
             variant="ghost"
-            disabled={!c.is_active || revokeMut.isPending}
+            disabled={revokeMut.isPending}
             onClick={() => {
               if (
                 confirm(
-                  `Revoke "${c.name}"? Credentials will be deleted and the connection deactivated.`,
+                  `Delete connection "${c.name}"? This removes the stored API key and the connection itself. Past BOM snapshots and sync events are kept (the link to this connection is cleared).`,
                 )
               ) {
                 revokeMut.mutate();

@@ -20,15 +20,20 @@ export const dashboardSummary = createServerFn({ method: "GET" })
       .eq("organization_id", data.organizationId);
     if (error) throw error;
 
-    const counts = { in_sync: 0, out_of_sync: 0, no_manual: 0, pending_review: 0 };
+    const counts = { in_sync: 0, out_of_sync: 0, pending_review: 0 };
+    let totalWithManual = 0;
     (products ?? []).forEach((p) => {
       const s = Array.isArray(p.sync_status) ? p.sync_status[0] : p.sync_status;
-      const k = (s?.status ?? "no_manual") as keyof typeof counts;
+      const k = s?.status as keyof typeof counts | undefined;
+      // Skip products that don't have a manual yet — the dashboard is
+      // manual-centric and shouldn't surface bare SKUs.
+      if (!k || k === ("no_manual" as never)) return;
       counts[k] = (counts[k] ?? 0) + 1;
+      totalWithManual += 1;
     });
 
     return {
-      total: products?.length ?? 0,
+      total: totalWithManual,
       counts,
     };
   });

@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { BookOpen, GitCompare, Database } from "lucide-react";
-import thumperFabLogo from "@/assets/thumperfab-logo.png.asset.json";
+import thumperFabLogoUrl from "@/assets/thumperfab-logo.png";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -17,7 +17,7 @@ export const Route = createFileRoute("/")({
         content:
           "Keep installation manuals in sync with live BOM data from your ERP.",
       },
-      { property: "og:image", content: thumperFabLogo.url },
+      { property: "og:image", content: thumperFabLogoUrl },
     ],
   }),
   component: Landing,
@@ -30,7 +30,7 @@ function Landing() {
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2 text-lg font-semibold">
             <img
-              src={thumperFabLogo.url}
+              src={thumperFabLogoUrl}
               alt="ThumperFab"
               className="h-8 w-auto"
             />
@@ -46,7 +46,7 @@ function Landing() {
 
       <section className="mx-auto max-w-4xl px-6 py-20 text-center">
         <img
-          src={thumperFabLogo.url}
+          src={thumperFabLogoUrl}
           alt="ThumperFab"
           className="mx-auto h-40 w-auto md:h-56"
         />
