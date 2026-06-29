@@ -1146,7 +1146,7 @@ function ImagesPanel({
               )}
               <figcaption className="mt-1 flex items-center justify-between gap-2 text-xs">
                 <span className="font-semibold text-foreground">
-                  {figNum ? `Fig. ${figNum}` : "—"}
+                  {figNum ? `Fig. ${figNum}` : "Unused"}
                 </span>
                 <span className="truncate text-muted-foreground">
                   {a.metadata?.caption ?? a.url}

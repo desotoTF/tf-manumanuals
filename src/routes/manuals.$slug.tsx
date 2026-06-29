@@ -7,7 +7,7 @@ import type { ManualContent } from "@/lib/types";
 import { format } from "date-fns";
 import { Factory, AlertTriangle, ShieldAlert, Info } from "lucide-react";
 import { StepBlocksView } from "@/components/manual/StepBlocksView";
-import { useFigureMap } from "@/lib/figure-refs";
+import { useStepFigureMap, stepFirstImageNumber } from "@/lib/figure-refs";
 import { useMemo } from "react";
 
 export const Route = createFileRoute("/manuals/$slug")({
@@ -70,17 +70,7 @@ function PublicManualPage() {
     }
     return map;
   }, [assets]);
-  const figureSources = useMemo(
-    () =>
-      (assets as Array<{ id: string; url: string | null; metadata: Record<string, unknown> | null }>)
-        .map((a) => ({
-          asset_id: a.id,
-          caption:
-            ((a.metadata as { caption?: string } | null)?.caption ?? null),
-        })),
-    [assets],
-  );
-  const figMap = useFigureMap(figureSources);
+  const figMap = useStepFigureMap(content.steps);
 
   // Layout presets (template-driven).
   const maxW =
@@ -250,6 +240,7 @@ function PublicManualPage() {
                     legacyBody={s.body}
                     assets={assetMap}
                     figMap={figMap}
+                    stepImageNumber={stepFirstImageNumber(s, figMap)}
                   />
                 </li>
               ))}
