@@ -57,6 +57,31 @@ function PublicManualPage() {
     ? format(new Date(version!.published_at), "MMM d, yyyy")
     : null;
 
+  // Asset lookup + figure numbering shared across blocks (text references
+  // like {{fig:...}} resolve to "Fig. N" via figMap).
+  const assetMap = useMemo(() => {
+    const map: Record<string, { url: string | null; caption?: string | null }> =
+      {};
+    for (const a of assets as Array<{ id: string; url: string | null; metadata: Record<string, unknown> | null }>) {
+      map[a.id] = {
+        url: a.url,
+        caption: (a.metadata as { caption?: string } | null)?.caption ?? null,
+      };
+    }
+    return map;
+  }, [assets]);
+  const figureSources = useMemo(
+    () =>
+      (assets as Array<{ id: string; url: string | null; metadata: Record<string, unknown> | null }>)
+        .map((a) => ({
+          asset_id: a.id,
+          caption:
+            ((a.metadata as { caption?: string } | null)?.caption ?? null),
+        })),
+    [assets],
+  );
+  const figMap = useFigureMap(figureSources);
+
   // Layout presets (template-driven).
   const maxW =
     layout === "compact"
