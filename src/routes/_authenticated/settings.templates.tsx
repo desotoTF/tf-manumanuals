@@ -118,6 +118,14 @@ function TemplatesPage() {
     setDialogOpen(true);
   };
 
+  const [brandingTpl, setBrandingTpl] = useState<TemplateRow | null>(null);
+  const [brandingOpen, setBrandingOpen] = useState(false);
+  const openBranding = (t: TemplateRow) => {
+    setBrandingTpl(t);
+    setBrandingOpen(true);
+  };
+
+
   return (
     <div className="space-y-6">
       <header className="flex items-start justify-between gap-4">
