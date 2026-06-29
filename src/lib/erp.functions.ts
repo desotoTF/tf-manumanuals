@@ -167,16 +167,21 @@ type NormalizedItem = {
   notes: string;
 };
 
-function normalizeBomLines(lines: Array<Record<string, unknown>>): NormalizedItem[] {
+function normalizeBomLines(
+  lines: Array<Record<string, unknown>>,
+  variantToTemplateSku?: Map<number, string>,
+): NormalizedItem[] {
   return lines
     .map((l) => {
       const productField = l.product_id;
-      // Odoo many2one is [id, "name"] — pull human label out
+      // Odoo many2one is [id, "name"] — pull human label out.
       let part = "";
       let desc = "";
+      let variantId: number | null = null;
       if (Array.isArray(productField) && productField.length >= 2) {
+        if (typeof productField[0] === "number") variantId = productField[0];
         const label = String(productField[1]);
-        // "[INTERNAL_REF] Display Name" — split when present
+        // "[INTERNAL_REF] Display Name" — split when present.
         const m = label.match(/^\[([^\]]+)\]\s*(.*)$/);
         if (m) {
           part = m[1];
@@ -188,6 +193,11 @@ function normalizeBomLines(lines: Array<Record<string, unknown>>): NormalizedIte
       } else if (typeof productField === "string") {
         part = productField;
         desc = productField;
+      }
+      // Prefer template SKU when we resolved one — keeps the parts list at
+      // the base SKU (TF300601) rather than the variant (TF300601-CC).
+      if (variantId !== null && variantToTemplateSku?.get(variantId)) {
+        part = variantToTemplateSku.get(variantId)!;
       }
       const uomField = l.product_uom_id;
       const unit =
