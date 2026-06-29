@@ -750,8 +750,10 @@ function ContentEditor({
             editable={editable}
             onAdd={onAddAsset}
             onRemove={onRemoveAsset}
+            figMap={figMap}
           />
         )}
+
       </CardContent>
     </Card>
   );
