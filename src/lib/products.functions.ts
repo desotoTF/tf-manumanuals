@@ -163,7 +163,9 @@ export const lookupProductBySku = createServerFn({ method: "POST" })
     },
   );
 
+export const getProductDetail = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
+
   .inputValidator((d) => z.object({ productId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
