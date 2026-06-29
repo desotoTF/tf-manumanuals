@@ -375,11 +375,13 @@ export type Database = {
       }
       manual_templates: {
         Row: {
+          allowed_blocks: Json
           branding: Json
           created_at: string
           created_by: string | null
           default_content: Json
           description: string | null
+          extra_modules: Json
           id: string
           is_default: boolean
           is_master: boolean
@@ -389,11 +391,13 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          allowed_blocks?: Json
           branding?: Json
           created_at?: string
           created_by?: string | null
           default_content?: Json
           description?: string | null
+          extra_modules?: Json
           id?: string
           is_default?: boolean
           is_master?: boolean
@@ -403,11 +407,13 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          allowed_blocks?: Json
           branding?: Json
           created_at?: string
           created_by?: string | null
           default_content?: Json
           description?: string | null
+          extra_modules?: Json
           id?: string
           is_default?: boolean
           is_master?: boolean
@@ -726,11 +732,13 @@ export type Database = {
           description: string | null
           erp_connection_id: string | null
           erp_product_id: string | null
+          erp_template_id: string | null
           id: string
           is_active: boolean
           name: string
           organization_id: string
           sku: string
+          template_sku: string | null
           updated_at: string
           web_slug: string
         }
@@ -739,11 +747,13 @@ export type Database = {
           description?: string | null
           erp_connection_id?: string | null
           erp_product_id?: string | null
+          erp_template_id?: string | null
           id?: string
           is_active?: boolean
           name: string
           organization_id: string
           sku: string
+          template_sku?: string | null
           updated_at?: string
           web_slug: string
         }
@@ -752,11 +762,13 @@ export type Database = {
           description?: string | null
           erp_connection_id?: string | null
           erp_product_id?: string | null
+          erp_template_id?: string | null
           id?: string
           is_active?: boolean
           name?: string
           organization_id?: string
           sku?: string
+          template_sku?: string | null
           updated_at?: string
           web_slug?: string
         }
