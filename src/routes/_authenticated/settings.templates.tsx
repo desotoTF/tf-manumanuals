@@ -164,12 +164,18 @@ function TemplatesPage() {
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-base">
                 {t.name}
+                {t.is_master && (
+                  <Badge variant="secondary" className="bg-rose-500/15 text-rose-700 dark:text-rose-400">
+                    <Palette className="mr-1 h-3 w-3" /> Master
+                  </Badge>
+                )}
                 {t.is_default && (
                   <Badge variant="secondary" className="bg-amber-500/15 text-amber-700 dark:text-amber-400">
                     <Star className="mr-1 h-3 w-3" /> Default
                   </Badge>
                 )}
               </CardTitle>
+
               <CardDescription className="text-xs">
                 {LAYOUT_LABELS[t.layout] ?? t.layout}
               </CardDescription>
