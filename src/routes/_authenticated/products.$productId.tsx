@@ -823,6 +823,8 @@ function ContentEditor({
             editable={editable}
             onAdd={onAddAsset}
             onRemove={onRemoveAsset}
+            onUpload={onUploadAsset}
+            uploading={uploadingAsset}
             figMap={figMap}
           />
         )}
