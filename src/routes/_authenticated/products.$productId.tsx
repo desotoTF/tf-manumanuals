@@ -1324,3 +1324,45 @@ function ImportPdfDialog({
   );
 }
 
+
+function ManualPreviewDialog({
+  open,
+  onOpenChange,
+  branding,
+  meta,
+  content,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  branding: unknown;
+  meta: { sku: string; name: string; variant?: string; versionLabel?: string };
+  content: ManualContent;
+}) {
+  const handlePrint = () => {
+    const node = document.getElementById("manual-print-area");
+    if (!node) return;
+    const w = window.open("", "_blank", "width=900,height=1200");
+    if (!w) return;
+    w.document.write(`<!doctype html><html><head><title>${meta.sku} — ${meta.name}</title>
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Barlow+Condensed:wght@500;600;700;800&family=Bebas+Neue&family=Inter:wght@400;600;700&family=Oswald:wght@400;600;700&family=Roboto:wght@400;500;700&family=Roboto+Condensed:wght@400;600;700&family=Source+Sans+3:wght@400;600;700&display=swap">
+      <style>body{margin:0;background:white}@page{size:letter;margin:0}</style>
+    </head><body>${node.innerHTML}</body></html>`);
+    w.document.close();
+    setTimeout(() => { w.focus(); w.print(); }, 500);
+  };
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden p-0 flex flex-col">
+        <DialogHeader className="px-6 pt-6 flex-row items-center justify-between space-y-0">
+          <DialogTitle>Manual preview</DialogTitle>
+          <Button size="sm" onClick={handlePrint} className="mr-8">
+            <Printer className="mr-2 h-4 w-4" /> Print / Save as PDF
+          </Button>
+        </DialogHeader>
+        <div className="overflow-y-auto flex-1 bg-muted/30 py-4" id="manual-print-area">
+          <MasterManualPreview branding={branding} meta={meta} content={content} />
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
