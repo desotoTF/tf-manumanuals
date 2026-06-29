@@ -815,7 +815,7 @@ function StepsEditor({
   steps: ManualContent["steps"];
   setSteps: (s: ManualContent["steps"]) => void;
   editable: boolean;
-  images: { asset_id: string; caption?: string | null }[];
+  images: { asset_id: string; caption?: string | null; url?: string | null }[];
   figMap: Map<string, number>;
 }) {
 
