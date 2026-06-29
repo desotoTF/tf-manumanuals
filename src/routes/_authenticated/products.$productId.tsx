@@ -828,17 +828,20 @@ function StepsEditor({
             placeholder="Step title"
             className="mb-2"
           />
-          <Textarea
+          <FigureRefField
             value={s.body}
             rows={3}
-            onChange={(e) => {
+            disabled={!editable}
+            placeholder="Describe what the installer does in this step. Type ##Fig. to insert a figure reference."
+            images={images}
+            figMap={figMap}
+            onChange={(v) => {
               const next = [...steps];
-              next[i] = { ...s, body: e.target.value };
+              next[i] = { ...s, body: v };
               setSteps(next);
             }}
-            disabled={!editable}
-            placeholder="Describe what the installer does in this step."
           />
+
         </div>
       ))}
       {editable && (
