@@ -289,7 +289,9 @@ export const createManualDraft = createServerFn({ method: "POST" })
       .single();
     if (vErr) throw vErr;
 
+    return { manualId, versionId: version.id };
   });
+
 
 // SKU-first manual creation. Silently upserts the product (keyed by
 // organization_id+sku) so Manuals are decoupled from picking from a list,
