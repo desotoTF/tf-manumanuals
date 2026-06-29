@@ -640,6 +640,7 @@ function ContentEditor({
         .map((a) => ({
           asset_id: a.id,
           caption: (a.metadata?.caption as string | undefined) ?? null,
+          url: a.url ?? null,
         })),
     [assets],
   );
