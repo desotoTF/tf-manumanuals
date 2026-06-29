@@ -1106,16 +1106,21 @@ function ImagesPanel({
   editable,
   onAdd,
   onRemove,
+  onUpload,
+  uploading,
   figMap,
 }: {
   assets: { id: string; type: string; url: string | null; metadata: any }[];
   editable: boolean;
   onAdd: (url: string, caption?: string) => void;
   onRemove: (id: string) => void;
+  onUpload: (file: File, caption?: string) => Promise<unknown>;
+  uploading: boolean;
   figMap: Map<string, number>;
 }) {
   const [url, setUrl] = useState("");
   const [caption, setCaption] = useState("");
+  const fileRef = useRef<HTMLInputElement | null>(null);
   return (
     <div className="space-y-3">
       {assets.length === 0 && (
@@ -1157,30 +1162,68 @@ function ImagesPanel({
       </div>
 
       {editable && (
-        <div className="flex flex-wrap items-center gap-2">
-          <Input
-            placeholder="https://image-url.jpg"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            className="h-8 max-w-sm text-sm"
-          />
-          <Input
-            placeholder="Caption (optional)"
-            value={caption}
-            onChange={(e) => setCaption(e.target.value)}
-            className="h-8 max-w-xs text-sm"
-          />
-          <Button
-            size="sm"
-            onClick={() => {
-              if (!url.trim()) return;
-              onAdd(url.trim(), caption.trim() || undefined);
-              setUrl("");
-              setCaption("");
-            }}
-          >
-            <Plus className="mr-2 h-4 w-4" /> Add image
-          </Button>
+        <div className="space-y-3 rounded-md border border-dashed border-border p-3">
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground">
+              Upload image file
+            </p>
+            <Input
+              placeholder="Caption (optional)"
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
+              className="h-8 max-w-md text-sm"
+            />
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                try {
+                  await onUpload(f, caption.trim() || undefined);
+                  setCaption("");
+                } finally {
+                  if (fileRef.current) fileRef.current.value = "";
+                }
+              }}
+            />
+            <Button
+              size="sm"
+              disabled={uploading}
+              onClick={() => fileRef.current?.click()}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              {uploading ? "Uploading…" : "Choose image"}
+            </Button>
+          </div>
+
+          <div className="space-y-2 border-t border-border pt-3">
+            <p className="text-xs font-semibold text-muted-foreground">
+              …or paste an image URL
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                placeholder="https://image-url.jpg"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                className="h-8 max-w-sm text-sm"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  if (!url.trim()) return;
+                  onAdd(url.trim(), caption.trim() || undefined);
+                  setUrl("");
+                  setCaption("");
+                }}
+              >
+                Add by URL
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>
