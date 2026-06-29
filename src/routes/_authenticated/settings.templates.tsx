@@ -236,9 +236,16 @@ function TemplatesPage() {
         }
         submitting={upsertMut.isPending}
       />
+
+      <EditBrandingDialog
+        open={brandingOpen}
+        onOpenChange={setBrandingOpen}
+        template={brandingTpl}
+      />
     </div>
   );
 }
+
 
 function TemplateDialog({
   open,
