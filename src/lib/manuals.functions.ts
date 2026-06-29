@@ -850,11 +850,11 @@ export const uploadManualAssetFile = createServerFn({ method: "POST" })
       .maybeSingle();
     if (vErr) throw vErr;
     if (!version) throw new Error("Version not found");
-    const orgId =
-      // @ts-expect-error nested join shape
-      version.manuals.products.organization_id as string;
-    // @ts-expect-error nested join shape
-    const productId = version.manuals.product_id as string;
+    const nested = version as unknown as {
+      manuals: { product_id: string; products: { organization_id: string } };
+    };
+    const orgId = nested.manuals.products.organization_id;
+    const productId = nested.manuals.product_id;
 
     const { supabaseAdmin } = await import(
       "@/integrations/supabase/client.server"
