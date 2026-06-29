@@ -194,13 +194,21 @@ async function rpcCall(
 const normalizeUrl = (u: string) => u.replace(/\/+$/, "");
 
 export async function odooAuthenticate(c: OdooCreds): Promise<number> {
+  const database = c.database.trim();
+  const username = c.username.trim();
+  const apiKey = c.apiKey.trim();
   const result = (await rpcCall(
     `${normalizeUrl(c.baseUrl)}/xmlrpc/2/common`,
     "authenticate",
-    [c.database, c.username, c.apiKey, {}],
+    [database, username, apiKey, {}],
   )) as number | false;
   if (!result || typeof result !== "number") {
-    throw new Error("Authentication failed: Odoo returned no uid (check database, username, and API key).");
+    throw new Error(
+      `Odoo rejected the credentials for db "${database}" / user "${username}". ` +
+        "Verify the database name (case-sensitive), the login email/username, " +
+        "and that the API key was generated for THIS user in this Odoo instance. " +
+        "Newly-created keys can take a moment to become active.",
+    );
   }
   return result;
 }
