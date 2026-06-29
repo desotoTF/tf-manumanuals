@@ -1,89 +1,46 @@
-## Scope
+## Three fixes for image / figure handling
 
-Address four issues raised after the schema sync was confirmed healthy.
+### 1. Stop step image selections from resetting when you upload to the Images tab
 
----
+**Cause:** in `products.$productId.tsx`, every asset upload calls `qc.invalidateQueries(["manual-version", ...])`. The `useEffect` watching `versionQuery.data` then re-hydrates the local `content` state from the server, throwing away any unsaved edits (including the image block's selected asset).
 
-### 1. Step blocks (per-step block editor with template-controlled modules)
+**Fix:** only seed `content` from the server when the *version itself* changes — track `lastLoadedVersionId` and only `setContent(...)` when `versionQuery.data.version.id !== lastLoadedVersionId` (or `updated_at` advances past what we've already loaded). Asset list refetches no longer clobber unsaved blocks.
 
-**Data shape.** Today each step is `{ id, title, body }` in `ManualContent.steps`. Replace `body: string` with `blocks: StepBlock[]` while keeping legacy `body` readable (auto-migrated on first edit). Block types:
+Belt-and-suspenders: in `uploadAssetMut.onSuccess` / `addAssetMut.onSuccess`, do a targeted update of the cached version's `assets` array instead of a full invalidate, so the editor never re-hydrates from a stale server snapshot.
 
-- **text** — rich text (TipTap: bold, italic, underline, lists, links, headings, inline images pasted/dropped)
-- **image** — single image from the manual's library, with caption + size (small / medium / full-width) + alignment
-- **two-column** — left/right cells, each holding one of {text, image}
-- **callout** — severity (info/caution/danger) + body
-- **table** — simple rows/cols
-- **figure-row** — N images side by side with shared caption (the "two row blocks" default — actually a row of stacked image+text pairs)
+### 2. Figure numbers should come from step order, not the Images tab order
 
-Default for a new step = one **text** block + a "+ Add block" menu listing the modules the active template allows.
+**Today:** `useFigureMap(figureSources)` numbers assets in the order they appear in `assets[]` (Images tab order). The Images tab also shows "Fig. 1, Fig. 2…" using that same map.
 
-**Template control.** Extend `manual_templates` with an `allowed_blocks` JSON column (array of block type strings) and an `extra_modules` JSON column (template-author-defined block presets — name, base type, default props). The master template defaults to all built-in blocks enabled. Org admins can add custom module presets in `/settings/templates` (later turn — out of scope for this pass).
+**New rule:** walk `content.steps` in order; for each step, walk its `blocks` in order; every `image` block (and every `image` slot inside a `two_column` block) whose `asset_id` is set gets the next sequential number. An asset that is never placed in any step has no figure number.
 
-**Editor UI.** Replace the plain textarea per step in `ManualListEditors.tsx` with a `StepBlocksEditor` that renders each block with its own controls + a block-type menu filtered by `template.allowed_blocks`. Reorder blocks within a step via up/down buttons.
+Changes:
+- New helper `buildFigureMapFromSteps(steps): Map<assetId, number>` in `src/lib/figure-refs.tsx`.
+- `ContentEditor` derives `figMap` from `content.steps` (not from `assets`).
+- `ImagesPanel` shows the figure number only when the asset appears in steps; otherwise show "Unused" instead of "—".
+- `ImageBlockEditor` dropdown lists every asset by its caption / filename (not a fake "Fig. N" label), since N is now determined by placement, not by the asset list. The selected image renders "Fig. N" once it has a placement-derived number.
+- `StepBlocksView` (public renderer) uses the same step-derived map so published manuals match.
 
-**Public render.** `manuals.$slug.tsx` renders blocks in order per step. Figure tokens `{{fig:...}}` continue to work inside text blocks.
+### 3. `##Fig.` / `@Fig.` tokens resolve to image blocks in the same step
 
-**Migration.** SQL migration adds `allowed_blocks jsonb default '["text","image","two_column","callout","table","figure_row"]'::jsonb` and `extra_modules jsonb default '[]'::jsonb` to `manual_templates`. No data migration needed — runtime reads `step.blocks ?? [{type:'text', body: step.body}]`.
+**Today:** `FigureRefField` only inserts tokens that include an explicit asset id (`{{fig:<assetId>}}`). The user wants to type a bare `##Fig.` or `@Fig.` in any text field inside a step and have it print the figure number of that step's image block.
 
----
+**New behavior:**
+- Recognise two token forms:
+  - `{{fig:<assetId>}}` — explicit (kept for cross-step references).
+  - `{{fig:step}}` — implicit; resolves to the first image block in the *current step* with a numbered asset.
+- In the step block editor, typing `##Fig.` or `@Fig.` in a text block (TipTap) or in any callout/two-column text within that step inserts a `{{fig:step}}` token (rendered visibly as a chip in the editor, like the existing explicit refs).
+- Rendering — both editor preview and public `StepBlocksView` — pass the owning step into the figure resolver so `{{fig:step}}` becomes "Fig. N" for that step's image. If the step has multiple image blocks, `{{fig:step}}` resolves to the first; we add `##Fig.2`, `##Fig.3` etc. as shorthand for additional in-step images (1-indexed within that step) for future flexibility — initial implementation supports only the single-image case per the user's "one image per step" description.
+- A step with no image block renders `{{fig:step}}` as the same broken-ref chip that already exists in `FigureRefs`.
 
-### 2. Per-step images
+### Files touched
 
-Falls out of #1: the **image** and **figure-row** blocks are how images attach to a step. The existing `{{fig:N}}` reference token from the global image library still works inside text blocks for inline cross-references.
+- `src/lib/figure-refs.tsx` — add `buildFigureMapFromSteps`, extend token regex to accept `step`, update `<FigureRefs />` to take an optional `stepImageNumber` for in-step resolution.
+- `src/lib/types.ts` — extend `FIGURE_TOKEN_RE` to match `{{fig:step}}`.
+- `src/components/manual-editor/StepBlocksEditor.tsx` — wire `##Fig.` / `@Fig.` auto-insert in TipTap and in callout/text inputs; pass owning step's image number into the renderer; update the image picker dropdown to use captions, not synthetic "Fig. N".
+- `src/components/manual-editor/FigureRefField.tsx` — accept and emit `{{fig:step}}` when rendered inside a step context.
+- `src/components/manual/StepBlocksView.tsx` — pass step image number into `<FigureRefs />` when rendering each step's text.
+- `src/routes/_authenticated/products.$productId.tsx` — switch `figMap` derivation to steps; guard `setContent` against asset-only refetches; targeted cache update on upload/add/remove.
+- `src/routes/manuals.$slug.tsx` — same figure-map switch for the published view.
 
----
-
-### 3. Torque section
-
-Keep as-is. No change.
-
----
-
-### 4. SKU / variant handling (Odoo)
-
-**Lookup (`lookupProductBySku`).** Today it queries `product.product` only, which is variant-level. Change behavior:
-
-1. If exact match on `product.product.default_code` → return that variant (current behavior).
-2. Otherwise query `product.template` where `default_code = sku`. If 1 template hit → fetch its variants (`product.product` where `product_tmpl_id = X`). If 1 variant → return it. If >1 variants → return `{ source: 'odoo_variants', variants: [...] }` and the UI shows a picker.
-3. If no template hit either → `not_found` (unchanged).
-
-**Create-manual flow.** Add a variant picker step that appears only when the lookup returns multiple variants. User selects one variant; that variant's id/SKU is stored on the `products` row.
-
-**BOM rendering.** When importing a BOM line, store both the variant SKU (`product.product.default_code`) and the template SKU (`product_tmpl_id[1]` → fetch `product.template.default_code`). Display the **template SKU** on the parts list by default. Keep variant SKU in the row for traceability / future "show variants" toggle.
-
-**Schema.** Add `template_sku text` to `bom_snapshots` line items (lines are JSON, so this is a JSON-shape change handled in the importer + UI — no migration needed). Add `erp_template_id text` and `template_sku text` to `products` for the chosen template reference.
-
----
-
-## Technical Notes
-
-- TipTap deps to add: `@tiptap/react @tiptap/starter-kit @tiptap/extension-link @tiptap/extension-image`.
-- Type changes in `src/lib/types.ts`: add `StepBlock` union and `ManualStep.blocks?`. Keep `body?` for back-compat reads.
-- Editor lives in a new `src/components/manual-editor/StepBlocksEditor.tsx` and per-block components under `src/components/manual-editor/blocks/`.
-- Public render moves into `src/components/manual/StepBlocksView.tsx` reused by `manuals.$slug.tsx` and `MasterManualPreview.tsx`.
-- Odoo: extend `src/lib/odoo-xmlrpc.server.ts` callers; no XML-RPC client changes needed.
-- Migration is small and idempotent (additive columns with defaults).
-
----
-
-## Out of Scope (this turn)
-
-- Authoring custom modules in `/settings/templates` UI (DB column ready; UI in a follow-up).
-- Variant switcher on the public manual page.
-- PDF export of block content.
-
----
-
-## Order of Work
-
-1. Migration: add `allowed_blocks`, `extra_modules` to `manual_templates`; add `erp_template_id`, `template_sku` to `products`.
-2. Install TipTap deps.
-3. Types: `StepBlock` union; loosen `ManualStep`.
-4. Build `StepBlocksEditor` + block components.
-5. Wire into `ManualListEditors.tsx`, replacing the textarea body.
-6. Build `StepBlocksView` and swap into public route + master preview.
-7. Update `lookupProductBySku` for template fallback + multi-variant return; add variant-picker UI to create-manual flow.
-8. Update BOM importer to capture template SKU; render template SKU in parts list.
-9. Smoke-test in preview: create manual via SKU lookup with variants, build a step with a two-column block, view published page.
-
-Migration first (separate approval), then code in one batch.
+No DB or server-function changes.
