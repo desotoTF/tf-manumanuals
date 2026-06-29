@@ -1,17 +1,16 @@
 // "Manuals" list page. Lives at /products for URL stability but the user-facing
 // name is Manuals. Lists every manual in the org with status, latest version,
-// and a "Create manual" button that picks an unassigned product + template.
+// and a "Create manual" button — SKU-first flow (no product picker).
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import { Plus, Check, ChevronsUpDown } from "lucide-react";
+import { Plus, Search, Loader2 } from "lucide-react";
 import { useActiveOrg } from "@/components/AppShell";
-import { listManualsWithStatus } from "@/lib/manuals.functions";
-import { createManualDraft } from "@/lib/manuals.functions";
-import { listProductsWithoutManual } from "@/lib/products.functions";
+import { listManualsWithStatus, createManualFromSku } from "@/lib/manuals.functions";
+import { lookupProductBySku } from "@/lib/products.functions";
 import { listTemplates } from "@/lib/templates.functions";
 import { formatManualLabel } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +31,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -40,20 +40,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import { cn } from "@/lib/utils";
+
 
 export const Route = createFileRoute("/_authenticated/products")({
   component: ManualsPage,
