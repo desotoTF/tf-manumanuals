@@ -15,6 +15,7 @@ import {
   transitionManualVersion,
   addManualAsset,
   removeManualAsset,
+  uploadManualAssetFile,
   importLegacyManualFromPdf,
   loadBomForManual,
 } from "@/lib/manuals.functions";
