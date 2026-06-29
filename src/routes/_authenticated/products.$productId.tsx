@@ -5,7 +5,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   getProductWorkspace,
@@ -15,6 +15,7 @@ import {
   transitionManualVersion,
   addManualAsset,
   removeManualAsset,
+  uploadManualAssetFile,
   importLegacyManualFromPdf,
   loadBomForManual,
 } from "@/lib/manuals.functions";
@@ -94,6 +95,7 @@ function ProductEditorPage() {
   const transition = useServerFn(transitionManualVersion);
   const addAsset = useServerFn(addManualAsset);
   const removeAsset = useServerFn(removeManualAsset);
+  const uploadAsset = useServerFn(uploadManualAssetFile);
   const importPdf = useServerFn(importLegacyManualFromPdf);
   const fetchTemplates = useServerFn(listTemplates);
 
@@ -244,6 +246,36 @@ function ProductEditorPage() {
     mutationFn: (assetId: string) => removeAsset({ data: { assetId } }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["manual-version", activeVersionId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const uploadAssetMut = useMutation({
+    mutationFn: async (input: { file: File; caption?: string }) => {
+      const buf = await input.file.arrayBuffer();
+      // Convert to base64 in chunks to avoid call-stack blowups on large files.
+      let binary = "";
+      const bytes = new Uint8Array(buf);
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode(
+          ...bytes.subarray(i, Math.min(i + chunk, bytes.length)),
+        );
+      }
+      const dataBase64 = btoa(binary);
+      return uploadAsset({
+        data: {
+          versionId: activeVersionId!,
+          filename: input.file.name,
+          contentType: input.file.type || "application/octet-stream",
+          dataBase64,
+          caption: input.caption,
+        },
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["manual-version", activeVersionId] });
+      toast.success("Image uploaded");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -429,6 +461,10 @@ function ProductEditorPage() {
               assets={assets}
               onAddAsset={(url, caption) => addAssetMut.mutate({ url, caption })}
               onRemoveAsset={(id) => removeAssetMut.mutate(id)}
+              onUploadAsset={(file, caption) =>
+                uploadAssetMut.mutateAsync({ file, caption })
+              }
+              uploadingAsset={uploadAssetMut.isPending}
               tools={toolsQuery.data ?? []}
               onCreateTool={async (name) => {
                 const created = await upsertToolMut.mutateAsync(name);
@@ -607,6 +643,8 @@ function ContentEditor({
   assets,
   onAddAsset,
   onRemoveAsset,
+  onUploadAsset,
+  uploadingAsset,
   tools,
   onCreateTool,
   creatingTool,
@@ -619,6 +657,8 @@ function ContentEditor({
   assets: { id: string; type: string; url: string | null; metadata: any }[];
   onAddAsset: (url: string, caption?: string) => void;
   onRemoveAsset: (id: string) => void;
+  onUploadAsset: (file: File, caption?: string) => Promise<unknown>;
+  uploadingAsset: boolean;
   tools: import("@/lib/tools.functions").ToolRow[];
   onCreateTool: (
     name: string,
@@ -783,6 +823,8 @@ function ContentEditor({
             editable={editable}
             onAdd={onAddAsset}
             onRemove={onRemoveAsset}
+            onUpload={onUploadAsset}
+            uploading={uploadingAsset}
             figMap={figMap}
           />
         )}
@@ -1064,16 +1106,21 @@ function ImagesPanel({
   editable,
   onAdd,
   onRemove,
+  onUpload,
+  uploading,
   figMap,
 }: {
   assets: { id: string; type: string; url: string | null; metadata: any }[];
   editable: boolean;
   onAdd: (url: string, caption?: string) => void;
   onRemove: (id: string) => void;
+  onUpload: (file: File, caption?: string) => Promise<unknown>;
+  uploading: boolean;
   figMap: Map<string, number>;
 }) {
   const [url, setUrl] = useState("");
   const [caption, setCaption] = useState("");
+  const fileRef = useRef<HTMLInputElement | null>(null);
   return (
     <div className="space-y-3">
       {assets.length === 0 && (
@@ -1115,30 +1162,68 @@ function ImagesPanel({
       </div>
 
       {editable && (
-        <div className="flex flex-wrap items-center gap-2">
-          <Input
-            placeholder="https://image-url.jpg"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            className="h-8 max-w-sm text-sm"
-          />
-          <Input
-            placeholder="Caption (optional)"
-            value={caption}
-            onChange={(e) => setCaption(e.target.value)}
-            className="h-8 max-w-xs text-sm"
-          />
-          <Button
-            size="sm"
-            onClick={() => {
-              if (!url.trim()) return;
-              onAdd(url.trim(), caption.trim() || undefined);
-              setUrl("");
-              setCaption("");
-            }}
-          >
-            <Plus className="mr-2 h-4 w-4" /> Add image
-          </Button>
+        <div className="space-y-3 rounded-md border border-dashed border-border p-3">
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground">
+              Upload image file
+            </p>
+            <Input
+              placeholder="Caption (optional)"
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
+              className="h-8 max-w-md text-sm"
+            />
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                try {
+                  await onUpload(f, caption.trim() || undefined);
+                  setCaption("");
+                } finally {
+                  if (fileRef.current) fileRef.current.value = "";
+                }
+              }}
+            />
+            <Button
+              size="sm"
+              disabled={uploading}
+              onClick={() => fileRef.current?.click()}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              {uploading ? "Uploading…" : "Choose image"}
+            </Button>
+          </div>
+
+          <div className="space-y-2 border-t border-border pt-3">
+            <p className="text-xs font-semibold text-muted-foreground">
+              …or paste an image URL
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                placeholder="https://image-url.jpg"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                className="h-8 max-w-sm text-sm"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  if (!url.trim()) return;
+                  onAdd(url.trim(), caption.trim() || undefined);
+                  setUrl("");
+                  setCaption("");
+                }}
+              >
+                Add by URL
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>

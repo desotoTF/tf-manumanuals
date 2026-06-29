@@ -821,6 +821,79 @@ export const addManualAsset = createServerFn({ method: "POST" })
     return asset;
   });
 
+// Upload an image file (base64-encoded) to the manual-assets bucket and
+// attach it to the version. The bucket is private, so we mint a long-lived
+// signed URL and store it on the asset row alongside the storage_path so
+// public/auth readers can render without additional signing.
+export const uploadManualAssetFile = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        versionId: uuid,
+        filename: z.string().min(1).max(200),
+        contentType: z.string().min(1).max(120),
+        // base64 (no data: prefix). Cap at ~12MB encoded.
+        dataBase64: z.string().min(1).max(16_000_000),
+        caption: z.string().max(500).optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+
+    // Resolve org for namespacing via the version → manual → product chain.
+    const { data: version, error: vErr } = await supabase
+      .from("manual_versions")
+      .select("id, manual_id, manuals!inner(product_id, products!inner(organization_id))")
+      .eq("id", data.versionId)
+      .maybeSingle();
+    if (vErr) throw vErr;
+    if (!version) throw new Error("Version not found");
+    const nested = version as unknown as {
+      manuals: { product_id: string; products: { organization_id: string } };
+    };
+    const orgId = nested.manuals.products.organization_id;
+    const productId = nested.manuals.product_id;
+
+    const { supabaseAdmin } = await import(
+      "@/integrations/supabase/client.server"
+    );
+
+    const safeName = data.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const path = `manual-images/${orgId}/${productId}/${data.versionId}/${Date.now()}-${safeName}`;
+    const bytes = Buffer.from(data.dataBase64, "base64");
+
+    const { error: upErr } = await supabaseAdmin.storage
+      .from("manual-assets")
+      .upload(path, bytes, {
+        contentType: data.contentType,
+        upsert: false,
+      });
+    if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
+
+    // 10-year signed URL. Private bucket workaround until public buckets are
+    // enabled at the workspace level.
+    const { data: signed, error: sErr } = await supabaseAdmin.storage
+      .from("manual-assets")
+      .createSignedUrl(path, 60 * 60 * 24 * 365 * 10);
+    if (sErr) throw new Error(`Signing URL failed: ${sErr.message}`);
+
+    const { data: asset, error } = await supabase
+      .from("manual_assets")
+      .insert({
+        manual_version_id: data.versionId,
+        type: "image",
+        storage_path: path,
+        url: signed.signedUrl,
+        metadata: data.caption ? { caption: data.caption } : {},
+      })
+      .select("id, type, url, metadata, created_at")
+      .single();
+    if (error) throw error;
+    return asset;
+  });
+
 export const removeManualAsset = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ assetId: uuid }).parse(d))
