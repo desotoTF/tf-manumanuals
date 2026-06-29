@@ -162,9 +162,11 @@ function ImageView({
 function CalloutView({
   block,
   figMap,
+  stepImageNumber,
 }: {
   block: CalloutStepBlock;
   figMap: Map<string, number>;
+  stepImageNumber: number | null;
 }) {
   const map = {
     info: {
@@ -190,7 +192,11 @@ function CalloutView({
     >
       <Icon className="mt-0.5 h-4 w-4 shrink-0" />
       <p>
-        <FigureRefs text={block.body} figMap={figMap} />
+        <FigureRefs
+          text={block.body}
+          figMap={figMap}
+          stepImageNumber={stepImageNumber}
+        />
       </p>
     </div>
   );
@@ -200,19 +206,32 @@ function TwoColumnView({
   block,
   assets,
   figMap,
+  stepImageNumber,
 }: {
   block: TwoColumnStepBlock;
   assets: AssetMap;
   figMap: Map<string, number>;
+  stepImageNumber: number | null;
 }) {
   return (
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
       <div>
-        <BlockView block={block.left} assets={assets} figMap={figMap} />
+        <BlockView
+          block={block.left}
+          assets={assets}
+          figMap={figMap}
+          stepImageNumber={stepImageNumber}
+        />
       </div>
       <div>
-        <BlockView block={block.right} assets={assets} figMap={figMap} />
+        <BlockView
+          block={block.right}
+          assets={assets}
+          figMap={figMap}
+          stepImageNumber={stepImageNumber}
+        />
       </div>
     </div>
   );
 }
+
