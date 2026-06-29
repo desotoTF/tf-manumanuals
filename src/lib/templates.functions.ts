@@ -31,10 +31,15 @@ export interface TemplateRow {
   description: string | null;
   layout: "classic" | "compact" | "field_guide" | "service_card";
   is_default: boolean;
+  is_master: boolean;
   default_content: JsonValue;
+  branding: JsonValue;
   created_at: string;
   updated_at: string;
 }
+
+const TEMPLATE_COLUMNS =
+  "id, organization_id, name, description, layout, is_default, is_master, default_content, branding, created_at, updated_at";
 
 export const listTemplates = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -42,12 +47,12 @@ export const listTemplates = createServerFn({ method: "GET" })
   .handler(async ({ data, context }) => {
     const { data: rows, error } = await context.supabase
       .from("manual_templates" as never)
-      .select(
-        "id, organization_id, name, description, layout, is_default, default_content, created_at, updated_at",
-      )
+      .select(TEMPLATE_COLUMNS)
       .eq("organization_id", data.organizationId)
+      .order("is_master", { ascending: false })
       .order("is_default", { ascending: false })
       .order("name", { ascending: true });
+
     if (error) throw error;
     return JSON.parse(JSON.stringify(rows ?? [])) as TemplateRow[];
   });
