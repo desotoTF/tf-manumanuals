@@ -141,7 +141,6 @@ function DashboardPage() {
   const counts = summaryQuery.data?.counts ?? {
     in_sync: 0,
     out_of_sync: 0,
-    no_manual: 0,
     pending_review: 0,
   };
 
