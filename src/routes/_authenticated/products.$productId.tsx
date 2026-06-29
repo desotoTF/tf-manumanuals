@@ -762,11 +762,16 @@ function StepsEditor({
   steps,
   setSteps,
   editable,
+  images,
+  figMap,
 }: {
   steps: ManualContent["steps"];
   setSteps: (s: ManualContent["steps"]) => void;
   editable: boolean;
+  images: { asset_id: string; caption?: string | null }[];
+  figMap: Map<string, number>;
 }) {
+
   return (
     <div className="space-y-3">
       {steps.map((s, i) => (
