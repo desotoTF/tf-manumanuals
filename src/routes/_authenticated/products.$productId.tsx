@@ -933,10 +933,14 @@ function WarningsEditor({
   warnings,
   setWarnings,
   editable,
+  images,
+  figMap,
 }: {
   warnings: ManualContent["warnings"];
   setWarnings: (w: ManualContent["warnings"]) => void;
   editable: boolean;
+  images: { asset_id: string; caption?: string | null }[];
+  figMap: Map<string, number>;
 }) {
   return (
     <div className="space-y-2">
@@ -960,17 +964,20 @@ function WarningsEditor({
               <SelectItem value="danger">Danger</SelectItem>
             </SelectContent>
           </Select>
-          <Textarea
+          <FigureRefField
             rows={2}
             value={w.body}
-            onChange={(e) => {
-              const next = [...warnings];
-              next[i] = { ...w, body: e.target.value };
-              setWarnings(next);
-            }}
             disabled={!editable}
             className="flex-1"
+            images={images}
+            figMap={figMap}
+            onChange={(v) => {
+              const next = [...warnings];
+              next[i] = { ...w, body: v };
+              setWarnings(next);
+            }}
           />
+
           {editable && (
             <Button
               size="sm"
