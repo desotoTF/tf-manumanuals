@@ -339,6 +339,7 @@ export const createManualFromSku = createServerFn({ method: "POST" })
       )
       .select("id")
       .single();
+    let productId: string;
     if (pErr) {
       // Slug collision fallback: append a short suffix.
       const { data: prod2, error: pErr2 } = await supabase
@@ -362,10 +363,11 @@ export const createManualFromSku = createServerFn({ method: "POST" })
         .select("id")
         .single();
       if (pErr2) throw pErr2;
-      var productId = prod2.id;
+      productId = prod2.id;
     } else {
-      var productId = prod.id;
+      productId = prod.id;
     }
+
 
     // Reject if a manual already exists for this product — the UI should
     // route the user to the existing manual instead.
