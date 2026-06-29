@@ -285,6 +285,11 @@ function ProductEditorPage() {
           )}
         </div>
         <div className="flex gap-2">
+          {primaryManual && (
+            <Button variant="outline" onClick={() => setPreviewOpen(true)}>
+              <Eye className="mr-2 h-4 w-4" /> Preview
+            </Button>
+          )}
           {!primaryManual && (
             <>
               <Button onClick={() => setCreateOpen(true)}>
@@ -307,6 +312,20 @@ function ProductEditorPage() {
             )}
         </div>
       </header>
+
+      <ManualPreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        branding={masterQuery.data?.branding ?? {}}
+        meta={{
+          sku: ws.product.sku,
+          name: ws.product.name,
+          variant: ws.product.description ?? undefined,
+          versionLabel: activeVersion ? String(activeVersion.version_number) : undefined,
+        }}
+        content={content}
+      />
+
 
       <CreateManualDialog
         open={createOpen}
