@@ -1,55 +1,51 @@
 ## Root cause
 
-The "Sync migrations to external Supabase" workflow keeps an internal ledger (`_lovable_migrations` or similar) on the external DB tracking which migration filenames have been applied. When the workflow was first installed, it pre-seeded that ledger with every migration file that already existed in `supabase/migrations/` at that moment — assuming the external DB was already in sync with the Lovable DB.
+The sync workflow applies migrations in **filename sort order**. Right now:
 
-It wasn't. The external DB is an older snapshot from before tables like `manual_templates`, `manual_sync_status`, `manual_assets`, `manual_versions`, `bom_snapshots`, etc. existed. The ledger marked all of those `CREATE TABLE` migrations as applied, but the SQL never ran, so the tables don't exist. Every new migration that touches one of those tables now fails with `relation "public.X" does not exist`.
-
-Latest failure:
 ```
-apply 20260629162533_d8a8bf15...sql
-ERROR:  relation "public.manual_templates" does not exist
+…20260629152649_…sql   skip (already applied)
+…20260629162533_…sql   apply → ERROR: relation "public.manual_templates" does not exist
+…20260629200227_…sql   never reached (script aborts on the error above)
 ```
 
-## Fix strategy
+The catch-up migration I wrote (`20260629200227_…`) is correct, but its timestamp sorts it **after** the broken migration, so it never runs. The set -euo pipefail in the workflow makes the first failure kill the loop.
 
-Two halves: bring the external DB schema up to date in one shot, then realign the ledger so future migrations apply cleanly.
+## Fix
 
-### Step 1 — Diagnose the gap (you run this; I can't reach the external DB from here)
+Rename the catch-up file so it sorts **before** `20260629162533_d8a8bf15…sql`. The cleanest choice is a timestamp just before it — e.g. `20260629162500_catchup_external_db_schema.sql`.
 
-Connect to the external DB using the same connection string in `EXTERNAL_SUPABASE_DB_URL` and list which `public.*` tables already exist:
+The file content stays exactly the same (it's already idempotent — safe to run on both Lovable DB and external DB). Only the filename changes.
 
-```bash
-psql "$EXTERNAL_SUPABASE_DB_URL" -c "\dt public.*"
-psql "$EXTERNAL_SUPABASE_DB_URL" -c "SELECT name FROM _lovable_migrations ORDER BY name;"
+### Why not just delete the bad migration?
+
+`20260629162533_d8a8bf15…sql` already ran successfully on the Lovable DB. Deleting or renaming it would desync the two databases differently and break Lovable's own migration history. Better to slip the catch-up in front of it.
+
+### Ledger consideration
+
+The ledger on the external DB has not seen `20260629162500_catchup…sql` yet (new filename), so the workflow will pick it up on the next run. The renamed catch-up creates `manual_templates` and friends, then `20260629162533_…sql` re-runs cleanly because the table now exists.
+
+## Steps (after you approve)
+
+1. **Rename the file** from `supabase/migrations/20260629200227_cd6bd50a-59ab-4b71-aff2-f82f0c3f1e7d.sql` → `supabase/migrations/20260629162500_catchup_external_db_schema.sql`. Content unchanged.
+2. Push to main (auto-syncs through Lovable's GitHub integration).
+3. You re-run **Sync migrations to external Supabase** in the primary repo's Actions tab.
+
+## Expected log on the next run
+
+```
+skip  20260629152649_…sql (already applied)
+apply 20260629162500_catchup_external_db_schema.sql   ← creates manual_templates etc.
+apply 20260629162533_d8a8bf15…sql                      ← now succeeds
 ```
 
-(If the ledger table is named something else, the workflow file will tell us — it's `.github/workflows/sync-external-db.yml`.)
+## After it goes green
 
-Share both outputs. That tells me exactly which migrations were truthfully applied vs. only marked.
+Reload the Render-deployed site:
+- `/settings/templates` should let you create/edit the master template.
+- Clicking a manual card should open the editor.
 
-### Step 2 — Create a single "catch-up" migration
+If either is still broken, that's separate from schema drift and I'll dig into the code/data next. Data backfill (copying your existing manuals/templates from Lovable DB → external DB) is still optional and a separate step once you ask.
 
-Based on the diff, I'll write one new migration file that re-runs the missing schema **idempotently** — `CREATE TABLE IF NOT EXISTS`, `CREATE TYPE … IF NOT EXISTS` (via `DO $$ … EXCEPTION` block since Postgres doesn't support `IF NOT EXISTS` on `CREATE TYPE` directly), `ADD COLUMN IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, `CREATE POLICY` wrapped in drop-if-exists, etc.
+## What I need from you
 
-This catch-up runs safely on:
-- the **external DB** → creates everything that's missing
-- the **Lovable DB** → no-ops because everything already exists
-
-### Step 3 — Reset the ledger entries that lied
-
-In the same catch-up migration, `DELETE FROM _lovable_migrations WHERE name IN (...)` for the migrations whose tables we just (re)created, then re-insert them at the bottom so ordering stays clean. Or simpler: leave the ledger alone and rely on idempotency — the workflow will skip already-applied filenames either way, and the new failing migration (`20260629162533`) becomes valid because the table now exists.
-
-### Step 4 — Re-run the failed workflow
-
-From GitHub → Actions → the failed run → "Re-run failed jobs". Migration `20260629162533` re-runs, this time successfully because `manual_templates` exists. From then on, every new migration syncs automatically.
-
-### Step 5 — Backfill data (optional, separate decision)
-
-This only fixes the **schema**. The external DB will still have no rows in the newly created tables (no templates, no manuals, no BOM snapshots). If you want the existing manual you created in the Lovable preview to also show up on the Render site, that's a separate one-shot data export/import — flag it after schema is in sync and we'll handle it.
-
-## What I need from you to proceed
-
-1. The output of `\dt public.*` against the external DB
-2. The output of `SELECT name FROM _lovable_migrations ORDER BY name;` against the external DB (or whatever the ledger table is — the workflow file names it)
-
-Once I have those, I'll write the single catch-up migration and you re-run the workflow.
+Just approve this plan and I'll do the rename in one edit.
