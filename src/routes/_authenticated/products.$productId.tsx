@@ -1140,14 +1140,7 @@ function TemplatePicker({
   value: string | undefined;
   onChange: (v: string | undefined) => void;
 }) {
-  if (templates.length === 0) {
-    return (
-      <p className="text-xs text-muted-foreground">
-        No templates yet — the draft will start blank. Admins can create
-        templates in Settings → Templates.
-      </p>
-    );
-  }
+  const hasDefault = templates.some((t) => t.is_default);
   return (
     <Select
       value={value ?? "__none__"}
@@ -1157,7 +1150,9 @@ function TemplatePicker({
         <SelectValue placeholder="Pick a template" />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="__none__">No template (blank)</SelectItem>
+        <SelectItem value="__none__">
+          None — blank{!hasDefault ? " · default" : ""}
+        </SelectItem>
         {templates.map((t) => (
           <SelectItem key={t.id} value={t.id}>
             {t.name}

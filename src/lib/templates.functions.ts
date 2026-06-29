@@ -160,6 +160,18 @@ export const setDefaultTemplate = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+export const clearDefaultTemplate = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ organizationId: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase
+      .from("manual_templates" as never)
+      .update({ is_default: false } as never)
+      .eq("organization_id", data.organizationId);
+    if (error) throw error;
+    return { ok: true as const };
+  });
+
 // Master template (one per org). Returns null if none seeded yet.
 export const getMasterTemplate = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
