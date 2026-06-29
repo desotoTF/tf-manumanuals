@@ -862,18 +862,27 @@ function StepsEditor({
             placeholder="Step title"
             className="mb-2"
           />
-          <FigureRefField
-            value={s.body}
-            rows={3}
-            disabled={!editable}
-            placeholder="Describe what the installer does in this step. Type ##Fig. to insert a figure reference."
-            images={images}
-            figMap={figMap}
-            onChange={(v) => {
+          <StepBlocksEditor
+            blocks={
+              s.blocks ??
+              // Migrate legacy plain-text body into a single text block on
+              // first edit so the user can format/extend it immediately.
+              (s.body
+                ? [{ id: `${s.id}-legacy`, type: "text", html: `<p>${escapeHtml(s.body)}</p>` } as StepBlock]
+                : [])
+            }
+            onChange={(blocks) => {
               const next = [...steps];
-              next[i] = { ...s, body: v };
+              // Drop legacy body once blocks exist.
+              next[i] = { ...s, blocks, body: undefined };
               setSteps(next);
             }}
+            disabled={!editable}
+            images={images.map((img) => ({
+              asset_id: img.asset_id,
+              caption: img.caption ?? null,
+              url: (img as { url?: string | null }).url ?? null,
+            }))}
           />
 
         </div>
@@ -891,7 +900,7 @@ function StepsEditor({
                     ? crypto.randomUUID()
                     : `s-${Date.now()}`,
                 title: "",
-                body: "",
+                blocks: [newStepBlock("text")!],
               },
             ])
           }
