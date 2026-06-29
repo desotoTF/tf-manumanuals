@@ -41,7 +41,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Plus, Star, Trash2, Pencil } from "lucide-react";
+import { Plus, Star, Trash2, Pencil, Palette } from "lucide-react";
+import { EditBrandingDialog } from "@/components/templates/EditBrandingDialog";
+
 
 export const Route = createFileRoute("/_authenticated/settings/templates")({
   component: TemplatesPage,
