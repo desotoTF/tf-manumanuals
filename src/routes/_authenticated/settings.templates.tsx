@@ -189,7 +189,13 @@ function TemplatesPage() {
                   <Button size="sm" variant="outline" onClick={() => openEdit(t)}>
                     <Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit
                   </Button>
-                  {!t.is_default && (
+                  {t.is_master && (
+                    <Button size="sm" variant="outline" onClick={() => openBranding(t)}>
+                      <Palette className="mr-1.5 h-3.5 w-3.5" /> Edit branding
+                    </Button>
+                  )}
+                  {!t.is_default && !t.is_master && (
+
                     <Button
                       size="sm"
                       variant="outline"
