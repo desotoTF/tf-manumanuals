@@ -894,6 +894,10 @@ export type Database = {
         Args: { _connection_id: string }
         Returns: undefined
       }
+      erp_hard_delete_connection: {
+        Args: { _connection_id: string }
+        Returns: undefined
+      }
       erp_read_credentials: { Args: { _connection_id: string }; Returns: Json }
       erp_store_credentials: {
         Args: { _api_key: string; _connection_id: string }
