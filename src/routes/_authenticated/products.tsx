@@ -396,6 +396,8 @@ function CreateManualDialog({
                   "Matched an existing product in this workspace."}
                 {lookup.source === "odoo" &&
                   "Found in Odoo — name auto-filled."}
+                {lookup.source === "odoo_variants" &&
+                  `Matched the base SKU ${lookup.templateSku ?? sku} in Odoo — pick a variant below.`}
                 {lookup.source === "not_found" && (
                   <>
                     Not found{lookup.lookupError ? ` (${lookup.lookupError})` : ""}.
@@ -405,6 +407,35 @@ function CreateManualDialog({
               </p>
             )}
           </div>
+
+          {lookup?.source === "odoo_variants" && lookup.variants && (
+            <div className="space-y-1">
+              <Label>Variant</Label>
+              <Select
+                value={selectedVariant}
+                onValueChange={setSelectedVariant}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Pick a variant…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {lookup.variants.map((v) => (
+                    <SelectItem key={v.odooProductId} value={v.odooProductId}>
+                      <span className="font-mono text-xs">{v.sku}</span>
+                      <span className="ml-2 text-muted-foreground">
+                        {v.name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                The manual will use the variant SKU. The base SKU
+                ({lookup.templateSku ?? sku}) is kept as the template
+                reference for the parts list.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-1">
             <Label htmlFor="name">Product name</Label>
