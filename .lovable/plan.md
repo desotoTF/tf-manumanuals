@@ -1,79 +1,55 @@
-## Goal
+## Root cause
 
-Create one editable "master template" for ThumperFab, seeded by hand from the reference PDF (`TF292001 Defender HD11 Long Travel INSTALL`). The template defines cover layout, header/footer, fonts, colors, and parts-table styling for every manual. No general PDF-to-template tool — this is a one-time seed. Admins can edit all of it afterward in Settings → Templates, and both the on-screen manual preview and PDF export render through it.
+The "Sync migrations to external Supabase" workflow keeps an internal ledger (`_lovable_migrations` or similar) on the external DB tracking which migration filenames have been applied. When the workflow was first installed, it pre-seeded that ledger with every migration file that already existed in `supabase/migrations/` at that moment — assuming the external DB was already in sync with the Lovable DB.
 
-## Branding extracted from the PDF
+It wasn't. The external DB is an older snapshot from before tables like `manual_templates`, `manual_sync_status`, `manual_assets`, `manual_versions`, `bom_snapshots`, etc. existed. The ledger marked all of those `CREATE TABLE` migrations as applied, but the SQL never ran, so the tables don't exist. Every new migration that touches one of those tables now fails with `relation "public.X" does not exist`.
 
-- Logo: black + red angular "AF/TF" mark next to wordmark
-- Brand red: ~`#E11D2A` (title text, web URL, divider dots, table-header band)
-- Ink black: ~`#111111` (body/headings)
-- Body gray: ~`#4B4B4B` (sub-text, footer)
-- Headings: condensed sans-serif (close free match: **Barlow Condensed** for titles, **Barlow** for body)
-- Cover: top logo lockup → red H1 product name → black H2 variant → "SKU: …" → hero image → centered footer block (company, address, phone, `www.thumperfab.com`, "Ver. …")
-- Inner pages: top header strip with product name / variant / SKU; numbered steps with photos; PARTS / HARDWARE KIT / TOOLS tables with red header band, white text
-- Back cover mirrors the front lockup
-
-## Data model (one migration)
-
-Extend `manual_templates` with a single `branding jsonb` column (default `{}`), so we don't fragment the schema. Shape:
-
-```json
-{
-  "logo_url": "...",
-  "colors": { "brand": "#E11D2A", "ink": "#111111", "muted": "#4B4B4B", "tableHeaderBg": "#E11D2A", "tableHeaderFg": "#FFFFFF" },
-  "fonts":  { "heading": "Barlow Condensed", "body": "Barlow", "headingWeight": 700, "bodyWeight": 400 },
-  "cover":  { "tagline": "Aluminum Audio Roofs • Roll Cages • UTV Accessories", "showHero": true, "versionLabelPrefix": "Ver." },
-  "header": { "show": true, "showSku": true },
-  "footer": { "companyName": "Thumper Fab", "address": "5103 Elysian Fields Rd, Marshall, TX 75672", "phone": "903-472-0928", "website": "www.thumperfab.com" },
-  "tables": { "partsHeaderUppercase": true, "zebra": false, "borderColor": "#111111" }
-}
+Latest failure:
+```
+apply 20260629162533_d8a8bf15...sql
+ERROR:  relation "public.manual_templates" does not exist
 ```
 
-Plus a boolean `is_master boolean default false` so we can mark + look up the single ThumperFab master quickly. Migration also seeds one row: `name = "ThumperFab Master"`, `is_master = true`, `branding = {…above…}`, scoped to the ThumperFab org.
+## Fix strategy
 
-## Logo asset
+Two halves: bring the external DB schema up to date in one shot, then realign the ledger so future migrations apply cleanly.
 
-Crop the wordmark+icon out of page 1 of the reference PDF, upload via `lovable-assets`, store the resulting CDN URL in `branding.logo_url`. Editable later by uploading a new logo (reuses existing `manual-assets` bucket).
+### Step 1 — Diagnose the gap (you run this; I can't reach the external DB from here)
 
-## Rendering — shared layout component
+Connect to the external DB using the same connection string in `EXTERNAL_SUPABASE_DB_URL` and list which `public.*` tables already exist:
 
-New `src/components/manual/MasterLayout.tsx` consumes `branding` + manual content. Two adapter wrappers:
+```bash
+psql "$EXTERNAL_SUPABASE_DB_URL" -c "\dt public.*"
+psql "$EXTERNAL_SUPABASE_DB_URL" -c "SELECT name FROM _lovable_migrations ORDER BY name;"
+```
 
-1. `WebManualPreview` — used on the manual detail page; renders semantic HTML styled with Tailwind, but pulls all colors / fonts / strings from `branding` via inline style + CSS vars (no hard-coded hex/font names).
-2. `PdfManualDoc` — uses `@react-pdf/renderer` (works in the Worker SSR runtime) to render the same structure with matching tokens for the PDF export path. Fonts loaded via `Font.register` from Google Fonts (Barlow / Barlow Condensed).
+(If the ledger table is named something else, the workflow file will tell us — it's `.github/workflows/sync-external-db.yml`.)
 
-Both reuse the same section components (Cover, Header, Footer, PartsTable, ToolsList, StepBlock, Disclaimer, BackCover) so visual edits to `branding` show up identically in web and PDF.
+Share both outputs. That tells me exactly which migrations were truthfully applied vs. only marked.
 
-Hook points:
-- Web preview: `products.$productId.tsx` swaps current ad-hoc rendering for `<WebManualPreview branding={masterTemplate.branding} manual={…} />`.
-- PDF export: existing export server fn loads the master template row and renders `PdfManualDoc` → returns PDF bytes.
+### Step 2 — Create a single "catch-up" migration
 
-## Editor UI (Settings → Templates)
+Based on the diff, I'll write one new migration file that re-runs the missing schema **idempotently** — `CREATE TABLE IF NOT EXISTS`, `CREATE TYPE … IF NOT EXISTS` (via `DO $$ … EXCEPTION` block since Postgres doesn't support `IF NOT EXISTS` on `CREATE TYPE` directly), `ADD COLUMN IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, `CREATE POLICY` wrapped in drop-if-exists, etc.
 
-In `settings.templates.tsx`, add an "Edit Branding" button on the master template row that opens a dialog with fields grouped:
+This catch-up runs safely on:
+- the **external DB** → creates everything that's missing
+- the **Lovable DB** → no-ops because everything already exists
 
-- **Identity**: logo upload, company name, tagline
-- **Colors**: 5 color pickers (brand, ink, muted, table header bg/fg) with live swatches
-- **Typography**: heading font, body font (dropdown of supported Google fonts: Barlow Condensed, Oswald, Bebas Neue, Roboto Condensed, Inter, Roboto, Source Sans 3), weight selectors
-- **Footer**: address, phone, website, version label prefix
-- **Cover**: show/hide hero, version label prefix
-- **Tables**: uppercase headers toggle, zebra toggle, border color
+### Step 3 — Reset the ledger entries that lied
 
-Save persists the `branding` JSON. A small "Preview" pane on the right renders a thumbnail of the cover + one inner page using `WebManualPreview` so admins see changes immediately.
+In the same catch-up migration, `DELETE FROM _lovable_migrations WHERE name IN (...)` for the migrations whose tables we just (re)created, then re-insert them at the bottom so ordering stays clean. Or simpler: leave the ledger alone and rely on idempotency — the workflow will skip already-applied filenames either way, and the new failing migration (`20260629162533`) becomes valid because the table now exists.
 
-## Files
+### Step 4 — Re-run the failed workflow
 
-- `supabase/migrations/<ts>_master_template_branding.sql` — add columns + seed row
-- `src/lib/templates.functions.ts` — add `getMasterTemplate`, `updateTemplateBranding`
-- `src/components/manual/MasterLayout.tsx`, `WebManualPreview.tsx`, `PdfManualDoc.tsx`, plus section subcomponents
-- `src/components/templates/EditBrandingDialog.tsx`
-- `src/routes/_authenticated/settings.templates.tsx` — new button + dialog wiring
-- `src/routes/_authenticated/products.$productId.tsx` — swap renderer to `WebManualPreview`
-- PDF export server fn — render `PdfManualDoc`
-- `bun add @react-pdf/renderer` (Worker-compatible)
+From GitHub → Actions → the failed run → "Re-run failed jobs". Migration `20260629162533` re-runs, this time successfully because `manual_templates` exists. From then on, every new migration syncs automatically.
 
-## Out of scope
+### Step 5 — Backfill data (optional, separate decision)
 
-- Generic PDF→template extractor (explicitly rejected)
-- OCR / image extraction from the reference PDF beyond the cropped logo
-- Per-manual branding overrides (every manual uses the master for now; we can add overrides later if needed)
+This only fixes the **schema**. The external DB will still have no rows in the newly created tables (no templates, no manuals, no BOM snapshots). If you want the existing manual you created in the Lovable preview to also show up on the Render site, that's a separate one-shot data export/import — flag it after schema is in sync and we'll handle it.
+
+## What I need from you to proceed
+
+1. The output of `\dt public.*` against the external DB
+2. The output of `SELECT name FROM _lovable_migrations ORDER BY name;` against the external DB (or whatever the ledger table is — the workflow file names it)
+
+Once I have those, I'll write the single catch-up migration and you re-run the workflow.
