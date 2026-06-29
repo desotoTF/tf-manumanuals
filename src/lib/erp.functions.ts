@@ -313,7 +313,7 @@ export const syncBoms = createServerFn({ method: "POST" })
               is_active: true,
               web_slug: slugBase,
             },
-            { onConflict: "organization_id,erp_connection_id,erp_product_id" },
+            { onConflict: "organization_id,sku" },
           )
           .select("id")
           .single();
@@ -334,7 +334,7 @@ export const syncBoms = createServerFn({ method: "POST" })
                 is_active: true,
                 web_slug: `${slugBase}-${tmplRow.id}`,
               },
-              { onConflict: "organization_id,erp_connection_id,erp_product_id" },
+              { onConflict: "organization_id,sku" },
             )
             .select("id")
             .single();
