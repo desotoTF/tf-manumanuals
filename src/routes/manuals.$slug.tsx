@@ -6,6 +6,9 @@ import { getPublishedManualBySlug } from "@/lib/public-manuals.functions";
 import type { ManualContent } from "@/lib/types";
 import { format } from "date-fns";
 import { Factory, AlertTriangle, ShieldAlert, Info } from "lucide-react";
+import { StepBlocksView } from "@/components/manual/StepBlocksView";
+import { useFigureMap } from "@/lib/figure-refs";
+import { useMemo } from "react";
 
 export const Route = createFileRoute("/manuals/$slug")({
   loader: async ({ params }) => {
