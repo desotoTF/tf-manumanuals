@@ -599,10 +599,25 @@ function ContentEditor({
     "steps" | "tools" | "parts" | "warnings" | "torque" | "images"
   >("steps");
 
+  // Build the figure source list from attached image assets, in display order.
+  // Numbering reacts to add / remove / reorder via useFigureMap.
+  const figureSources = useMemo(
+    () =>
+      assets
+        .filter((a) => a.type === "image" || a.url)
+        .map((a) => ({
+          asset_id: a.id,
+          caption: (a.metadata?.caption as string | undefined) ?? null,
+        })),
+    [assets],
+  );
+  const figMap = useFigureMap(figureSources);
+
   const update = <K extends keyof ManualContent>(
     key: K,
     value: ManualContent[K],
   ) => setContent({ ...content, [key]: value });
+
 
   return (
     <Card>
