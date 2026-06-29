@@ -190,7 +190,6 @@ function DashboardPage() {
             <SelectItem value="all">All statuses</SelectItem>
             <SelectItem value="out_of_sync">Out of sync</SelectItem>
             <SelectItem value="pending_review">Pending review</SelectItem>
-            <SelectItem value="no_manual">No manual</SelectItem>
             <SelectItem value="in_sync">In sync</SelectItem>
           </SelectContent>
         </Select>
