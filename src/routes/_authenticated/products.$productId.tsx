@@ -461,6 +461,10 @@ function ProductEditorPage() {
               assets={assets}
               onAddAsset={(url, caption) => addAssetMut.mutate({ url, caption })}
               onRemoveAsset={(id) => removeAssetMut.mutate(id)}
+              onUploadAsset={(file, caption) =>
+                uploadAssetMut.mutateAsync({ file, caption })
+              }
+              uploadingAsset={uploadAssetMut.isPending}
               tools={toolsQuery.data ?? []}
               onCreateTool={async (name) => {
                 const created = await upsertToolMut.mutateAsync(name);
