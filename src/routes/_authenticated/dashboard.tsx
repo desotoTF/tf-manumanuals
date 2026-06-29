@@ -54,12 +54,6 @@ const TILES = [
     icon: Clock,
     className: "text-amber-600 dark:text-amber-400",
   },
-  {
-    key: "no_manual",
-    label: "No manual",
-    icon: FileX,
-    className: "text-slate-600 dark:text-slate-300",
-  },
 ] as const;
 
 const STATUS_VARIANT: Record<string, { label: string; className: string }> = {
