@@ -28,7 +28,7 @@ import {
 import { listTemplates } from "@/lib/templates.functions";
 import { useActiveOrg } from "@/components/AppShell";
 import { emptyManualContent, type ManualContent, newStepBlock, type StepBlock } from "@/lib/types";
-import { useFigureMap } from "@/lib/figure-refs";
+import { useStepFigureMap, stepFirstImageNumber } from "@/lib/figure-refs";
 import { FigureRefField } from "@/components/manual-editor/FigureRefField";
 import { StepBlocksEditor } from "@/components/manual-editor/StepBlocksEditor";
 
@@ -158,8 +158,14 @@ function ProductEditorPage() {
   const [content, setContent] = useState<ManualContent>(emptyManualContent());
   const [changeSummary, setChangeSummary] = useState("");
 
+  // Only seed local content state when the *version itself* changes.
+  // Asset refetches (uploads / adds / removes) also invalidate this
+  // query, but we must not clobber unsaved block edits in that case.
+  const loadedVersionRef = useRef<string | null>(null);
   useEffect(() => {
     if (!versionQuery.data) return;
+    if (loadedVersionRef.current === versionQuery.data.version.id) return;
+    loadedVersionRef.current = versionQuery.data.version.id;
     const c = {
       ...emptyManualContent(),
       ...((versionQuery.data.version.content ?? {}) as object),
