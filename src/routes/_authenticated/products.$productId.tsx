@@ -61,7 +61,12 @@ import {
   Globe,
   Trash2,
   Upload,
+  Eye,
+  Printer,
 } from "lucide-react";
+import { getMasterTemplate } from "@/lib/templates.functions";
+import { MasterManualPreview } from "@/components/manual/MasterManualPreview";
+
 import { formatDistanceToNow } from "date-fns";
 
 export const Route = createFileRoute("/_authenticated/products/$productId")({
