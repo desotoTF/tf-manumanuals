@@ -1,21 +1,23 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Factory, BookOpen, GitCompare, Database } from "lucide-react";
+import { BookOpen, GitCompare, Database } from "lucide-react";
+import thumperFabLogo from "@/assets/thumperfab-logo.png.asset.json";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "ManuManuals — InstallOps for manufacturing" },
+      { title: "ThumperFab — Install Manual Creator" },
       {
         name: "description",
         content:
-          "Keep installation manuals in sync with live BOM data from your ERP. Detect changes, route for review, and republish from a single source of truth.",
+          "ThumperFab's install manual creator. Keep installation manuals in sync with live BOM data, detect changes, route for review, and republish from a single source of truth.",
       },
-      { property: "og:title", content: "ManuManuals — InstallOps for manufacturing" },
+      { property: "og:title", content: "ThumperFab — Install Manual Creator" },
       {
         property: "og:description",
         content:
           "Keep installation manuals in sync with live BOM data from your ERP.",
       },
+      { property: "og:image", content: thumperFabLogo.url },
     ],
   }),
   component: Landing,
@@ -27,8 +29,11 @@ function Landing() {
       <header className="border-b border-border">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2 text-lg font-semibold">
-            <Factory className="h-5 w-5 text-primary" />
-            ManuManuals
+            <img
+              src={thumperFabLogo.url}
+              alt="ThumperFab"
+              className="h-8 w-auto"
+            />
           </div>
           <Link
             to="/auth"
@@ -40,13 +45,18 @@ function Landing() {
       </header>
 
       <section className="mx-auto max-w-4xl px-6 py-20 text-center">
-        <h1 className="text-4xl font-bold tracking-tight md:text-5xl">
-          InstallOps for the factory floor
+        <img
+          src={thumperFabLogo.url}
+          alt="ThumperFab"
+          className="mx-auto h-40 w-auto md:h-56"
+        />
+        <h1 className="mt-8 text-4xl font-bold tracking-tight md:text-5xl">
+          Install Manual Creator
         </h1>
         <p className="mx-auto mt-5 max-w-2xl text-lg text-muted-foreground">
           The SKU and its BOM are the source of truth. When engineering updates a
-          BOM, ManuManuals flags the affected installation manuals, routes them
-          for review, and republishes the web + PDF docs your dealers depend on.
+          BOM, the affected installation manuals are flagged, routed for review,
+          and republished as web + PDF docs your dealers depend on.
         </p>
         <div className="mt-8 flex justify-center gap-3">
           <Link
