@@ -1010,11 +1010,13 @@ function ImagesPanel({
   editable,
   onAdd,
   onRemove,
+  figMap,
 }: {
   assets: { id: string; type: string; url: string | null; metadata: any }[];
   editable: boolean;
   onAdd: (url: string, caption?: string) => void;
   onRemove: (id: string) => void;
+  figMap: Map<string, number>;
 }) {
   const [url, setUrl] = useState("");
   const [caption, setCaption] = useState("");
@@ -1024,31 +1026,40 @@ function ImagesPanel({
         <p className="text-xs text-muted-foreground">No images attached.</p>
       )}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        {assets.map((a) => (
-          <figure key={a.id} className="rounded-md border border-border p-2">
-            {a.url && (
-              <img
-                src={a.url}
-                alt={a.metadata?.caption ?? ""}
-                className="aspect-video w-full rounded object-cover"
-              />
-            )}
-            <figcaption className="mt-1 truncate text-xs text-muted-foreground">
-              {a.metadata?.caption ?? a.url}
-            </figcaption>
-            {editable && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => onRemove(a.id)}
-                className="mt-1 h-7 w-full text-destructive"
-              >
-                <Trash2 className="mr-1 h-3 w-3" /> Remove
-              </Button>
-            )}
-          </figure>
-        ))}
+        {assets.map((a) => {
+          const figNum = figMap.get(a.id);
+          return (
+            <figure key={a.id} className="rounded-md border border-border p-2">
+              {a.url && (
+                <img
+                  src={a.url}
+                  alt={a.metadata?.caption ?? ""}
+                  className="aspect-video w-full rounded object-cover"
+                />
+              )}
+              <figcaption className="mt-1 flex items-center justify-between gap-2 text-xs">
+                <span className="font-semibold text-foreground">
+                  {figNum ? `Fig. ${figNum}` : "—"}
+                </span>
+                <span className="truncate text-muted-foreground">
+                  {a.metadata?.caption ?? a.url}
+                </span>
+              </figcaption>
+              {editable && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onRemove(a.id)}
+                  className="mt-1 h-7 w-full text-destructive"
+                >
+                  <Trash2 className="mr-1 h-3 w-3" /> Remove
+                </Button>
+              )}
+            </figure>
+          );
+        })}
       </div>
+
       {editable && (
         <div className="flex flex-wrap items-center gap-2">
           <Input
