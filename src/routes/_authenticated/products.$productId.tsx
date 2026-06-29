@@ -653,8 +653,11 @@ function ContentEditor({
             steps={content.steps}
             setSteps={(s) => update("steps", s)}
             editable={editable}
+            images={figureSources}
+            figMap={figMap}
           />
         )}
+
         {tab === "tools" && (
           <ToolsListEditor
             items={content.tools}
