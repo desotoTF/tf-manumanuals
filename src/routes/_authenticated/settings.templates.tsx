@@ -205,18 +205,21 @@ function TemplatesPage() {
                       <Star className="mr-1.5 h-3.5 w-3.5" /> Make default
                     </Button>
                   )}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => {
-                      if (confirm(`Delete template "${t.name}"?`))
-                        delMut.mutate(t.id);
-                    }}
-                    disabled={delMut.isPending}
-                  >
-                    <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
-                  </Button>
+                  {!t.is_master && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => {
+                        if (confirm(`Delete template "${t.name}"?`))
+                          delMut.mutate(t.id);
+                      }}
+                      disabled={delMut.isPending}
+                    >
+                      <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
+                    </Button>
+                  )}
+
                 </div>
               )}
             </CardContent>
