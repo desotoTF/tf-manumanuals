@@ -239,12 +239,18 @@ function CreateManualDialog({
   const [name, setName] = useState("");
   const [templateId, setTemplateId] = useState<string>("__none");
   const [lookup, setLookup] = useState<{
-    source: "local" | "odoo" | "not_found";
+    source: "local" | "odoo" | "odoo_variants" | "not_found";
     productId?: string;
     odooProductId?: string;
+    odooTemplateId?: string;
+    templateSku?: string;
     erpConnectionId?: string;
+    variants?: Array<{ odooProductId: string; sku: string; name: string }>;
     lookupError?: string;
   } | null>(null);
+  // When the lookup returns multiple Odoo variants, the user picks one here.
+  // Selecting a variant promotes it into the lookup state (source=odoo).
+  const [selectedVariant, setSelectedVariant] = useState<string>("");
   const [looking, setLooking] = useState(false);
 
   // Reset on close.
@@ -254,6 +260,7 @@ function CreateManualDialog({
       setName("");
       setTemplateId("__none");
       setLookup(null);
+      setSelectedVariant("");
       setLooking(false);
     }
   }, [open]);
@@ -275,6 +282,7 @@ function CreateManualDialog({
     const trimmed = sku.trim();
     if (!trimmed) return;
     setLooking(true);
+    setSelectedVariant("");
     try {
       const res = await lookupSku({
         data: { organizationId: orgId, sku: trimmed },
@@ -283,15 +291,13 @@ function CreateManualDialog({
         source: res.source,
         productId: res.productId,
         odooProductId: res.odooProductId,
+        odooTemplateId: res.odooTemplateId,
+        templateSku: res.templateSku,
         erpConnectionId: res.erpConnectionId,
+        variants: res.variants,
         lookupError: res.lookupError,
       });
       if (res.name) setName(res.name);
-      if (res.source === "local" && res.productId) {
-        // A product exists locally — it may already have a manual.
-        // We still let the user proceed; createManualFromSku surfaces
-        // `alreadyExisted` and we navigate accordingly.
-      }
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
