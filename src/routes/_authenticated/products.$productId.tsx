@@ -26,9 +26,10 @@ import {
 
 import { listTemplates } from "@/lib/templates.functions";
 import { useActiveOrg } from "@/components/AppShell";
-import { emptyManualContent, type ManualContent } from "@/lib/types";
+import { emptyManualContent, type ManualContent, newStepBlock, type StepBlock } from "@/lib/types";
 import { useFigureMap } from "@/lib/figure-refs";
 import { FigureRefField } from "@/components/manual-editor/FigureRefField";
+import { StepBlocksEditor } from "@/components/manual-editor/StepBlocksEditor";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -639,6 +640,7 @@ function ContentEditor({
         .map((a) => ({
           asset_id: a.id,
           caption: (a.metadata?.caption as string | undefined) ?? null,
+          url: a.url ?? null,
         })),
     [assets],
   );
@@ -791,6 +793,18 @@ function ContentEditor({
 }
 
 
+// Cheap HTML escape for migrating legacy plain-text step bodies into a text
+// block on first edit. Newlines become paragraph breaks downstream when the
+// editor reloads them.
+function escapeHtml(s: string) {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function StepsEditor({
   steps,
   setSteps,
@@ -801,7 +815,7 @@ function StepsEditor({
   steps: ManualContent["steps"];
   setSteps: (s: ManualContent["steps"]) => void;
   editable: boolean;
-  images: { asset_id: string; caption?: string | null }[];
+  images: { asset_id: string; caption?: string | null; url?: string | null }[];
   figMap: Map<string, number>;
 }) {
 
@@ -861,18 +875,27 @@ function StepsEditor({
             placeholder="Step title"
             className="mb-2"
           />
-          <FigureRefField
-            value={s.body}
-            rows={3}
-            disabled={!editable}
-            placeholder="Describe what the installer does in this step. Type ##Fig. to insert a figure reference."
-            images={images}
-            figMap={figMap}
-            onChange={(v) => {
+          <StepBlocksEditor
+            blocks={
+              s.blocks ??
+              // Migrate legacy plain-text body into a single text block on
+              // first edit so the user can format/extend it immediately.
+              (s.body
+                ? [{ id: `${s.id}-legacy`, type: "text", html: `<p>${escapeHtml(s.body)}</p>` } as StepBlock]
+                : [])
+            }
+            onChange={(blocks) => {
               const next = [...steps];
-              next[i] = { ...s, body: v };
+              // Drop legacy body once blocks exist.
+              next[i] = { ...s, blocks, body: undefined };
               setSteps(next);
             }}
+            disabled={!editable}
+            images={images.map((img) => ({
+              asset_id: img.asset_id,
+              caption: img.caption ?? null,
+              url: (img as { url?: string | null }).url ?? null,
+            }))}
           />
 
         </div>
@@ -890,7 +913,7 @@ function StepsEditor({
                     ? crypto.randomUUID()
                     : `s-${Date.now()}`,
                 title: "",
-                body: "",
+                blocks: [newStepBlock("text")!],
               },
             ])
           }

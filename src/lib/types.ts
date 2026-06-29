@@ -42,12 +42,7 @@ export interface ManualContent {
   tools: { name: string; spec?: string }[];
   parts: ManualPart[];
   hardware_kit: ManualPart[];
-  steps: {
-    id: string;
-    title: string;
-    body: string;
-    asset_ids?: string[];
-  }[];
+  steps: ManualStep[];
   warnings: { severity: "info" | "caution" | "danger"; body: string }[];
   torque_specs: {
     fastener: string;
@@ -57,9 +52,114 @@ export interface ManualContent {
   }[];
   images: { asset_id: string; caption?: string }[];
   // Pages + blocks scaffold (additive; older drafts have it undefined).
-  // The editor still uses the flat arrays above; pages-based layout shipping
-  // incrementally — see ManualPage / PageLayout below.
   pages?: ManualPage[];
+}
+
+// A single installation step. `body` is the legacy plain-text body; new
+// content uses `blocks`. When `blocks` is present it wins; `body` is kept
+// readable for back-compat with older drafts.
+export interface ManualStep {
+  id: string;
+  title: string;
+  body?: string;
+  blocks?: StepBlock[];
+  asset_ids?: string[];
+}
+
+// ---- Step block types ----
+export type StepBlockType =
+  | "text"
+  | "image"
+  | "two_column"
+  | "callout"
+  | "table"
+  | "figure_row";
+
+export type ImageSize = "small" | "medium" | "full";
+
+export interface TextStepBlock {
+  id: string;
+  type: "text";
+  // TipTap HTML; sanitised on render. Empty string when blank.
+  html: string;
+}
+export interface ImageStepBlock {
+  id: string;
+  type: "image";
+  asset_id: string | null;
+  caption?: string;
+  size?: ImageSize;
+  align?: "left" | "center" | "right";
+}
+export interface CalloutStepBlock {
+  id: string;
+  type: "callout";
+  severity: "info" | "caution" | "danger";
+  body: string;
+}
+export interface TwoColumnStepBlock {
+  id: string;
+  type: "two_column";
+  left: TextStepBlock | ImageStepBlock;
+  right: TextStepBlock | ImageStepBlock;
+}
+export type StepBlock =
+  | TextStepBlock
+  | ImageStepBlock
+  | CalloutStepBlock
+  | TwoColumnStepBlock;
+
+export const ALL_STEP_BLOCK_TYPES: StepBlockType[] = [
+  "text",
+  "image",
+  "two_column",
+  "callout",
+];
+
+export const STEP_BLOCK_LABEL: Record<StepBlockType, string> = {
+  text: "Text",
+  image: "Image",
+  two_column: "Two-column",
+  callout: "Callout",
+  table: "Table",
+  figure_row: "Figure row",
+};
+
+const newBlockId = (): string =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `b-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+export function newStepBlock(type: StepBlockType): StepBlock | null {
+  switch (type) {
+    case "text":
+      return { id: newBlockId(), type: "text", html: "" };
+    case "image":
+      return {
+        id: newBlockId(),
+        type: "image",
+        asset_id: null,
+        size: "medium",
+        align: "center",
+      };
+    case "callout":
+      return { id: newBlockId(), type: "callout", severity: "info", body: "" };
+    case "two_column":
+      return {
+        id: newBlockId(),
+        type: "two_column",
+        left: { id: newBlockId(), type: "text", html: "" },
+        right: {
+          id: newBlockId(),
+          type: "image",
+          asset_id: null,
+          size: "medium",
+          align: "center",
+        },
+      };
+    default:
+      return null; // table / figure_row not yet implemented
+  }
 }
 
 export const emptyManualContent = (): ManualContent => ({

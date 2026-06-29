@@ -239,12 +239,18 @@ function CreateManualDialog({
   const [name, setName] = useState("");
   const [templateId, setTemplateId] = useState<string>("__none");
   const [lookup, setLookup] = useState<{
-    source: "local" | "odoo" | "not_found";
+    source: "local" | "odoo" | "odoo_variants" | "not_found";
     productId?: string;
     odooProductId?: string;
+    odooTemplateId?: string;
+    templateSku?: string;
     erpConnectionId?: string;
+    variants?: Array<{ odooProductId: string; sku: string; name: string }>;
     lookupError?: string;
   } | null>(null);
+  // When the lookup returns multiple Odoo variants, the user picks one here.
+  // Selecting a variant promotes it into the lookup state (source=odoo).
+  const [selectedVariant, setSelectedVariant] = useState<string>("");
   const [looking, setLooking] = useState(false);
 
   // Reset on close.
@@ -254,6 +260,7 @@ function CreateManualDialog({
       setName("");
       setTemplateId("__none");
       setLookup(null);
+      setSelectedVariant("");
       setLooking(false);
     }
   }, [open]);
@@ -275,6 +282,7 @@ function CreateManualDialog({
     const trimmed = sku.trim();
     if (!trimmed) return;
     setLooking(true);
+    setSelectedVariant("");
     try {
       const res = await lookupSku({
         data: { organizationId: orgId, sku: trimmed },
@@ -283,15 +291,13 @@ function CreateManualDialog({
         source: res.source,
         productId: res.productId,
         odooProductId: res.odooProductId,
+        odooTemplateId: res.odooTemplateId,
+        templateSku: res.templateSku,
         erpConnectionId: res.erpConnectionId,
+        variants: res.variants,
         lookupError: res.lookupError,
       });
       if (res.name) setName(res.name);
-      if (res.source === "local" && res.productId) {
-        // A product exists locally — it may already have a manual.
-        // We still let the user proceed; createManualFromSku surfaces
-        // `alreadyExisted` and we navigate accordingly.
-      }
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -299,14 +305,27 @@ function CreateManualDialog({
     }
   };
 
+  // If the lookup returned multiple variants, force the user to pick one
+  // before allowing create. The chosen variant's odooProductId + SKU win.
+  const needsVariantPick =
+    lookup?.source === "odoo_variants" && !selectedVariant;
+  const variantChoice =
+    lookup?.variants?.find((v) => v.odooProductId === selectedVariant) ?? null;
+  const effectiveOdooProductId =
+    variantChoice?.odooProductId ?? lookup?.odooProductId;
+  // When a variant is chosen, store the variant SKU as the local product SKU
+  // (matches Odoo and unblocks BOM sync); keep the template SKU available for
+  // future display fixes (parts list).
+  const effectiveSku = variantChoice?.sku ?? sku.trim();
+
   const createMut = useMutation({
     mutationFn: () =>
       createFromSku({
         data: {
           organizationId: orgId,
-          sku: sku.trim(),
+          sku: effectiveSku,
           name: name.trim(),
-          odooProductId: lookup?.odooProductId,
+          odooProductId: effectiveOdooProductId,
           erpConnectionId: lookup?.erpConnectionId,
           templateId: templateId === "__none" ? undefined : templateId,
         },
@@ -327,7 +346,8 @@ function CreateManualDialog({
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const canCreate = sku.trim().length > 0 && name.trim().length > 0;
+  const canCreate =
+    sku.trim().length > 0 && name.trim().length > 0 && !needsVariantPick;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -376,6 +396,8 @@ function CreateManualDialog({
                   "Matched an existing product in this workspace."}
                 {lookup.source === "odoo" &&
                   "Found in Odoo — name auto-filled."}
+                {lookup.source === "odoo_variants" &&
+                  `Matched the base SKU ${lookup.templateSku ?? sku} in Odoo — pick a variant below.`}
                 {lookup.source === "not_found" && (
                   <>
                     Not found{lookup.lookupError ? ` (${lookup.lookupError})` : ""}.
@@ -385,6 +407,35 @@ function CreateManualDialog({
               </p>
             )}
           </div>
+
+          {lookup?.source === "odoo_variants" && lookup.variants && (
+            <div className="space-y-1">
+              <Label>Variant</Label>
+              <Select
+                value={selectedVariant}
+                onValueChange={setSelectedVariant}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Pick a variant…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {lookup.variants.map((v) => (
+                    <SelectItem key={v.odooProductId} value={v.odooProductId}>
+                      <span className="font-mono text-xs">{v.sku}</span>
+                      <span className="ml-2 text-muted-foreground">
+                        {v.name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                The manual will use the variant SKU. The base SKU
+                ({lookup.templateSku ?? sku}) is kept as the template
+                reference for the parts list.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-1">
             <Label htmlFor="name">Product name</Label>

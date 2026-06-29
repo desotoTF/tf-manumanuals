@@ -167,16 +167,21 @@ type NormalizedItem = {
   notes: string;
 };
 
-function normalizeBomLines(lines: Array<Record<string, unknown>>): NormalizedItem[] {
+function normalizeBomLines(
+  lines: Array<Record<string, unknown>>,
+  variantToTemplateSku?: Map<number, string>,
+): NormalizedItem[] {
   return lines
     .map((l) => {
       const productField = l.product_id;
-      // Odoo many2one is [id, "name"] — pull human label out
+      // Odoo many2one is [id, "name"] — pull human label out.
       let part = "";
       let desc = "";
+      let variantId: number | null = null;
       if (Array.isArray(productField) && productField.length >= 2) {
+        if (typeof productField[0] === "number") variantId = productField[0];
         const label = String(productField[1]);
-        // "[INTERNAL_REF] Display Name" — split when present
+        // "[INTERNAL_REF] Display Name" — split when present.
         const m = label.match(/^\[([^\]]+)\]\s*(.*)$/);
         if (m) {
           part = m[1];
@@ -188,6 +193,11 @@ function normalizeBomLines(lines: Array<Record<string, unknown>>): NormalizedIte
       } else if (typeof productField === "string") {
         part = productField;
         desc = productField;
+      }
+      // Prefer template SKU when we resolved one — keeps the parts list at
+      // the base SKU (TF300601) rather than the variant (TF300601-CC).
+      if (variantId !== null && variantToTemplateSku?.get(variantId)) {
+        part = variantToTemplateSku.get(variantId)!;
       }
       const uomField = l.product_uom_id;
       const unit =
@@ -358,7 +368,59 @@ export const syncBoms = createServerFn({ method: "POST" })
           { fields: ["product_id", "product_qty", "product_uom_id"], limit: 500 },
         );
 
-        const normalized = normalizeBomLines(lines);
+        // 3a. Resolve each line's variant -> template SKU so the parts list
+        // shows the template-level code (e.g. TF300601) rather than the
+        // variant suffix (TF300601-CC).
+        const variantIds = Array.from(
+          new Set(
+            lines
+              .map((l) => {
+                const f = l.product_id;
+                return Array.isArray(f) && typeof f[0] === "number"
+                  ? (f[0] as number)
+                  : null;
+              })
+              .filter((v): v is number => v !== null),
+          ),
+        );
+        const variantToTemplateSku = new Map<number, string>();
+        if (variantIds.length > 0) {
+          const variantRows = await odooExecuteKw<
+            Array<{
+              id: number;
+              product_tmpl_id: [number, string] | false;
+            }>
+          >(creds, uid, "product.product", "read", [variantIds], {
+            fields: ["id", "product_tmpl_id"],
+          });
+          const tmplIds = Array.from(
+            new Set(
+              variantRows
+                .map((r) =>
+                  Array.isArray(r.product_tmpl_id) ? r.product_tmpl_id[0] : null,
+                )
+                .filter((v): v is number => v !== null),
+            ),
+          );
+          const tmplSkuById = new Map<number, string>();
+          if (tmplIds.length > 0) {
+            const tmplRows2 = await odooExecuteKw<
+              Array<{ id: number; default_code: string | false }>
+            >(creds, uid, "product.template", "read", [tmplIds], {
+              fields: ["id", "default_code"],
+            });
+            for (const t of tmplRows2) {
+              if (t.default_code) tmplSkuById.set(t.id, String(t.default_code));
+            }
+          }
+          for (const v of variantRows) {
+            const t = Array.isArray(v.product_tmpl_id) ? v.product_tmpl_id[0] : null;
+            const tplSku = t !== null ? tmplSkuById.get(t) : undefined;
+            if (tplSku) variantToTemplateSku.set(v.id, tplSku);
+          }
+        }
+
+        const normalized = normalizeBomLines(lines, variantToTemplateSku);
         const hash = await sha256Hex(JSON.stringify(normalized));
 
         // 4. Insert snapshot if unique (content_hash unique per product).
