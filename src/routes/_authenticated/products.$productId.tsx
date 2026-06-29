@@ -725,8 +725,11 @@ function ContentEditor({
             warnings={content.warnings}
             setWarnings={(w) => update("warnings", w)}
             editable={editable}
+            images={figureSources}
+            figMap={figMap}
           />
         )}
+
         {tab === "torque" && (
           <SimpleListEditor
             items={content.torque_specs}
