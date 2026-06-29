@@ -643,6 +643,8 @@ function ContentEditor({
   assets,
   onAddAsset,
   onRemoveAsset,
+  onUploadAsset,
+  uploadingAsset,
   tools,
   onCreateTool,
   creatingTool,
@@ -655,6 +657,8 @@ function ContentEditor({
   assets: { id: string; type: string; url: string | null; metadata: any }[];
   onAddAsset: (url: string, caption?: string) => void;
   onRemoveAsset: (id: string) => void;
+  onUploadAsset: (file: File, caption?: string) => Promise<unknown>;
+  uploadingAsset: boolean;
   tools: import("@/lib/tools.functions").ToolRow[];
   onCreateTool: (
     name: string,
