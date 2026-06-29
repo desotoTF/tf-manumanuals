@@ -358,7 +358,59 @@ export const syncBoms = createServerFn({ method: "POST" })
           { fields: ["product_id", "product_qty", "product_uom_id"], limit: 500 },
         );
 
-        const normalized = normalizeBomLines(lines);
+        // 3a. Resolve each line's variant -> template SKU so the parts list
+        // shows the template-level code (e.g. TF300601) rather than the
+        // variant suffix (TF300601-CC).
+        const variantIds = Array.from(
+          new Set(
+            lines
+              .map((l) => {
+                const f = l.product_id;
+                return Array.isArray(f) && typeof f[0] === "number"
+                  ? (f[0] as number)
+                  : null;
+              })
+              .filter((v): v is number => v !== null),
+          ),
+        );
+        const variantToTemplateSku = new Map<number, string>();
+        if (variantIds.length > 0) {
+          const variantRows = await odooExecuteKw<
+            Array<{
+              id: number;
+              product_tmpl_id: [number, string] | false;
+            }>
+          >(creds, uid, "product.product", "read", [variantIds], {
+            fields: ["id", "product_tmpl_id"],
+          });
+          const tmplIds = Array.from(
+            new Set(
+              variantRows
+                .map((r) =>
+                  Array.isArray(r.product_tmpl_id) ? r.product_tmpl_id[0] : null,
+                )
+                .filter((v): v is number => v !== null),
+            ),
+          );
+          const tmplSkuById = new Map<number, string>();
+          if (tmplIds.length > 0) {
+            const tmplRows2 = await odooExecuteKw<
+              Array<{ id: number; default_code: string | false }>
+            >(creds, uid, "product.template", "read", [tmplIds], {
+              fields: ["id", "default_code"],
+            });
+            for (const t of tmplRows2) {
+              if (t.default_code) tmplSkuById.set(t.id, String(t.default_code));
+            }
+          }
+          for (const v of variantRows) {
+            const t = Array.isArray(v.product_tmpl_id) ? v.product_tmpl_id[0] : null;
+            const tplSku = t !== null ? tmplSkuById.get(t) : undefined;
+            if (tplSku) variantToTemplateSku.set(v.id, tplSku);
+          }
+        }
+
+        const normalized = normalizeBomLines(lines, variantToTemplateSku);
         const hash = await sha256Hex(JSON.stringify(normalized));
 
         // 4. Insert snapshot if unique (content_hash unique per product).
