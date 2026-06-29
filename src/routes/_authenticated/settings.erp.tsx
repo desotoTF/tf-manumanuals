@@ -192,7 +192,7 @@ function ConnectionRow({
   const revokeMut = useMutation({
     mutationFn: () => revokeFn({ data: { connectionId: c.id } }),
     onSuccess: () => {
-      toast.success("Connection revoked");
+      toast.success("Connection deleted");
       onChanged();
     },
     onError: (e: Error) => toast.error(e.message),
