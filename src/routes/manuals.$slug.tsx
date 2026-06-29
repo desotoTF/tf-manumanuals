@@ -244,10 +244,13 @@ function PublicManualPage() {
                   <div className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
                     Step {i + 1}
                   </div>
-                  <h3 className="text-base font-semibold">{s.title}</h3>
-                  <p className="mt-2 whitespace-pre-line text-sm text-muted-foreground">
-                    {s.body}
-                  </p>
+                  <h3 className="mb-3 text-base font-semibold">{s.title}</h3>
+                  <StepBlocksView
+                    blocks={s.blocks}
+                    legacyBody={s.body}
+                    assets={assetMap}
+                    figMap={figMap}
+                  />
                 </li>
               ))}
             </ol>
