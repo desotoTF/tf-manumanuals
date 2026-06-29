@@ -96,8 +96,15 @@ function ProductEditorPage() {
   const importPdf = useServerFn(importLegacyManualFromPdf);
   const fetchTemplates = useServerFn(listTemplates);
 
+  const fetchMaster = useServerFn(getMasterTemplate);
+  const masterQuery = useQuery({
+    queryKey: ["master-template", orgId],
+    queryFn: () => fetchMaster({ data: { organizationId: orgId } }),
+  });
+  const [previewOpen, setPreviewOpen] = useState(false);
   const workspaceQuery = useQuery({
     queryKey: ["product-workspace", productId],
+
     queryFn: () => fetchWorkspace({ data: { productId } }),
   });
 
