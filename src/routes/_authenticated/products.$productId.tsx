@@ -26,9 +26,10 @@ import {
 
 import { listTemplates } from "@/lib/templates.functions";
 import { useActiveOrg } from "@/components/AppShell";
-import { emptyManualContent, type ManualContent } from "@/lib/types";
+import { emptyManualContent, type ManualContent, newStepBlock, type StepBlock } from "@/lib/types";
 import { useFigureMap } from "@/lib/figure-refs";
 import { FigureRefField } from "@/components/manual-editor/FigureRefField";
+import { StepBlocksEditor } from "@/components/manual-editor/StepBlocksEditor";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
