@@ -501,33 +501,23 @@ export const syncBoms = createServerFn({ method: "POST" })
 // `syncBoms` run first. Resolves the SKU against `product.template` first,
 // then `product.product` (variants / inventory-only items), then takes the
 // first `mrp.bom` for that template and snapshots its lines.
-export const syncBomBySku = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z
-      .object({
-        organizationId: z.string().uuid(),
-        sku: z.string().trim().min(1).max(120),
-        // Optional: when caller already knows which connection to use.
-        connectionId: z.string().uuid().optional(),
-      })
-      .parse(d),
-  )
-  .handler(
-    async ({
-      data,
-      context,
-    }): Promise<{
-      ok: boolean;
-      found: boolean;
-      productId?: string;
-      snapshotId?: string;
-      lineCount?: number;
-      sku: string;
-      error?: string;
-    }> => {
-      const { supabase } = context;
-      const sku = data.sku.trim().toUpperCase();
+export async function syncBomBySkuImpl(
+  supabase: import("@supabase/supabase-js").SupabaseClient,
+  params: { organizationId: string; sku: string; connectionId?: string },
+): Promise<{
+  ok: boolean;
+  found: boolean;
+  productId?: string;
+  snapshotId?: string;
+  lineCount?: number;
+  sku: string;
+  error?: string;
+}> {
+  const sku = params.sku.trim().toUpperCase();
+  const data = params;
+  const context = { supabase } as { supabase: typeof supabase };
+  {
+
 
       // Resolve connection.
       const connQuery = supabase
