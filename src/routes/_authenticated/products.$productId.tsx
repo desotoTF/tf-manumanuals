@@ -17,6 +17,8 @@ import {
   removeManualAsset,
   uploadManualAssetFile,
   uploadPublishedPdf,
+  uploadManualCoverImage,
+  fetchOdooCoverImage,
   importLegacyManualFromPdf,
   loadBomForManual,
 } from "@/lib/manuals.functions";
