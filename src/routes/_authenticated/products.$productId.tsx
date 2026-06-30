@@ -622,7 +622,7 @@ function ProductEditorPage() {
               }}
               productSku={baseTfSku(ws.product.sku)}
             />
-
+            </>
           )}
         </section>
 
