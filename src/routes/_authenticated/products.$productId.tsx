@@ -850,17 +850,7 @@ function ContentEditor({
 }
 
 
-// Cheap HTML escape for migrating legacy plain-text step bodies into a text
-// block on first edit. Newlines become paragraph breaks downstream when the
-// editor reloads them.
-function escapeHtml(s: string) {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+
 
 function StepsEditor({
   steps,
