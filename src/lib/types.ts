@@ -55,16 +55,156 @@ export interface ManualContent {
   pages?: ManualPage[];
 }
 
-// A single installation step. `body` is the legacy plain-text body; new
-// content uses `blocks`. When `blocks` is present it wins; `body` is kept
-// readable for back-compat with older drafts.
+// A single installation step.
+//   New model: `layout` + `slots` (slot = text + optional image + optional callout).
+//   Legacy:    `body` (plain text) and/or `blocks` (old block editor). Both are
+//   kept on the type so older drafts read cleanly until the editor saves them
+//   into the new shape.
 export interface ManualStep {
   id: string;
   title: string;
+  layout?: StepLayout;
+  slots?: StepSlot[];
   body?: string;
   blocks?: StepBlock[];
   asset_ids?: string[];
 }
+
+// ---- Step layout / slot model ----
+export type StepLayout = "one_col" | "two_col" | "two_row";
+
+export const STEP_LAYOUT_LABEL: Record<StepLayout, string> = {
+  one_col: "One column",
+  two_col: "Two columns",
+  two_row: "Two rows",
+};
+
+export const STEP_LAYOUT_SLOT_COUNT: Record<StepLayout, number> = {
+  one_col: 1,
+  two_col: 2,
+  two_row: 2,
+};
+
+export const ALL_STEP_LAYOUTS: StepLayout[] = ["one_col", "two_col", "two_row"];
+
+export interface StepCallout {
+  severity: "info" | "caution" | "danger";
+  body: string;
+}
+
+export interface StepSlot {
+  id: string;
+  text_html: string;
+  asset_id: string | null;
+  caption?: string;
+  callout?: StepCallout | null;
+}
+
+export const DEFAULT_STEP_LAYOUT: StepLayout = "two_col";
+
+const newSlotId = (): string =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `sl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+export function newStepSlot(): StepSlot {
+  return {
+    id: newSlotId(),
+    text_html: "",
+    asset_id: null,
+    caption: "",
+    callout: null,
+  };
+}
+
+export function newStep(layout: StepLayout = DEFAULT_STEP_LAYOUT): ManualStep {
+  const n = STEP_LAYOUT_SLOT_COUNT[layout];
+  return {
+    id:
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `s-${Date.now()}`,
+    title: "",
+    layout,
+    slots: Array.from({ length: n }, newStepSlot),
+  };
+}
+
+// Normalize a step into the new `layout`+`slots` model, migrating any legacy
+// `body` or `blocks[]` data on read. Pure: never mutates the input.
+export function normalizeStep(step: ManualStep): ManualStep {
+  if (step.slots && step.layout) {
+    const count = STEP_LAYOUT_SLOT_COUNT[step.layout];
+    if (step.slots.length === count) return step;
+    const slots = step.slots.slice(0, count);
+    while (slots.length < count) slots.push(newStepSlot());
+    return { ...step, slots };
+  }
+
+  // Derive a layout + slots from legacy data.
+  const slots: StepSlot[] = [];
+  let layout: StepLayout = DEFAULT_STEP_LAYOUT;
+
+  if (step.blocks && step.blocks.length > 0) {
+    // Heuristic: a single two_column block → two_col; otherwise pack the
+    // first text/image blocks into a one_col slot.
+    const first = step.blocks[0];
+    if (first.type === "two_column") {
+      layout = "two_col";
+      const toSlot = (cell: TextStepBlock | ImageStepBlock): StepSlot => {
+        const base = newStepSlot();
+        if (cell.type === "text") return { ...base, text_html: cell.html };
+        return {
+          ...base,
+          asset_id: cell.asset_id ?? null,
+          caption: cell.caption ?? "",
+        };
+      };
+      slots.push(toSlot(first.left));
+      slots.push(toSlot(first.right));
+    } else {
+      layout = "one_col";
+      const slot = newStepSlot();
+      for (const b of step.blocks) {
+        if (b.type === "text" && !slot.text_html) slot.text_html = b.html;
+        else if (b.type === "image" && !slot.asset_id) {
+          slot.asset_id = b.asset_id ?? null;
+          slot.caption = b.caption ?? "";
+        } else if (b.type === "callout" && !slot.callout) {
+          slot.callout = { severity: b.severity, body: b.body };
+        }
+      }
+      slots.push(slot);
+    }
+  } else if (step.body) {
+    layout = "one_col";
+    const slot = newStepSlot();
+    slot.text_html = `<p>${step.body
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")}</p>`;
+    slots.push(slot);
+  } else {
+    layout = DEFAULT_STEP_LAYOUT;
+    const count = STEP_LAYOUT_SLOT_COUNT[layout];
+    for (let i = 0; i < count; i++) slots.push(newStepSlot());
+  }
+
+  return { ...step, layout, slots, body: undefined, blocks: undefined };
+}
+
+export function changeStepLayout(
+  step: ManualStep,
+  next: StepLayout,
+): ManualStep {
+  const cur = normalizeStep(step);
+  if (cur.layout === next) return cur;
+  const target = STEP_LAYOUT_SLOT_COUNT[next];
+  const slots = (cur.slots ?? []).slice(0, target);
+  while (slots.length < target) slots.push(newStepSlot());
+  return { ...cur, layout: next, slots };
+}
+
 
 // ---- Step block types ----
 export type StepBlockType =
