@@ -14,6 +14,40 @@ const normalizeLookupSku = (value: string): string =>
 const isMainTfSku = (value: string | false | null | undefined): value is string =>
   typeof value === "string" && /^TF\d{6}$/i.test(value.trim());
 
+const extractLeadingMainTfSku = (value: string | false | null | undefined): string | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  const bracketed = trimmed.match(/^\[(TF\d{6})\]\s+/i);
+  if (bracketed) return bracketed[1].toUpperCase();
+  const plain = trimmed.match(/^(TF\d{6})\s*(?:\||$)/i);
+  return plain ? plain[1].toUpperCase() : null;
+};
+
+const deriveMainTfSkuForQuery = ({
+  query,
+  templateCode,
+  variantCode,
+  labels,
+}: {
+  query: string;
+  templateCode?: string | null;
+  variantCode?: string | null;
+  labels: Array<string | false | null | undefined>;
+}): string | null => {
+  const prefix = query.toUpperCase();
+  if (templateCode && isMainTfSku(templateCode) && templateCode.toUpperCase().startsWith(prefix)) {
+    return templateCode.toUpperCase();
+  }
+  if (variantCode && isMainTfSku(variantCode) && variantCode.toUpperCase().startsWith(prefix)) {
+    return variantCode.toUpperCase();
+  }
+  for (const label of labels) {
+    const leading = extractLeadingMainTfSku(label);
+    if (leading && leading.startsWith(prefix)) return leading;
+  }
+  return null;
+};
+
 export const listProductsWithStatus = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: { organizationId: string }) => d)
@@ -318,8 +352,9 @@ export const lookupProductBySku = createServerFn({ method: "POST" })
               : [];
             const tmplById = new Map(tmplRows.map((t) => [t.id, t]));
 
-            // For each template, derive the base SKU from template.default_code
-            // when present, otherwise from any variant code under it.
+            // For each template, derive a manual SKU only from an actual main
+            // TF###### product. Do not turn part/hardware/variant prefixes
+            // like TF300601SA, TF300601.X, or TF300601-CC into manual choices.
             const baseByTmpl = new Map<number, { sku: string; name: string }>();
             for (const v of variantPrefixHits) {
               if (!v.product_tmpl_id) continue;
@@ -328,11 +363,15 @@ export const lookupProductBySku = createServerFn({ method: "POST" })
               const tmpl = tmplById.get(tid);
               const templateCode = tmpl?.default_code ? String(tmpl.default_code).toUpperCase() : null;
               const variantCode = v.default_code ? String(v.default_code).toUpperCase() : null;
-              const base =
-                (templateCode && extractTfBaseSku(templateCode)) ||
-                (variantCode && extractTfBaseSku(variantCode)) ||
-                templateCode ||
-                variantCode;
+              const templateLabel = (v.product_tmpl_id as [number, string])[1];
+              const base = /^TF/i.test(sku)
+                ? deriveMainTfSkuForQuery({
+                    query: sku,
+                    templateCode,
+                    variantCode,
+                    labels: [tmpl?.name, v.name, templateLabel],
+                  })
+                : templateCode || variantCode;
               if (!base) continue;
               if (/^TF/i.test(sku) && !isMainTfSku(base)) continue;
               baseByTmpl.set(tid, { sku: base, name: tmpl?.name ?? v.name });
