@@ -1199,21 +1199,62 @@ export const loadBomForManual = createServerFn({ method: "GET" })
 
     let hardware_kit: typeof items = [];
     let hardwareBomMissing = false;
-    if (hardwareMarker) {
+    // Even when the parent BOM has no explicit `.x` marker line, the editor
+    // still expects a hardware kit from `${bomSku}.x`. Try that as a final
+    // fallback so freshly-created manuals show hardware automatically.
+    const hardwareLookupSku =
+      hardwareMarker?.part_number ?? expectedHardwareSku;
+    if (hardwareLookupSku) {
+      let childProductId: string | null = null;
       const { data: childProduct } = await supabase
         .from("products")
         .select("id")
         .eq("organization_id", product.organization_id)
-        .ilike("sku", hardwareMarker.part_number)
+        .ilike("sku", hardwareLookupSku)
         .maybeSingle();
-      if (childProduct) {
-        const { data: childBom } = await supabase
+      childProductId = childProduct?.id ?? null;
+
+      // Live Odoo fetch if we don't yet have the hardware BOM locally.
+      if (!childProductId) {
+        try {
+          const { syncBomBySkuImpl } = await import("./erp.functions");
+          const res = await syncBomBySkuImpl(supabase, {
+            organizationId: product.organization_id,
+            sku: hardwareLookupSku,
+          });
+          if (res.ok && res.productId) childProductId = res.productId;
+        } catch {
+          // ignore
+        }
+      }
+
+      if (childProductId) {
+        let { data: childBom } = await supabase
           .from("bom_snapshots")
           .select("normalized_items")
-          .eq("product_id", childProduct.id)
+          .eq("product_id", childProductId)
           .order("captured_at", { ascending: false })
           .limit(1)
           .maybeSingle();
+        if (!childBom) {
+          try {
+            const { syncBomBySkuImpl } = await import("./erp.functions");
+            await syncBomBySkuImpl(supabase, {
+              organizationId: product.organization_id,
+              sku: hardwareLookupSku,
+            });
+            const refetched = await supabase
+              .from("bom_snapshots")
+              .select("normalized_items")
+              .eq("product_id", childProductId)
+              .order("captured_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            childBom = refetched.data ?? null;
+          } catch {
+            // ignore
+          }
+        }
         if (childBom) {
           const childItems =
             (childBom.normalized_items as unknown as typeof items) ?? [];
@@ -1225,13 +1266,14 @@ export const loadBomForManual = createServerFn({ method: "GET" })
             }
             return true;
           });
-        } else {
+        } else if (hardwareMarker) {
           hardwareBomMissing = true;
         }
-      } else {
+      } else if (hardwareMarker) {
         hardwareBomMissing = true;
       }
     }
+
 
     return {
       parts: parts.map((it) => ({
