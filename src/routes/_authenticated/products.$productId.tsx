@@ -113,6 +113,8 @@ function ProductEditorPage() {
   const removeAsset = useServerFn(removeManualAsset);
   const uploadAsset = useServerFn(uploadManualAssetFile);
   const uploadPdf = useServerFn(uploadPublishedPdf);
+  const uploadCover = useServerFn(uploadManualCoverImage);
+  const fetchOdooCover = useServerFn(fetchOdooCoverImage);
   const importPdf = useServerFn(importLegacyManualFromPdf);
   const fetchTemplates = useServerFn(listTemplates);
 
