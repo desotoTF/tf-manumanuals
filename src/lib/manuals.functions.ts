@@ -444,25 +444,22 @@ export const createManualFromSku = createServerFn({ method: "POST" })
     // Odoo so a freshly-created manual has parts populated immediately.
     if (data.erpConnectionId) {
       try {
-        const { syncBomBySku } = await import("./erp.functions");
-        await syncBomBySku({
-          data: {
-            organizationId: data.organizationId,
-            sku,
-            connectionId: data.erpConnectionId,
-          },
+        const { syncBomBySkuImpl } = await import("./erp.functions");
+        await syncBomBySkuImpl(supabase, {
+          organizationId: data.organizationId,
+          sku,
+          connectionId: data.erpConnectionId,
         });
-        await syncBomBySku({
-          data: {
-            organizationId: data.organizationId,
-            sku: `${sku}.x`,
-            connectionId: data.erpConnectionId,
-          },
+        await syncBomBySkuImpl(supabase, {
+          organizationId: data.organizationId,
+          sku: `${sku}.x`,
+          connectionId: data.erpConnectionId,
         });
       } catch {
         // non-fatal — user can retry via the editor's BOM controls.
       }
     }
+
 
     const { data: latestBom } = await supabase
       .from("bom_snapshots")
