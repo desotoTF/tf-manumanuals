@@ -315,14 +315,33 @@ function ImagePicker({
   disabled,
   onChange,
   triggerLabel = "Change image",
+  onInlineUpload,
 }: {
   images: FigureSource[];
   value: string | null;
   disabled?: boolean;
   onChange: (id: string | null) => void;
   triggerLabel?: string;
+  onInlineUpload?: (file: File) => Promise<string | null>;
 }) {
   const [open, setOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  const handleFile = async (file: File) => {
+    if (!onInlineUpload) return;
+    try {
+      setUploading(true);
+      const newId = await onInlineUpload(file);
+      if (newId) {
+        onChange(newId);
+        setOpen(false);
+      }
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -331,47 +350,77 @@ function ImagePicker({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-80 p-2">
-        {images.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
+        {onInlineUpload && (
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              if (!f) return;
+              try {
+                await handleFile(f);
+              } finally {
+                if (fileRef.current) fileRef.current.value = "";
+              }
+            }}
+          />
+        )}
+        <div className="grid max-h-72 grid-cols-2 gap-2 overflow-auto">
+          {images.map((img) => {
+            const active = img.asset_id === value;
+            return (
+              <button
+                key={img.asset_id}
+                type="button"
+                onClick={() => {
+                  onChange(img.asset_id);
+                  setOpen(false);
+                }}
+                className={cn(
+                  "group overflow-hidden rounded border text-left text-xs",
+                  active
+                    ? "border-primary ring-2 ring-primary/40"
+                    : "border-border hover:border-primary/60",
+                )}
+              >
+                {img.url ? (
+                  <img
+                    src={img.url}
+                    alt=""
+                    className="block h-20 w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-20 w-full items-center justify-center bg-muted text-muted-foreground">
+                    no preview
+                  </div>
+                )}
+                <div className="truncate px-2 py-1">
+                  {img.caption || img.asset_id.slice(0, 6)}
+                </div>
+              </button>
+            );
+          })}
+          {onInlineUpload && (
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={() => fileRef.current?.click()}
+              className={cn(
+                "flex h-[108px] flex-col items-center justify-center gap-1 rounded border-2 border-dashed border-border text-xs text-muted-foreground hover:border-primary/60 hover:text-primary",
+                uploading && "opacity-60",
+              )}
+            >
+              <Plus className="h-5 w-5" />
+              {uploading ? "Uploading…" : "Choose image"}
+            </button>
+          )}
+        </div>
+        {images.length === 0 && !onInlineUpload && (
+          <p className="mt-2 text-xs text-muted-foreground">
             No images yet — upload one from the Images tab.
           </p>
-        ) : (
-          <div className="grid max-h-72 grid-cols-2 gap-2 overflow-auto">
-            {images.map((img) => {
-              const active = img.asset_id === value;
-              return (
-                <button
-                  key={img.asset_id}
-                  type="button"
-                  onClick={() => {
-                    onChange(img.asset_id);
-                    setOpen(false);
-                  }}
-                  className={cn(
-                    "group overflow-hidden rounded border text-left text-xs",
-                    active
-                      ? "border-primary ring-2 ring-primary/40"
-                      : "border-border hover:border-primary/60",
-                  )}
-                >
-                  {img.url ? (
-                    <img
-                      src={img.url}
-                      alt=""
-                      className="block h-20 w-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-20 w-full items-center justify-center bg-muted text-muted-foreground">
-                      no preview
-                    </div>
-                  )}
-                  <div className="truncate px-2 py-1">
-                    {img.caption || img.asset_id.slice(0, 6)}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
         )}
       </PopoverContent>
     </Popover>
