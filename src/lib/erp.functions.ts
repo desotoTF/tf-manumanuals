@@ -563,16 +563,44 @@ export async function syncBomBySkuImpl(
         let tmplName = sku;
         let tmplDescription: string | null = null;
         const tmplRows = await odooExecuteKw<
-          Array<{ id: number; name: string; default_code: string | false; description_sale: string | false }>
+          Array<{
+            id: number;
+            name: string;
+            default_code: string | false;
+            description_sale: string | false;
+            product_variant_id?: [number, string] | false;
+          }>
         >(creds, uid, "product.template", "search_read", [
           [["default_code", "=ilike", sku]],
-        ], { fields: ["id", "name", "default_code", "description_sale"], limit: 1 });
+        ], {
+          fields: ["id", "name", "default_code", "description_sale", "product_variant_id"],
+          limit: 1,
+          context: { active_test: false },
+        });
         if (tmplRows && tmplRows.length > 0) {
           tmplId = tmplRows[0].id;
           tmplName = tmplRows[0].name;
           tmplDescription = tmplRows[0].description_sale
             ? String(tmplRows[0].description_sale)
             : null;
+          if (Array.isArray(tmplRows[0].product_variant_id)) {
+            variantId = tmplRows[0].product_variant_id[0];
+          }
+
+          // Odoo may find the `.x` kit as a product.template, while its BOM is
+          // attached to the concrete product.product variant. Resolve the
+          // matching variant even after a template hit so the BOM domain can
+          // search both product_id and product_tmpl_id.
+          const exactVariants = await odooExecuteKw<
+            Array<{ id: number; name: string; default_code: string | false; product_tmpl_id: [number, string] | false }>
+          >(creds, uid, "product.product", "search_read", [
+            [["default_code", "=ilike", sku], ["product_tmpl_id", "=", tmplId]],
+          ], {
+            fields: ["id", "name", "default_code", "product_tmpl_id"],
+            limit: 1,
+            context: { active_test: false },
+          });
+          if (exactVariants?.[0]) variantId = exactVariants[0].id;
         } else {
           // Fall back to product.product (variant / inventory-only). This is
           // how `.x` hardware kits often live in Odoo. Check active + archived.
@@ -586,7 +614,11 @@ export async function syncBomBySkuImpl(
               ["active", "=", true],
               ["active", "=", false],
             ],
-          ], { fields: ["id", "name", "product_tmpl_id"], limit: 1 });
+          ], {
+            fields: ["id", "name", "product_tmpl_id"],
+            limit: 1,
+            context: { active_test: false },
+          });
           const v = variantRows?.[0];
           if (v && Array.isArray(v.product_tmpl_id)) {
             tmplId = v.product_tmpl_id[0];
@@ -609,7 +641,11 @@ export async function syncBomBySkuImpl(
           Array<{ id: number; code: string | false; product_qty: number }>
         >(creds, uid, "mrp.bom", "search_read", [
           bomDomain,
-        ], { fields: ["id", "code", "product_qty"], limit: 1 });
+        ], {
+          fields: ["id", "code", "product_qty"],
+          limit: 1,
+          context: { active_test: false },
+        });
         const bom = boms?.[0];
 
         // Even if there's no BOM, upsert the product row so the rest of the
