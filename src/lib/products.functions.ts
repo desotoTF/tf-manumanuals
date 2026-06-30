@@ -166,7 +166,7 @@ export const lookupProductBySku = createServerFn({ method: "POST" })
         const tmplHits = await odooExecuteKw<
           Array<{ id: number; default_code: string | false; name: string }>
         >(creds, uid, "product.template", "search_read", [
-          [["default_code", "=", sku]],
+          [["default_code", "=ilike", sku]],
         ], { fields: ["id", "default_code", "name"], limit: 1 });
 
         if (tmplHits && tmplHits.length > 0) {
@@ -188,7 +188,7 @@ export const lookupProductBySku = createServerFn({ method: "POST" })
         const variantExact = await odooExecuteKw<
           Array<{ id: number; default_code: string | false; name: string; product_tmpl_id: [number, string] | false }>
         >(creds, uid, "product.product", "search_read", [
-          [["default_code", "=", sku]],
+          [["default_code", "=ilike", sku]],
         ], { fields: ["id", "default_code", "name", "product_tmpl_id"], limit: 1 });
 
         if (variantExact && variantExact.length > 0 && variantExact[0].product_tmpl_id) {
@@ -265,13 +265,7 @@ export const lookupProductBySku = createServerFn({ method: "POST" })
             };
           }
 
-          if (tmplPrefixHits && tmplPrefixHits.length > 0 && /^TF/i.test(sku)) {
-            // We found templates, but they were not main TF products. Treat as
-            // not found instead of offering parts/hardware kits as manuals.
-            return { source: "not_found", sku, name: "" };
-          }
-
-          if (tmplPrefixHits && tmplPrefixHits.length > 0) {
+          if (tmplPrefixHits && tmplPrefixHits.length > 0 && !/^TF/i.test(sku)) {
             const productHitsFallback = tmplPrefixHits
               .filter((tmpl) => !!tmpl.default_code)
               .map((tmpl) => ({
