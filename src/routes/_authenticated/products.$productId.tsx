@@ -68,13 +68,12 @@ import {
   AlertTriangle,
   Plus,
   Save,
-  Send,
   CheckCircle2,
   Globe,
   Trash2,
   Upload,
   Eye,
-  Printer,
+  Download,
 } from "lucide-react";
 import { getMasterTemplate } from "@/lib/templates.functions";
 import { MasterManualPreview } from "@/components/manual/MasterManualPreview";
