@@ -310,6 +310,9 @@ export const createManualFromSku = createServerFn({ method: "POST" })
         odooProductId: z.string().optional(),
         erpConnectionId: uuid.optional(),
         templateId: uuid.optional(),
+        // Template-level SKU (e.g. TF300601) when the variant SKU
+        // (TF300601-CC) differs — used for BOM linkage.
+        templateSku: z.string().trim().max(120).optional(),
       })
       .parse(d),
   )
@@ -338,6 +341,9 @@ export const createManualFromSku = createServerFn({ method: "POST" })
           ...(data.odooProductId
             ? { erp_product_id: data.odooProductId }
             : {}),
+          ...(data.templateSku && data.templateSku !== sku
+            ? { template_sku: data.templateSku }
+            : {}),
         },
         { onConflict: "organization_id,sku" },
       )
@@ -360,6 +366,9 @@ export const createManualFromSku = createServerFn({ method: "POST" })
               : {}),
             ...(data.odooProductId
               ? { erp_product_id: data.odooProductId }
+              : {}),
+            ...(data.templateSku && data.templateSku !== sku
+              ? { template_sku: data.templateSku }
               : {}),
           },
           { onConflict: "organization_id,sku" },
@@ -979,19 +988,45 @@ export const loadBomForManual = createServerFn({ method: "GET" })
 
     const { data: product, error: pErr } = await supabase
       .from("products")
-      .select("id, sku, organization_id")
+      .select("id, sku, organization_id, template_sku")
       .eq("id", data.productId)
       .maybeSingle();
     if (pErr) throw pErr;
     if (!product) throw new Error("Product not found");
 
-    const { data: bom } = await supabase
+    // Resolve the product whose BOM we should read. When this is a variant
+    // (e.g. TF300601-CC) the BOM is held against the template SKU
+    // (TF300601) — fall back to the sibling product row that owns that BOM.
+    let bomProductId = product.id;
+    let bomSku = product.sku;
+    const tmplSku = (product as { template_sku?: string | null }).template_sku;
+    let bomRow = await supabase
       .from("bom_snapshots")
       .select("normalized_items, captured_at")
-      .eq("product_id", data.productId)
+      .eq("product_id", product.id)
       .order("captured_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+    if (!bomRow.data && tmplSku && tmplSku !== product.sku) {
+      const { data: tmplProduct } = await supabase
+        .from("products")
+        .select("id, sku")
+        .eq("organization_id", product.organization_id)
+        .eq("sku", tmplSku)
+        .maybeSingle();
+      if (tmplProduct) {
+        bomProductId = tmplProduct.id;
+        bomSku = tmplProduct.sku;
+        bomRow = await supabase
+          .from("bom_snapshots")
+          .select("normalized_items, captured_at")
+          .eq("product_id", tmplProduct.id)
+          .order("captured_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+      }
+    }
+    const bom = bomRow.data;
     if (!bom) {
       return {
         parts: [],
@@ -1002,6 +1037,7 @@ export const loadBomForManual = createServerFn({ method: "GET" })
         bomCapturedAt: null as string | null,
       };
     }
+
 
     const { data: rules } = await supabase
       .from("bom_exclusions")
@@ -1036,7 +1072,7 @@ export const loadBomForManual = createServerFn({ method: "GET" })
 
     // Hardware kit = BOM of the `.x` child product. Prefer the one matching
     // `${parent_sku}.x`; otherwise just take the first marker.
-    const expectedHardwareSku = `${product.sku}.x`;
+    const expectedHardwareSku = `${bomSku}.x`;
     const hardwareMarker =
       hardwareMarkers.find(
         (m) => m.part_number.toLowerCase() === expectedHardwareSku.toLowerCase(),
@@ -1097,4 +1133,96 @@ export const loadBomForManual = createServerFn({ method: "GET" })
       bomCapturedAt: bom.captured_at,
     };
   });
+
+// ---------- Delete a manual ----------
+// Removes the manual row (cascades to manual_versions and manual_assets)
+// AND every supporting storage object the manual produced: per-asset
+// storage_path rows, the legacy import PDF (source_pdf_path), and any
+// published PDFs sitting under published-pdfs/{orgId}/{manualId}/.
+// Editors of the owning org can delete; non-members are blocked by RLS.
+export const deleteManual = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ manualId: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+
+    // Resolve manual -> product -> org for the storage prefix.
+    const { data: row, error: rErr } = await supabase
+      .from("manuals")
+      .select(
+        "id, product_id, products!inner(organization_id)",
+      )
+      .eq("id", data.manualId)
+      .maybeSingle();
+    if (rErr) throw rErr;
+    if (!row) throw new Error("Manual not found");
+    const orgId = (row as unknown as {
+      products: { organization_id: string };
+    }).products.organization_id;
+
+    // Collect storage paths to remove BEFORE we drop the rows.
+    const { data: versions } = await supabase
+      .from("manual_versions")
+      .select("id, source_pdf_path")
+      .eq("manual_id", data.manualId);
+    const versionIds = (versions ?? []).map((v) => v.id);
+    const legacyPdfPaths = (versions ?? [])
+      .map((v) => (v as { source_pdf_path?: string | null }).source_pdf_path)
+      .filter((p): p is string => !!p);
+
+    let assetPaths: string[] = [];
+    if (versionIds.length) {
+      const { data: assets } = await supabase
+        .from("manual_assets")
+        .select("storage_path")
+        .in("manual_version_id", versionIds);
+      assetPaths = (assets ?? [])
+        .map((a) => a.storage_path as string | null)
+        .filter((p): p is string => !!p);
+    }
+
+    const { supabaseAdmin } = await import(
+      "@/integrations/supabase/client.server"
+    );
+
+    // Best-effort: list and collect every published PDF for this manual.
+    const publishedPrefix = `published-pdfs/${orgId}/${data.manualId}`;
+    const publishedPaths: string[] = [];
+    try {
+      const { data: listed } = await supabaseAdmin.storage
+        .from("manual-assets")
+        .list(publishedPrefix, { limit: 1000 });
+      for (const f of listed ?? []) {
+        publishedPaths.push(`${publishedPrefix}/${f.name}`);
+      }
+    } catch {
+      // ignore listing failures — deletion of the manual still proceeds.
+    }
+
+    const allPaths = Array.from(
+      new Set([...assetPaths, ...legacyPdfPaths, ...publishedPaths]),
+    );
+    if (allPaths.length) {
+      // Storage remove tolerates missing keys; chunk to stay under limits.
+      const chunkSize = 100;
+      for (let i = 0; i < allPaths.length; i += chunkSize) {
+        await supabaseAdmin.storage
+          .from("manual-assets")
+          .remove(allPaths.slice(i, i + chunkSize));
+      }
+    }
+
+    // Cascade handles manual_versions + manual_assets rows.
+    const { error: delErr } = await supabase
+      .from("manuals")
+      .delete()
+      .eq("id", data.manualId);
+    if (delErr) throw delErr;
+
+    return {
+      ok: true as const,
+      removedStorageObjects: allPaths.length,
+    };
+  });
+
 

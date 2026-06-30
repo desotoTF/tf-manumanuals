@@ -12,9 +12,13 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import { Plus, Search, Loader2 } from "lucide-react";
+import { Plus, Search, Loader2, Trash2 } from "lucide-react";
 import { useActiveOrg } from "@/components/AppShell";
-import { listManualsWithStatus, createManualFromSku } from "@/lib/manuals.functions";
+import {
+  listManualsWithStatus,
+  createManualFromSku,
+  deleteManual,
+} from "@/lib/manuals.functions";
 import { lookupProductBySku } from "@/lib/products.functions";
 import { listTemplates } from "@/lib/templates.functions";
 import { formatManualLabel } from "@/lib/types";
@@ -45,6 +49,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 
 export const Route = createFileRoute("/_authenticated/products")({
@@ -79,13 +93,30 @@ function ProductsRoutePage() {
 function ManualsPage() {
   const { orgId } = useActiveOrg();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const fetchManuals = useServerFn(listManualsWithStatus);
+  const deleteManualFn = useServerFn(deleteManual);
   const [filter, setFilter] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [toDelete, setToDelete] = useState<{
+    manualId: string;
+    label: string;
+  } | null>(null);
 
   const manualsQuery = useQuery({
     queryKey: ["manuals", orgId],
     queryFn: () => fetchManuals({ data: { organizationId: orgId } }),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (manualId: string) =>
+      deleteManualFn({ data: { manualId } }),
+    onSuccess: () => {
+      toast.success("Manual deleted");
+      qc.invalidateQueries({ queryKey: ["manuals", orgId] });
+      setToDelete(null);
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const rows = useMemo(() => {
@@ -131,13 +162,14 @@ function ManualsPage() {
               <TableHead>Latest version</TableHead>
               <TableHead>Last published</TableHead>
               <TableHead>Last BOM change</TableHead>
+              <TableHead className="w-12" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {manualsQuery.isLoading && (
               <TableRow>
                 <TableCell
-                  colSpan={5}
+                  colSpan={6}
                   className="text-center text-sm text-muted-foreground"
                 >
                   Loading…
@@ -147,7 +179,7 @@ function ManualsPage() {
             {!manualsQuery.isLoading && rows.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={5}
+                  colSpan={6}
                   className="text-center text-sm text-muted-foreground"
                 >
                   {manualsQuery.data?.length === 0
@@ -204,6 +236,25 @@ function ManualsPage() {
                         })
                       : "—"}
                   </TableCell>
+                  <TableCell
+                    className="text-right"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Delete manual"
+                      className="text-muted-foreground hover:text-destructive"
+                      onClick={() =>
+                        setToDelete({
+                          manualId: r.manual_id,
+                          label: formatManualLabel(r.sku, r.product_name),
+                        })
+                      }
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </TableCell>
                 </TableRow>
               );
             })}
@@ -216,6 +267,37 @@ function ManualsPage() {
         onOpenChange={setCreateOpen}
         orgId={orgId}
       />
+
+      <AlertDialog
+        open={!!toDelete}
+        onOpenChange={(o) => !o && !deleteMut.isPending && setToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this manual?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {toDelete?.label
+                ? `“${toDelete.label}” and every draft, version, image, and published PDF tied to it will be permanently removed. This can't be undone.`
+                : "This can't be undone."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMut.isPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteMut.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                if (toDelete) deleteMut.mutate(toDelete.manualId);
+              }}
+            >
+              {deleteMut.isPending ? "Deleting…" : "Delete manual"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -246,6 +328,7 @@ function CreateManualDialog({
     templateSku?: string;
     erpConnectionId?: string;
     variants?: Array<{ odooProductId: string; sku: string; name: string }>;
+    variantTemplateSkus?: Record<string, string>;
     lookupError?: string;
   } | null>(null);
   // When the lookup returns multiple Odoo variants, the user picks one here.
@@ -295,6 +378,7 @@ function CreateManualDialog({
         templateSku: res.templateSku,
         erpConnectionId: res.erpConnectionId,
         variants: res.variants,
+        variantTemplateSkus: res.variantTemplateSkus,
         lookupError: res.lookupError,
       });
       if (res.name) setName(res.name);
@@ -317,6 +401,12 @@ function CreateManualDialog({
   // (matches Odoo and unblocks BOM sync); keep the template SKU available for
   // future display fixes (parts list).
   const effectiveSku = variantChoice?.sku ?? sku.trim();
+  // Pick the right template SKU for BOM linkage. Prefix-search results
+  // can span multiple templates, so prefer the per-variant map.
+  const effectiveTemplateSku =
+    (variantChoice &&
+      lookup?.variantTemplateSkus?.[variantChoice.odooProductId]) ||
+    lookup?.templateSku;
 
   const createMut = useMutation({
     mutationFn: () =>
@@ -328,6 +418,7 @@ function CreateManualDialog({
           odooProductId: effectiveOdooProductId,
           erpConnectionId: lookup?.erpConnectionId,
           templateId: templateId === "__none" ? undefined : templateId,
+          templateSku: effectiveTemplateSku,
         },
       }),
     onSuccess: (res) => {
