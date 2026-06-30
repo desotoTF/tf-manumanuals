@@ -10,15 +10,13 @@ import { StepLayoutView } from "@/components/manual/StepLayoutView";
 import { useStepFigureMap } from "@/lib/figure-refs";
 import { useMemo } from "react";
 
-
 export const Route = createFileRoute("/manuals/$slug")({
   loader: async ({ params }) => {
     const res = await getPublishedManualBySlug({ data: { slug: params.slug } });
     if (!res.product || !res.version) throw notFound();
     // If a rendered PDF exists, redirect the browser to view it directly
     // (native PDF viewer; user can save/print without our UI in the way).
-    const pdfUrl = (res.version as { published_pdf_url?: string | null })
-      .published_pdf_url;
+    const pdfUrl = (res.version as { published_pdf_url?: string | null }).published_pdf_url;
     if (pdfUrl && typeof window !== "undefined") {
       window.location.replace(pdfUrl);
     }
@@ -26,9 +24,7 @@ export const Route = createFileRoute("/manuals/$slug")({
   },
   head: ({ loaderData }) => {
     if (!loaderData?.product) return {};
-    const desc =
-      loaderData.product.description ??
-      `Installation manual for ${loaderData.product.name}.`;
+    const desc = loaderData.product.description ?? `Installation manual for ${loaderData.product.name}.`;
     return {
       meta: [
         { title: `${loaderData.product.name} — Installation Manual` },
@@ -61,15 +57,12 @@ export const Route = createFileRoute("/manuals/$slug")({
 function PublicManualPage() {
   const { product, version, assets, layout } = Route.useLoaderData();
   const content = (version!.content ?? {}) as Partial<ManualContent>;
-  const publishedAt = version!.published_at
-    ? format(new Date(version!.published_at), "MMM d, yyyy")
-    : null;
+  const publishedAt = version!.published_at ? format(new Date(version!.published_at), "MMM d, yyyy") : null;
 
   // Asset lookup + figure numbering shared across blocks (text references
   // like {{fig:...}} resolve to "Fig. N" via figMap).
   const assetMap = useMemo(() => {
-    const map: Record<string, { url: string | null; caption?: string | null }> =
-      {};
+    const map: Record<string, { url: string | null; caption?: string | null }> = {};
     for (const a of assets as Array<{ id: string; url: string | null; metadata: Record<string, unknown> | null }>) {
       map[a.id] = {
         url: a.url,
@@ -89,12 +82,7 @@ function PublicManualPage() {
         : layout === "service_card"
           ? "max-w-xl"
           : "max-w-3xl";
-  const titleSize =
-    layout === "field_guide"
-      ? "text-4xl"
-      : layout === "service_card"
-        ? "text-2xl"
-        : "text-3xl";
+  const titleSize = layout === "field_guide" ? "text-4xl" : layout === "service_card" ? "text-2xl" : "text-3xl";
   const spacing = layout === "compact" || layout === "service_card" ? "space-y-5" : "space-y-8";
 
   return (
@@ -104,20 +92,14 @@ function PublicManualPage() {
           <Factory className="h-4 w-4 text-primary" />
           <span className="font-medium">ManuManuals</span>
           <span className="text-muted-foreground">·</span>
-          <span className="font-mono text-xs text-muted-foreground">
-            {product!.sku}
-          </span>
+          <span className="font-mono text-xs text-muted-foreground">{product!.sku}</span>
         </div>
       </header>
 
       <article className={`mx-auto ${maxW} ${spacing} px-6 py-10`}>
         <div>
-          <h1 className={`${titleSize} font-semibold tracking-tight`}>
-            {product!.name}
-          </h1>
-          {product!.description && (
-            <p className="mt-2 text-muted-foreground">{product!.description}</p>
-          )}
+          <h1 className={`${titleSize} font-semibold tracking-tight`}>{product!.name}</h1>
+          {product!.description && <p className="mt-2 text-muted-foreground">{product!.description}</p>}
           <p className="mt-3 text-xs text-muted-foreground">
             Version {version!.version_number}
             {publishedAt && <> · Published {publishedAt}</>}
@@ -143,10 +125,7 @@ function PublicManualPage() {
               }[w.severity];
               const Icon = map.icon;
               return (
-                <div
-                  key={i}
-                  className={`flex items-start gap-3 rounded-md border p-3 text-sm ${map.cls}`}
-                >
+                <div key={i} className={`flex items-start gap-3 rounded-md border p-3 text-sm ${map.cls}`}>
                   <Icon className="mt-0.5 h-4 w-4 shrink-0" />
                   <p>{w.body}</p>
                 </div>
@@ -162,11 +141,7 @@ function PublicManualPage() {
               {content.tools.map((t, i) => (
                 <li key={i} className="rounded-md border border-border px-3 py-2">
                   <span className="font-medium">{t.name}</span>
-                  {t.spec && (
-                    <span className="ml-2 text-xs text-muted-foreground">
-                      {t.spec}
-                    </span>
-                  )}
+                  {t.spec && <span className="ml-2 text-xs text-muted-foreground">{t.spec}</span>}
                 </li>
               ))}
             </ul>
@@ -190,9 +165,7 @@ function PublicManualPage() {
                     <tr key={i} className="border-t border-border">
                       <td className="px-3 py-2 font-mono">{p.part_number}</td>
                       <td className="px-3 py-2">{p.qty}</td>
-                      <td className="px-3 py-2 text-muted-foreground">
-                        {p.description ?? "—"}
-                      </td>
+                      <td className="px-3 py-2 text-muted-foreground">{p.description ?? "—"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -218,9 +191,7 @@ function PublicManualPage() {
                     <tr key={i} className="border-t border-border">
                       <td className="px-3 py-2 font-mono">{p.part_number}</td>
                       <td className="px-3 py-2">{p.qty}</td>
-                      <td className="px-3 py-2 text-muted-foreground">
-                        {p.description ?? "—"}
-                      </td>
+                      <td className="px-3 py-2 text-muted-foreground">{p.description ?? "—"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -229,26 +200,15 @@ function PublicManualPage() {
           </section>
         )}
 
-
         {content.steps && content.steps.length > 0 && (
           <section>
             <h2 className="mb-3 text-lg font-semibold">Installation steps</h2>
             <ol className="space-y-4">
               {content.steps.map((s, i) => (
-                <li
-                  key={s.id ?? i}
-                  className="rounded-md border border-border p-4"
-                >
-                  <div className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
-                    Step {i + 1}
-                  </div>
+                <li key={s.id ?? i} className="rounded-md border border-border p-4">
+                  <div className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Step {i + 1}</div>
                   <h3 className="mb-3 text-base font-semibold">{s.title}</h3>
-                  <StepLayoutView
-                    step={s}
-                    assets={assetMap}
-                    figMap={figMap}
-                  />
-
+                  <StepLayoutView step={s} assets={assetMap} figMap={figMap} />
                 </li>
               ))}
             </ol>
@@ -274,9 +234,7 @@ function PublicManualPage() {
                       <td className="px-3 py-2 font-mono">
                         {t.value} {t.unit}
                       </td>
-                      <td className="px-3 py-2 text-muted-foreground">
-                        {t.sequence ?? "—"}
-                      </td>
+                      <td className="px-3 py-2 text-muted-foreground">{t.sequence ?? "—"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -289,13 +247,17 @@ function PublicManualPage() {
           <section>
             <h2 className="mb-3 text-lg font-semibold">Reference images</h2>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {(assets as Array<{ id: string; type: string; url: string | null; metadata: Record<string, unknown> | null }>)
+              {(
+                assets as Array<{
+                  id: string;
+                  type: string;
+                  url: string | null;
+                  metadata: Record<string, unknown> | null;
+                }>
+              )
                 .filter((a) => a.url)
                 .map((a) => (
-                  <figure
-                    key={a.id}
-                    className="overflow-hidden rounded-md border border-border"
-                  >
+                  <figure key={a.id} className="overflow-hidden rounded-md border border-border">
                     <img
                       src={a.url!}
                       alt={(a.metadata as any)?.caption ?? ""}
@@ -315,7 +277,7 @@ function PublicManualPage() {
       </article>
 
       <footer className="border-t border-border py-6 text-center text-xs text-muted-foreground">
-        Powered by ManuManuals
+        Powered by ThumperFab
       </footer>
     </div>
   );
