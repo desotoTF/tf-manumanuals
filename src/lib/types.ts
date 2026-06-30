@@ -53,6 +53,10 @@ export interface ManualContent {
   images: { asset_id: string; caption?: string }[];
   // Pages + blocks scaffold (additive; older drafts have it undefined).
   pages?: ManualPage[];
+  // Cover image shown on page 1, between the SKU line and the company footer.
+  // Sourced from Odoo's product.template.image_1920 by default, replaceable
+  // by the editor.
+  hero_image_url?: string | null;
 }
 
 // A single installation step.

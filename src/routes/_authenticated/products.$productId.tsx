@@ -17,6 +17,8 @@ import {
   removeManualAsset,
   uploadManualAssetFile,
   uploadPublishedPdf,
+  uploadManualCoverImage,
+  fetchOdooCoverImage,
   importLegacyManualFromPdf,
   loadBomForManual,
 } from "@/lib/manuals.functions";
@@ -111,6 +113,8 @@ function ProductEditorPage() {
   const removeAsset = useServerFn(removeManualAsset);
   const uploadAsset = useServerFn(uploadManualAssetFile);
   const uploadPdf = useServerFn(uploadPublishedPdf);
+  const uploadCover = useServerFn(uploadManualCoverImage);
+  const fetchOdooCover = useServerFn(fetchOdooCoverImage);
   const importPdf = useServerFn(importLegacyManualFromPdf);
   const fetchTemplates = useServerFn(listTemplates);
 
@@ -530,6 +534,42 @@ function ProductEditorPage() {
               </CardContent>
             </Card>
           ) : (
+            <>
+            {primaryManual && (
+              <CoverImageCard
+                manualId={primaryManual.id}
+                imageUrl={content.hero_image_url ?? null}
+                editable={!!editable}
+                hasOdooLink={true}
+                onSet={async (url) => {
+                  setContent({ ...content, hero_image_url: url });
+                  // Persist immediately so the cover survives reloads.
+                  try {
+                    await saveDraft({
+                      data: {
+                        versionId: activeVersionId!,
+                        content: {
+                          ...(content as unknown as Record<string, unknown>),
+                          hero_image_url: url,
+                        },
+                        changeSummary: changeSummary || undefined,
+                      },
+                    });
+                    qc.invalidateQueries({
+                      queryKey: ["manual-version", activeVersionId],
+                    });
+                  } catch (e) {
+                    toast.error((e as Error).message);
+                  }
+                }}
+                uploadCover={(args) =>
+                  uploadCover({ data: { manualId: primaryManual.id, ...args } })
+                }
+                fetchFromOdoo={() =>
+                  fetchOdooCover({ data: { manualId: primaryManual.id } })
+                }
+              />
+            )}
             <ContentEditor
               content={content}
               setContent={setContent}
@@ -582,7 +622,7 @@ function ProductEditorPage() {
               }}
               productSku={baseTfSku(ws.product.sku)}
             />
-
+            </>
           )}
         </section>
 
@@ -1753,5 +1793,148 @@ function ManualPreviewDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ---------- Cover image card (page 1 hero) ----------
+function CoverImageCard({
+  imageUrl,
+  editable,
+  hasOdooLink,
+  onSet,
+  uploadCover,
+  fetchFromOdoo,
+}: {
+  manualId: string;
+  imageUrl: string | null;
+  editable: boolean;
+  hasOdooLink: boolean;
+  onSet: (url: string | null) => void | Promise<void>;
+  uploadCover: (args: {
+    filename: string;
+    contentType: string;
+    dataBase64: string;
+  }) => Promise<{ url: string }>;
+  fetchFromOdoo: () => Promise<{ url: string }>;
+}) {
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [busy, setBusy] = useState<"upload" | "odoo" | "remove" | null>(null);
+
+  const handleFile = async (file: File) => {
+    setBusy("upload");
+    try {
+      const buf = await file.arrayBuffer();
+      let binary = "";
+      const bytes = new Uint8Array(buf);
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode(
+          ...bytes.subarray(i, Math.min(i + chunk, bytes.length)),
+        );
+      }
+      const dataBase64 = btoa(binary);
+      const res = await uploadCover({
+        filename: file.name,
+        contentType: file.type || "image/png",
+        dataBase64,
+      });
+      await onSet(res.url);
+      toast.success("Cover image updated");
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(null);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  return (
+    <Card className="mb-4">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">Cover image (page 1)</CardTitle>
+      </CardHeader>
+      <CardContent className="flex items-center gap-4">
+        <div className="flex h-32 w-32 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt="Cover"
+              className="h-full w-full object-contain"
+            />
+          ) : (
+            <span className="px-2 text-center text-[11px] text-muted-foreground">
+              No cover image
+            </span>
+          )}
+        </div>
+        <div className="flex flex-1 flex-col gap-2">
+          <p className="text-xs text-muted-foreground">
+            Shown on page 1 between the SKU and the company footer. Use a
+            high-resolution product image.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void handleFile(f);
+              }}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!editable || busy !== null}
+              onClick={() => fileRef.current?.click()}
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              {busy === "upload" ? "Uploading…" : "Upload / replace"}
+            </Button>
+            {hasOdooLink && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!editable || busy !== null}
+                onClick={async () => {
+                  setBusy("odoo");
+                  try {
+                    const res = await fetchFromOdoo();
+                    await onSet(res.url);
+                    toast.success("Pulled product image from Odoo");
+                  } catch (e) {
+                    toast.error((e as Error).message);
+                  } finally {
+                    setBusy(null);
+                  }
+                }}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                {busy === "odoo" ? "Fetching…" : "Fetch from Odoo"}
+              </Button>
+            )}
+            {imageUrl && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-destructive hover:text-destructive"
+                disabled={!editable || busy !== null}
+                onClick={async () => {
+                  setBusy("remove");
+                  try {
+                    await onSet(null);
+                  } finally {
+                    setBusy(null);
+                  }
+                }}
+              >
+                <Trash2 className="mr-2 h-4 w-4" /> Remove
+              </Button>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
