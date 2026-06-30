@@ -911,7 +911,6 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      _tmp_erp_read: { Args: { _id: string }; Returns: Json }
       erp_delete_credentials: {
         Args: { _connection_id: string }
         Returns: undefined
