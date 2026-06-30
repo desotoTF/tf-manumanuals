@@ -45,7 +45,7 @@ export const getPublishedManualBySlug = createServerFn({ method: "GET" })
     const { data: version } = await supabaseAdmin
       .from("manual_versions")
       .select(
-        "id, version_number, content, published_at, change_summary, pdf_url",
+        "id, version_number, content, published_at, change_summary, pdf_url, published_pdf_url",
       )
       .eq("manual_id", manualRow.id)
       .eq("state", "published")
