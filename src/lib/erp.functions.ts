@@ -717,5 +717,19 @@ export async function syncBomBySkuImpl(
       } catch (e) {
         return { ok: false, found: false, sku, error: (e as Error).message };
       }
-    },
-  );
+    }
+}
+
+export const syncBomBySku = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        organizationId: z.string().uuid(),
+        sku: z.string().trim().min(1).max(120),
+        connectionId: z.string().uuid().optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => syncBomBySkuImpl(context.supabase, data));
+
