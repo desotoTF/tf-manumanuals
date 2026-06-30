@@ -401,6 +401,12 @@ function CreateManualDialog({
   // (matches Odoo and unblocks BOM sync); keep the template SKU available for
   // future display fixes (parts list).
   const effectiveSku = variantChoice?.sku ?? sku.trim();
+  // Pick the right template SKU for BOM linkage. Prefix-search results
+  // can span multiple templates, so prefer the per-variant map.
+  const effectiveTemplateSku =
+    (variantChoice &&
+      lookup?.variantTemplateSkus?.[variantChoice.odooProductId]) ||
+    lookup?.templateSku;
 
   const createMut = useMutation({
     mutationFn: () =>
@@ -412,6 +418,7 @@ function CreateManualDialog({
           odooProductId: effectiveOdooProductId,
           erpConnectionId: lookup?.erpConnectionId,
           templateId: templateId === "__none" ? undefined : templateId,
+          templateSku: effectiveTemplateSku,
         },
       }),
     onSuccess: (res) => {
