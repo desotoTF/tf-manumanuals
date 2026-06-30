@@ -12,9 +12,13 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import { Plus, Search, Loader2 } from "lucide-react";
+import { Plus, Search, Loader2, Trash2 } from "lucide-react";
 import { useActiveOrg } from "@/components/AppShell";
-import { listManualsWithStatus, createManualFromSku } from "@/lib/manuals.functions";
+import {
+  listManualsWithStatus,
+  createManualFromSku,
+  deleteManual,
+} from "@/lib/manuals.functions";
 import { lookupProductBySku } from "@/lib/products.functions";
 import { listTemplates } from "@/lib/templates.functions";
 import { formatManualLabel } from "@/lib/types";
