@@ -448,18 +448,53 @@ function ProductEditorPage() {
         </div>
       </header>
 
-      <ManualPreviewDialog
-        open={previewOpen}
-        onOpenChange={setPreviewOpen}
-        branding={masterQuery.data?.branding ?? {}}
-        meta={{
+      {(() => {
+        const assetMap: Record<string, { url: string | null; caption?: string | null }> = {};
+        for (const a of assets as Array<{ id: string; url: string | null; metadata: any }>) {
+          assetMap[a.id] = { url: a.url, caption: a.metadata?.caption ?? null };
+        }
+        const previewMeta = {
           sku: ws.product.sku,
           name: ws.product.name,
           variant: ws.product.description ?? undefined,
           versionLabel: activeVersion ? String(activeVersion.version_number) : undefined,
-        }}
-        content={content}
-      />
+        };
+        return (
+          <>
+            <ManualPreviewDialog
+              open={previewOpen}
+              onOpenChange={setPreviewOpen}
+              branding={masterQuery.data?.branding ?? {}}
+              meta={previewMeta}
+              content={content}
+              assets={assetMap}
+            />
+            {/* Hidden always-mounted preview so publish can render PDF
+                without the user opening the dialog first. */}
+            {activeVersion && (
+              <div
+                aria-hidden
+                style={{
+                  position: "fixed",
+                  left: "-10000px",
+                  top: 0,
+                  width: 900,
+                  pointerEvents: "none",
+                }}
+              >
+                <div id="manual-print-area">
+                  <MasterManualPreview
+                    branding={masterQuery.data?.branding ?? {}}
+                    meta={previewMeta}
+                    content={content}
+                    assets={assetMap}
+                  />
+                </div>
+              </div>
+            )}
+          </>
+        );
+      })()}
 
 
       <CreateManualDialog
