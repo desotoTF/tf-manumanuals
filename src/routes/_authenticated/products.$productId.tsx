@@ -974,57 +974,16 @@ function ContentEditor({
           />
         )}
         {tab === "parts" && (
-          <div className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h3 className="text-sm font-semibold">Parts</h3>
-                <p className="text-xs text-muted-foreground">
-                  From the BOM of{" "}
-                  <span className="font-mono">{productSku}</span>. Hardware
-                  Kit comes from{" "}
-                  <span className="font-mono">{productSku}.x</span>.
-                </p>
-              </div>
-              {editable && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    onLoadBom().catch((e: Error) =>
-                      toast.error(e.message),
-                    );
-                  }}
-                >
-                  <Upload className="mr-2 h-4 w-4" /> Load from BOM
-                </Button>
-              )}
-            </div>
-            <PartsListEditor
-              items={content.parts}
-              setItems={(items) => update("parts", items)}
-              editable={editable}
-              emptyHint="No parts yet. Click 'Load from BOM' to autofill, or add manually."
-              rowKeyPrefix="part"
-            />
-
-            <Separator />
-
-            <div>
-              <h3 className="text-sm font-semibold">Hardware Kit</h3>
-              <p className="mb-2 text-xs text-muted-foreground">
-                Sourced from{" "}
-                <span className="font-mono">{productSku}.x</span> BOM lines.
-              </p>
-            </div>
-            <PartsListEditor
-              items={content.hardware_kit}
-              setItems={(items) => update("hardware_kit", items)}
-              editable={editable}
-              emptyHint="No hardware kit lines. Load BOM or add manually."
-              rowKeyPrefix="hw"
-            />
-          </div>
+          <PartsTabPanel
+            content={content}
+            update={update}
+            editable={editable}
+            productSku={productSku}
+            onLoadBom={onLoadBom}
+            onSearchBom={onSearchBom}
+          />
         )}
+
         {tab === "warnings" && (
           <WarningsEditor
             warnings={content.warnings}
