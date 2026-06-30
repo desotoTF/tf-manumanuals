@@ -988,19 +988,45 @@ export const loadBomForManual = createServerFn({ method: "GET" })
 
     const { data: product, error: pErr } = await supabase
       .from("products")
-      .select("id, sku, organization_id")
+      .select("id, sku, organization_id, template_sku")
       .eq("id", data.productId)
       .maybeSingle();
     if (pErr) throw pErr;
     if (!product) throw new Error("Product not found");
 
-    const { data: bom } = await supabase
+    // Resolve the product whose BOM we should read. When this is a variant
+    // (e.g. TF300601-CC) the BOM is held against the template SKU
+    // (TF300601) — fall back to the sibling product row that owns that BOM.
+    let bomProductId = product.id;
+    let bomSku = product.sku;
+    const tmplSku = (product as { template_sku?: string | null }).template_sku;
+    let bomRow = await supabase
       .from("bom_snapshots")
       .select("normalized_items, captured_at")
-      .eq("product_id", data.productId)
+      .eq("product_id", product.id)
       .order("captured_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+    if (!bomRow.data && tmplSku && tmplSku !== product.sku) {
+      const { data: tmplProduct } = await supabase
+        .from("products")
+        .select("id, sku")
+        .eq("organization_id", product.organization_id)
+        .eq("sku", tmplSku)
+        .maybeSingle();
+      if (tmplProduct) {
+        bomProductId = tmplProduct.id;
+        bomSku = tmplProduct.sku;
+        bomRow = await supabase
+          .from("bom_snapshots")
+          .select("normalized_items, captured_at")
+          .eq("product_id", tmplProduct.id)
+          .order("captured_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+      }
+    }
+    const bom = bomRow.data;
     if (!bom) {
       return {
         parts: [],
@@ -1011,6 +1037,7 @@ export const loadBomForManual = createServerFn({ method: "GET" })
         bomCapturedAt: null as string | null,
       };
     }
+
 
     const { data: rules } = await supabase
       .from("bom_exclusions")
