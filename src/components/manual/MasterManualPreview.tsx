@@ -4,6 +4,9 @@
 import { useMemo } from "react";
 import { type BrandingTokens, mergeBranding, resolveLogoUrl } from "@/lib/branding";
 import type { ManualContent } from "@/lib/types";
+import { normalizeStep } from "@/lib/types";
+import { StepLayoutView } from "@/components/manual/StepLayoutView";
+import { buildFigureMapFromSteps } from "@/lib/figure-refs";
 
 export interface ManualPreviewMeta {
   sku: string;
@@ -12,19 +15,31 @@ export interface ManualPreviewMeta {
   versionLabel?: string;
 }
 
+export type PreviewAssetMap = Record<
+  string,
+  { url: string | null; caption?: string | null }
+>;
+
 export function MasterManualPreview({
   branding: brandingInput,
   meta,
   content,
+  assets,
   scale = 1,
 }: {
   branding: unknown;
   meta: ManualPreviewMeta;
   content: ManualContent;
+  assets?: PreviewAssetMap;
   scale?: number;
 }) {
   const b = useMemo(() => mergeBranding(brandingInput), [brandingInput]);
   const logo = resolveLogoUrl(b);
+  const assetMap = assets ?? {};
+  const figMap = useMemo(
+    () => buildFigureMapFromSteps(content.steps),
+    [content.steps],
+  );
 
   // CSS vars on the wrapper let every child read tokens without prop drilling.
   const wrapStyle = {
