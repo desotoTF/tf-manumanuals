@@ -62,6 +62,9 @@ interface Props {
   images: FigureSource[];
   figMap: Map<string, number>;
   allowedLayouts?: StepLayout[];
+  /** Optional inline upload — when provided, the image picker shows a
+   *  "Choose image" tile that uploads on click and auto-selects. */
+  onInlineUpload?: (file: File) => Promise<string | null>;
 }
 
 export function StepLayoutEditor({
@@ -71,6 +74,7 @@ export function StepLayoutEditor({
   images,
   figMap,
   allowedLayouts,
+  onInlineUpload,
 }: Props) {
   const normalized = useMemo(() => normalizeStep(step), [step]);
   const layout = normalized.layout ?? "two_col";
