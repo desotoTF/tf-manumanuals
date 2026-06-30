@@ -534,6 +534,42 @@ function ProductEditorPage() {
               </CardContent>
             </Card>
           ) : (
+            <>
+            {primaryManual && (
+              <CoverImageCard
+                manualId={primaryManual.id}
+                imageUrl={content.hero_image_url ?? null}
+                editable={!!editable}
+                hasOdooLink={true}
+                onSet={async (url) => {
+                  setContent({ ...content, hero_image_url: url });
+                  // Persist immediately so the cover survives reloads.
+                  try {
+                    await saveDraft({
+                      data: {
+                        versionId: activeVersionId!,
+                        content: {
+                          ...(content as unknown as Record<string, unknown>),
+                          hero_image_url: url,
+                        },
+                        changeSummary: changeSummary || undefined,
+                      },
+                    });
+                    qc.invalidateQueries({
+                      queryKey: ["manual-version", activeVersionId],
+                    });
+                  } catch (e) {
+                    toast.error((e as Error).message);
+                  }
+                }}
+                uploadCover={(args) =>
+                  uploadCover({ data: { manualId: primaryManual.id, ...args } })
+                }
+                fetchFromOdoo={() =>
+                  fetchOdooCover({ data: { manualId: primaryManual.id } })
+                }
+              />
+            )}
             <ContentEditor
               content={content}
               setContent={setContent}
