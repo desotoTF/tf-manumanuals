@@ -1088,6 +1088,7 @@ export const loadBomForManual = createServerFn({ method: "GET" })
     let bomProductId = product.id;
     let bomSku = bomBaseSku(product.sku, (product as { template_sku?: string | null }).template_sku);
     const tmplSku = (product as { template_sku?: string | null }).template_sku;
+    const productIsHardwareKit = /\.x$/i.test(String(product.sku ?? "").trim());
     let bomRow = await supabase
       .from("bom_snapshots")
       .select("normalized_items, captured_at")
@@ -1177,10 +1178,12 @@ export const loadBomForManual = createServerFn({ method: "GET" })
 
     // Hardware kit = BOM of the `.x` child product. Prefer the one matching
     // `${parent_sku}.x`; otherwise just take the first marker.
-    const expectedHardwareSku = `${bomSku}.x`;
+    const expectedHardwareSku = productIsHardwareKit ? null : `${bomSku}.x`;
     const hardwareMarker =
       hardwareMarkers.find(
-        (m) => m.part_number.toLowerCase() === expectedHardwareSku.toLowerCase(),
+        (m) =>
+          !!expectedHardwareSku &&
+          m.part_number.toLowerCase() === expectedHardwareSku.toLowerCase(),
       ) ?? hardwareMarkers[0] ?? null;
 
     let hardware_kit: typeof items = [];
