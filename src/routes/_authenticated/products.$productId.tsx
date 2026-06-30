@@ -625,6 +625,33 @@ function ProductEditorPage() {
                 }
               }}
               productSku={baseTfSku(ws.product.sku)}
+              onSearchBom={async (searchSku: string) => {
+                const res = await syncBom({
+                  data: {
+                    organizationId: orgId,
+                    sku: searchSku.trim().toUpperCase(),
+                  },
+                });
+                if (!res.ok) {
+                  toast.error(res.error ?? "Could not search Odoo");
+                  return;
+                }
+                if (!res.found) {
+                  toast.info(`No BOM found in Odoo for ${searchSku}.`);
+                  return;
+                }
+                // Pull the new snapshot into the editor.
+                const loaded = await loadBom({ data: { productId } });
+                setContent({
+                  ...content,
+                  parts: loaded.parts,
+                  hardware_kit: loaded.hardware_kit,
+                });
+                toast.success(
+                  `Loaded ${loaded.parts.length} parts from ${searchSku}`,
+                );
+              }}
+
             />
             </>
           )}
