@@ -266,7 +266,7 @@ function ProductEditorPage() {
       if (action === "publish" && activeVersionId) {
         try {
           setPublishingPdf(true);
-          const node = document.getElementById("manual-print-area");
+          const node = document.getElementById("manual-pdf-source");
           if (!node) {
             toast.warning(
               "Open the Preview once so the PDF can be generated.",
