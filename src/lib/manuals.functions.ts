@@ -458,6 +458,65 @@ export const createManualFromSku = createServerFn({ method: "POST" })
       }));
     }
 
+    // Best-effort: pull the product image from Odoo and stash it as the
+    // cover image. Failures are non-fatal — the editor exposes a manual
+    // "Fetch from Odoo" / upload affordance.
+    if (data.odooProductId && data.erpConnectionId) {
+      try {
+        const { data: cred } = await supabase.rpc("erp_read_credentials", {
+          _connection_id: data.erpConnectionId,
+        });
+        const apiKey = (cred as { api_key?: string } | null)?.api_key;
+        const { data: connRow } = await supabase
+          .from("erp_connections")
+          .select("base_url, database, username")
+          .eq("id", data.erpConnectionId)
+          .maybeSingle();
+        if (apiKey && connRow) {
+          const { odooAuthenticate, odooExecuteKw } = await import(
+            "./odoo-xmlrpc.server"
+          );
+          const creds = {
+            baseUrl: connRow.base_url,
+            database: connRow.database ?? "",
+            username: connRow.username,
+            apiKey,
+          };
+          const uid = await odooAuthenticate(creds);
+          const rows = await odooExecuteKw<
+            Array<{ id: number; image_1920?: string | false }>
+          >(creds, uid, "product.template", "read", [
+            [Number(data.odooProductId)],
+          ], { fields: ["image_1920"] });
+          const raw = rows?.[0]?.image_1920;
+          if (raw && typeof raw === "string") {
+            const { supabaseAdmin } = await import(
+              "@/integrations/supabase/client.server"
+            );
+            const bytes = Buffer.from(raw, "base64");
+            const path = `cover-images/${data.organizationId}/${productId}/${Date.now()}-odoo.png`;
+            const { error: upErr } = await supabaseAdmin.storage
+              .from("manual-assets")
+              .upload(path, bytes, {
+                contentType: "image/png",
+                upsert: false,
+              });
+            if (!upErr) {
+              const { data: signed } = await supabaseAdmin.storage
+                .from("manual-assets")
+                .createSignedUrl(path, 60 * 60 * 24 * 365 * 10);
+              if (signed?.signedUrl) {
+                seedContent.hero_image_url = signed.signedUrl;
+              }
+            }
+          }
+        }
+      } catch {
+        // ignore — manual creation must not fail because the image lookup did.
+      }
+    }
+
+
     const { data: nextNum } = await supabase.rpc(
       "next_manual_version_number",
       { _manual_id: newManual.id },
