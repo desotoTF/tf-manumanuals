@@ -182,6 +182,42 @@ export const lookupProductBySku = createServerFn({ method: "POST" })
           };
         }
 
+        // 2a-bis) Variant-level exact lookup. Many Odoo tenants store the SKU
+        // only on product.product (variants), not on product.template. Resolve
+        // the variant up to its template so we return the main product.
+        const variantExact = await odooExecuteKw<
+          Array<{ id: number; default_code: string | false; name: string; product_tmpl_id: [number, string] | false }>
+        >(creds, uid, "product.product", "search_read", [
+          [["default_code", "=", sku]],
+        ], { fields: ["id", "default_code", "name", "product_tmpl_id"], limit: 1 });
+
+        if (variantExact && variantExact.length > 0 && variantExact[0].product_tmpl_id) {
+          const v = variantExact[0];
+          const tmplId = (v.product_tmpl_id as [number, string])[0];
+          const tmplRows = await odooExecuteKw<
+            Array<{ id: number; default_code: string | false; name: string }>
+          >(creds, uid, "product.template", "read", [[tmplId]], {
+            fields: ["id", "default_code", "name"],
+          });
+          const tmpl = tmplRows?.[0];
+          const templateCode = tmpl?.default_code ? String(tmpl.default_code).toUpperCase() : null;
+          const variantCode = v.default_code ? String(v.default_code).toUpperCase() : null;
+          const baseSku =
+            (templateCode && extractTfBaseSku(templateCode)) ||
+            (variantCode && extractTfBaseSku(variantCode)) ||
+            templateCode ||
+            sku;
+          return {
+            source: "odoo",
+            sku: baseSku,
+            name: tmpl?.name ?? v.name,
+            odooProductId: String(tmplId),
+            odooTemplateId: String(tmplId),
+            templateSku: baseSku,
+            erpConnectionId: conn.id,
+          };
+        }
+
         // 2b) Loose/prefix fallback: search templates only. For TF SKUs,
         // keep only exact main products (TF######), excluding hardware kits,
         // variants, and part/helper SKUs such as TF######.x or TF######-CC.
