@@ -297,6 +297,88 @@ export const lookupProductBySku = createServerFn({ method: "POST" })
           }
         }
 
+        // 2c) Variant-level prefix fallback. Resolve matching variants up to
+        // their templates, then de-dupe and apply the same TF main-product
+        // filter as the template path.
+        if (sku.length >= 2) {
+          const variantPrefixHits = await odooExecuteKw<
+            Array<{ id: number; default_code: string | false; name: string; product_tmpl_id: [number, string] | false }>
+          >(creds, uid, "product.product", "search_read", [
+            [["default_code", "=ilike", `${sku}%`]],
+          ], { fields: ["id", "default_code", "name", "product_tmpl_id"], limit: 40 });
+
+          if (variantPrefixHits && variantPrefixHits.length > 0) {
+            const tmplIds = Array.from(
+              new Set(
+                variantPrefixHits
+                  .map((v) => (v.product_tmpl_id ? (v.product_tmpl_id as [number, string])[0] : null))
+                  .filter((id): id is number => id != null),
+              ),
+            );
+            const tmplRows = tmplIds.length
+              ? await odooExecuteKw<
+                  Array<{ id: number; default_code: string | false; name: string }>
+                >(creds, uid, "product.template", "read", [tmplIds], {
+                  fields: ["id", "default_code", "name"],
+                })
+              : [];
+            const tmplById = new Map(tmplRows.map((t) => [t.id, t]));
+
+            // For each template, derive the base SKU from template.default_code
+            // when present, otherwise from any variant code under it.
+            const baseByTmpl = new Map<number, { sku: string; name: string }>();
+            for (const v of variantPrefixHits) {
+              if (!v.product_tmpl_id) continue;
+              const tid = (v.product_tmpl_id as [number, string])[0];
+              if (baseByTmpl.has(tid)) continue;
+              const tmpl = tmplById.get(tid);
+              const templateCode = tmpl?.default_code ? String(tmpl.default_code).toUpperCase() : null;
+              const variantCode = v.default_code ? String(v.default_code).toUpperCase() : null;
+              const base =
+                (templateCode && extractTfBaseSku(templateCode)) ||
+                (variantCode && extractTfBaseSku(variantCode)) ||
+                templateCode ||
+                variantCode;
+              if (!base) continue;
+              if (/^TF/i.test(sku) && !isMainTfSku(base)) continue;
+              baseByTmpl.set(tid, { sku: base, name: tmpl?.name ?? v.name });
+            }
+
+            const productHits = Array.from(baseByTmpl.entries()).map(([tid, info]) => ({
+              odooProductId: String(tid),
+              sku: info.sku,
+              name: info.name,
+            }));
+
+            if (productHits.length === 1) {
+              const p = productHits[0];
+              return {
+                source: "odoo",
+                sku: p.sku,
+                name: p.name,
+                odooProductId: p.odooProductId,
+                odooTemplateId: p.odooProductId,
+                templateSku: p.sku,
+                erpConnectionId: conn.id,
+              };
+            }
+            if (productHits.length > 1) {
+              return {
+                source: "odoo_variants",
+                sku,
+                name: productHits[0].name,
+                odooTemplateId: productHits[0].odooProductId,
+                templateSku: productHits[0].sku,
+                erpConnectionId: conn.id,
+                variants: productHits,
+                variantTemplateSkus: Object.fromEntries(
+                  productHits.map((p) => [p.odooProductId, p.sku]),
+                ),
+              };
+            }
+          }
+        }
+
         return { source: "not_found", sku, name: "" };
       } catch (e) {
         return {
