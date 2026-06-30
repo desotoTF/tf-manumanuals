@@ -16,6 +16,7 @@ import {
   addManualAsset,
   removeManualAsset,
   uploadManualAssetFile,
+  uploadPublishedPdf,
   importLegacyManualFromPdf,
   loadBomForManual,
 } from "@/lib/manuals.functions";
