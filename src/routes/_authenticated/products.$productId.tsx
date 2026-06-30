@@ -140,6 +140,8 @@ function ProductEditorPage() {
   const fetchTools = useServerFn(listTools);
   const createTool = useServerFn(upsertTool);
   const loadBom = useServerFn(loadBomForManual);
+  const syncBom = useServerFn(syncBomBySku);
+
   const toolsQuery = useQuery({
     queryKey: ["tools", orgId],
     queryFn: () => fetchTools({ data: { organizationId: orgId } }),
