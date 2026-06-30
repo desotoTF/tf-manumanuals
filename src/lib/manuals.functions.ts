@@ -1233,3 +1233,141 @@ export const deleteManual = createServerFn({ method: "POST" })
   });
 
 
+
+// ---------- Cover image (page 1) ----------
+// Uploads a cover image to manual-assets storage and returns a long-lived
+// signed URL. The caller writes the URL into manual content (hero_image_url)
+// and saves the draft.
+export const uploadManualCoverImage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        manualId: uuid,
+        filename: z.string().min(1).max(200),
+        contentType: z.string().min(1).max(120),
+        dataBase64: z.string().min(1).max(16_000_000),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { data: manual, error } = await supabase
+      .from("manuals")
+      .select("id, product_id, products!inner(organization_id)")
+      .eq("id", data.manualId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!manual) throw new Error("Manual not found");
+    const orgId = (manual as any).products.organization_id as string;
+    const productId = manual.product_id;
+
+    const { supabaseAdmin } = await import(
+      "@/integrations/supabase/client.server"
+    );
+    const safeName = data.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const path = `cover-images/${orgId}/${productId}/${Date.now()}-${safeName}`;
+    const bytes = Buffer.from(data.dataBase64, "base64");
+    const { error: upErr } = await supabaseAdmin.storage
+      .from("manual-assets")
+      .upload(path, bytes, { contentType: data.contentType, upsert: false });
+    if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
+    const { data: signed, error: sErr } = await supabaseAdmin.storage
+      .from("manual-assets")
+      .createSignedUrl(path, 60 * 60 * 24 * 365 * 10);
+    if (sErr) throw new Error(`Signing failed: ${sErr.message}`);
+    return { url: signed.signedUrl, storagePath: path };
+  });
+
+// Fetch the product image (image_1920) from Odoo for the manual's product,
+// upload it to storage, and return a signed URL.
+export const fetchOdooCoverImage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ manualId: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { data: manual, error } = await supabase
+      .from("manuals")
+      .select(
+        "id, product_id, products!inner(organization_id, erp_product_id, erp_connection_id)",
+      )
+      .eq("id", data.manualId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!manual) throw new Error("Manual not found");
+    const product = (manual as any).products as {
+      organization_id: string;
+      erp_product_id: string | null;
+      erp_connection_id: string | null;
+    };
+    if (!product.erp_product_id) {
+      throw new Error("Product is not linked to an Odoo template.");
+    }
+    const { data: conn } = await supabase
+      .from("erp_connections")
+      .select("id, base_url, database, username, is_active")
+      .eq(
+        "id",
+        product.erp_connection_id ?? "00000000-0000-0000-0000-000000000000",
+      )
+      .maybeSingle();
+    const fallbackConn = conn
+      ? null
+      : (
+          await supabase
+            .from("erp_connections")
+            .select("id, base_url, database, username, is_active")
+            .eq("organization_id", product.organization_id)
+            .eq("provider", "odoo")
+            .eq("is_active", true)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        ).data;
+    const erpConn = conn ?? fallbackConn;
+    if (!erpConn) throw new Error("No active Odoo connection for this org.");
+
+    const { data: cred, error: credErr } = await supabase.rpc(
+      "erp_read_credentials",
+      { _connection_id: erpConn.id },
+    );
+    if (credErr) throw credErr;
+    const apiKey = (cred as { api_key?: string } | null)?.api_key;
+    if (!apiKey) throw new Error("Odoo credentials not available.");
+
+    const { odooAuthenticate, odooExecuteKw } = await import(
+      "./odoo-xmlrpc.server"
+    );
+    const creds = {
+      baseUrl: erpConn.base_url,
+      database: erpConn.database ?? "",
+      username: erpConn.username,
+      apiKey,
+    };
+    const uid = await odooAuthenticate(creds);
+    const tmplId = Number(product.erp_product_id);
+    const rows = await odooExecuteKw<
+      Array<{ id: number; image_1920?: string | false }>
+    >(creds, uid, "product.template", "read", [[tmplId]], {
+      fields: ["image_1920"],
+    });
+    const raw = rows?.[0]?.image_1920;
+    if (!raw || typeof raw !== "string") {
+      throw new Error("No image set on this Odoo product.");
+    }
+
+    const { supabaseAdmin } = await import(
+      "@/integrations/supabase/client.server"
+    );
+    const bytes = Buffer.from(raw, "base64");
+    const path = `cover-images/${product.organization_id}/${manual.product_id}/${Date.now()}-odoo.png`;
+    const { error: upErr } = await supabaseAdmin.storage
+      .from("manual-assets")
+      .upload(path, bytes, { contentType: "image/png", upsert: false });
+    if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
+    const { data: signed, error: sErr } = await supabaseAdmin.storage
+      .from("manual-assets")
+      .createSignedUrl(path, 60 * 60 * 24 * 365 * 10);
+    if (sErr) throw new Error(`Signing failed: ${sErr.message}`);
+    return { url: signed.signedUrl, storagePath: path };
+  });
