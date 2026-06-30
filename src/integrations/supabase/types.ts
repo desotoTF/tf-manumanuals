@@ -444,6 +444,7 @@ export type Database = {
           manual_id: string
           pdf_url: string | null
           published_at: string | null
+          published_pdf_url: string | null
           source_pdf_path: string | null
           state: Database["public"]["Enums"]["manual_version_state"]
           updated_at: string
@@ -460,6 +461,7 @@ export type Database = {
           manual_id: string
           pdf_url?: string | null
           published_at?: string | null
+          published_pdf_url?: string | null
           source_pdf_path?: string | null
           state?: Database["public"]["Enums"]["manual_version_state"]
           updated_at?: string
@@ -476,6 +478,7 @@ export type Database = {
           manual_id?: string
           pdf_url?: string | null
           published_at?: string | null
+          published_pdf_url?: string | null
           source_pdf_path?: string | null
           state?: Database["public"]["Enums"]["manual_version_state"]
           updated_at?: string

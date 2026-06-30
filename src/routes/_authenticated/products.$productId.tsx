@@ -16,6 +16,7 @@ import {
   addManualAsset,
   removeManualAsset,
   uploadManualAssetFile,
+  uploadPublishedPdf,
   importLegacyManualFromPdf,
   loadBomForManual,
 } from "@/lib/manuals.functions";
@@ -67,13 +68,12 @@ import {
   AlertTriangle,
   Plus,
   Save,
-  Send,
   CheckCircle2,
   Globe,
   Trash2,
   Upload,
   Eye,
-  Printer,
+  Download,
 } from "lucide-react";
 import { getMasterTemplate } from "@/lib/templates.functions";
 import { MasterManualPreview } from "@/components/manual/MasterManualPreview";
@@ -105,6 +105,7 @@ function ProductEditorPage() {
   const addAsset = useServerFn(addManualAsset);
   const removeAsset = useServerFn(removeManualAsset);
   const uploadAsset = useServerFn(uploadManualAssetFile);
+  const uploadPdf = useServerFn(uploadPublishedPdf);
   const importPdf = useServerFn(importLegacyManualFromPdf);
   const fetchTemplates = useServerFn(listTemplates);
 
@@ -248,16 +249,85 @@ function ProductEditorPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const [publishingPdf, setPublishingPdf] = useState(false);
+
   const transitionMut = useMutation({
     mutationFn: (action: "submit" | "approve" | "publish" | "discard") =>
       transition({ data: { versionId: activeVersionId!, action } }),
-    onSuccess: (res, action) => {
+    onSuccess: async (res, action) => {
       toast.success(
         action === "discard" ? "Draft discarded" : `Moved to ${res.state}`,
       );
       if (action === "discard") setActiveVersionId(null);
       qc.invalidateQueries({ queryKey: ["product-workspace", productId] });
       qc.invalidateQueries({ queryKey: ["manual-version", activeVersionId] });
+      // When publishing, render the same preview to PDF client-side and
+      // upload it so the public /manuals/:slug URL streams a real PDF.
+      if (action === "publish" && activeVersionId) {
+        try {
+          setPublishingPdf(true);
+          const node = document.getElementById("manual-pdf-source");
+          if (!node) {
+            toast.warning(
+              "Open the Preview once so the PDF can be generated.",
+            );
+            return;
+          }
+          const { default: html2canvas } = await import("html2canvas");
+          const { default: jsPDF } = await import("jspdf");
+          const canvas = await html2canvas(node, {
+            scale: 2,
+            backgroundColor: "#ffffff",
+            useCORS: true,
+          });
+          const imgData = canvas.toDataURL("image/jpeg", 0.92);
+          const pdf = new jsPDF({
+            unit: "pt",
+            format: "letter",
+            orientation: "portrait",
+          });
+          const pageW = pdf.internal.pageSize.getWidth();
+          const pageH = pdf.internal.pageSize.getHeight();
+          const imgW = pageW;
+          const imgH = (canvas.height * imgW) / canvas.width;
+          let heightLeft = imgH;
+          let y = 0;
+          pdf.addImage(imgData, "JPEG", 0, y, imgW, imgH);
+          heightLeft -= pageH;
+          while (heightLeft > 0) {
+            y = heightLeft - imgH;
+            pdf.addPage();
+            pdf.addImage(imgData, "JPEG", 0, y, imgW, imgH);
+            heightLeft -= pageH;
+          }
+          const blob = pdf.output("blob");
+          const buf = await blob.arrayBuffer();
+          let binary = "";
+          const bytes = new Uint8Array(buf);
+          const chunk = 0x8000;
+          for (let i = 0; i < bytes.length; i += chunk) {
+            binary += String.fromCharCode(
+              ...bytes.subarray(i, Math.min(i + chunk, bytes.length)),
+            );
+          }
+          const dataBase64 = btoa(binary);
+          await uploadPdf({
+            data: {
+              versionId: activeVersionId,
+              filename: `${productId}.pdf`,
+              dataBase64,
+            },
+          });
+          toast.success("Public PDF updated");
+        } catch (e) {
+          console.error(e);
+          toast.error(
+            `Published, but PDF render failed: ${(e as Error).message}`,
+          );
+        } finally {
+          setPublishingPdf(false);
+        }
+      }
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -378,18 +448,53 @@ function ProductEditorPage() {
         </div>
       </header>
 
-      <ManualPreviewDialog
-        open={previewOpen}
-        onOpenChange={setPreviewOpen}
-        branding={masterQuery.data?.branding ?? {}}
-        meta={{
+      {(() => {
+        const assetMap: Record<string, { url: string | null; caption?: string | null }> = {};
+        for (const a of assets as Array<{ id: string; url: string | null; metadata: any }>) {
+          assetMap[a.id] = { url: a.url, caption: a.metadata?.caption ?? null };
+        }
+        const previewMeta = {
           sku: ws.product.sku,
           name: ws.product.name,
           variant: ws.product.description ?? undefined,
           versionLabel: activeVersion ? String(activeVersion.version_number) : undefined,
-        }}
-        content={content}
-      />
+        };
+        return (
+          <>
+            <ManualPreviewDialog
+              open={previewOpen}
+              onOpenChange={setPreviewOpen}
+              branding={masterQuery.data?.branding ?? {}}
+              meta={previewMeta}
+              content={content}
+              assets={assetMap}
+            />
+            {/* Hidden always-mounted preview so publish can render PDF
+                without the user opening the dialog first. */}
+            {activeVersion && (
+              <div
+                aria-hidden
+                style={{
+                  position: "fixed",
+                  left: "-10000px",
+                  top: 0,
+                  width: 900,
+                  pointerEvents: "none",
+                }}
+              >
+                <div id="manual-pdf-source">
+                  <MasterManualPreview
+                    branding={masterQuery.data?.branding ?? {}}
+                    meta={previewMeta}
+                    content={content}
+                    assets={assetMap}
+                  />
+                </div>
+              </div>
+            )}
+          </>
+        );
+      })()}
 
 
       <CreateManualDialog
@@ -408,73 +513,7 @@ function ProductEditorPage() {
       />
 
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_minmax(0,1fr)_300px]">
-        {/* LEFT RAIL */}
-        <aside className="space-y-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Latest BOM</CardTitle>
-            </CardHeader>
-            <CardContent className="text-xs">
-              {ws.latestBom ? (
-                <>
-                  <div className="mb-2 text-muted-foreground">
-                    Captured{" "}
-                    {formatDistanceToNow(new Date(ws.latestBom.captured_at), {
-                      addSuffix: true,
-                    })}
-                    {ws.latestBom.erp_bom_revision && (
-                      <> · rev {ws.latestBom.erp_bom_revision}</>
-                    )}
-                  </div>
-                  <ul className="space-y-1">
-                    {((ws.latestBom.normalized_items as any[]) ?? [])
-                      .slice(0, 20)
-                      .map((it, i) => (
-                        <li key={i} className="flex justify-between gap-2">
-                          <span className="truncate font-mono">
-                            {it.part_number}
-                          </span>
-                          <span className="text-muted-foreground">×{it.qty}</span>
-                        </li>
-                      ))}
-                  </ul>
-                </>
-              ) : (
-                <p className="text-muted-foreground">No BOM synced yet.</p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Versions</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-1 text-xs">
-              {ws.versions.length === 0 && (
-                <p className="text-muted-foreground">No versions yet.</p>
-              )}
-              {ws.versions.map((v) => (
-                <button
-                  key={v.id}
-                  onClick={() => setActiveVersionId(v.id)}
-                  className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left hover:bg-muted ${
-                    activeVersionId === v.id ? "bg-muted" : ""
-                  }`}
-                >
-                  <span className="font-medium">v{v.version_number}</span>
-                  <Badge
-                    variant="secondary"
-                    className={STATE_VARIANT[v.state] ?? ""}
-                  >
-                    {v.state}
-                  </Badge>
-                </button>
-              ))}
-            </CardContent>
-          </Card>
-        </aside>
-
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         {/* MAIN */}
         <section>
           {!activeVersion ? (
@@ -608,11 +647,10 @@ function ProductEditorPage() {
                     <>
                       <Button
                         size="sm"
-                        variant="outline"
-                        onClick={() => transitionMut.mutate("submit")}
+                        onClick={() => transitionMut.mutate("approve")}
                         disabled={transitionMut.isPending}
                       >
-                        <Send className="mr-2 h-4 w-4" /> Submit for review
+                        <CheckCircle2 className="mr-2 h-4 w-4" /> Mark Approved
                       </Button>
                       <Button
                         size="sm"
@@ -631,18 +669,27 @@ function ProductEditorPage() {
                       onClick={() => transitionMut.mutate("approve")}
                       disabled={transitionMut.isPending}
                     >
-                      <CheckCircle2 className="mr-2 h-4 w-4" /> Approve
+                      <CheckCircle2 className="mr-2 h-4 w-4" /> Mark Approved
                     </Button>
                   )}
                   {(activeVersion.state === "approved" ||
-                    activeVersion.state === "in_review") && (
+                    activeVersion.state === "in_review" ||
+                    activeVersion.state === "published") && (
                     <Button
                       size="sm"
-                      variant="default"
+                      variant={
+                        activeVersion.state === "published"
+                          ? "outline"
+                          : "default"
+                      }
                       onClick={() => transitionMut.mutate("publish")}
-                      disabled={transitionMut.isPending}
+                      disabled={transitionMut.isPending || publishingPdf}
                     >
-                      <Globe className="mr-2 h-4 w-4" /> Publish
+                      <Globe className="mr-2 h-4 w-4" />
+                      {activeVersion.state === "published"
+                        ? "Re-publish"
+                        : "Publish"}
+                      {publishingPdf ? " (rendering PDF…)" : ""}
                     </Button>
                   )}
                 </div>
@@ -660,6 +707,73 @@ function ProductEditorPage() {
               </CardContent>
             </Card>
           )}
+
+          {/* Latest BOM card (moved from left rail) */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Latest BOM</CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs">
+              {ws.latestBom ? (
+                <>
+                  <div className="mb-2 text-muted-foreground">
+                    Captured{" "}
+                    {formatDistanceToNow(new Date(ws.latestBom.captured_at), {
+                      addSuffix: true,
+                    })}
+                    {ws.latestBom.erp_bom_revision && (
+                      <> · rev {ws.latestBom.erp_bom_revision}</>
+                    )}
+                  </div>
+                  <ul className="space-y-1">
+                    {((ws.latestBom.normalized_items as any[]) ?? [])
+                      .slice(0, 20)
+                      .map((it, i) => (
+                        <li key={i} className="flex justify-between gap-2">
+                          <span className="truncate font-mono">
+                            {it.part_number}
+                          </span>
+                          <span className="text-muted-foreground">
+                            ×{it.qty}
+                          </span>
+                        </li>
+                      ))}
+                  </ul>
+                </>
+              ) : (
+                <p className="text-muted-foreground">No BOM synced yet.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Versions card (moved from left rail) */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Versions</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1 text-xs">
+              {ws.versions.length === 0 && (
+                <p className="text-muted-foreground">No versions yet.</p>
+              )}
+              {ws.versions.map((v) => (
+                <button
+                  key={v.id}
+                  onClick={() => setActiveVersionId(v.id)}
+                  className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left hover:bg-muted ${
+                    activeVersionId === v.id ? "bg-muted" : ""
+                  }`}
+                >
+                  <span className="font-medium">v{v.version_number}</span>
+                  <Badge
+                    variant="secondary"
+                    className={STATE_VARIANT[v.state] ?? ""}
+                  >
+                    {v.state}
+                  </Badge>
+                </button>
+              ))}
+            </CardContent>
+          </Card>
         </aside>
       </div>
     </div>
@@ -760,6 +874,13 @@ function ContentEditor({
             editable={editable}
             images={figureSources}
             figMap={figMap}
+            onInlineUpload={async (file) => {
+              const asset = (await onUploadAsset(file)) as
+                | { id?: string }
+                | null
+                | undefined;
+              return asset?.id ?? null;
+            }}
           />
         )}
 
@@ -875,12 +996,14 @@ function StepsEditor({
   editable,
   images,
   figMap,
+  onInlineUpload,
 }: {
   steps: ManualContent["steps"];
   setSteps: (s: ManualContent["steps"]) => void;
   editable: boolean;
   images: { asset_id: string; caption?: string | null; url?: string | null }[];
   figMap: Map<string, number>;
+  onInlineUpload?: (file: File) => Promise<string | null>;
 }) {
   // Whatever layout the user last picked becomes the default for the next
   // step. Seeded from the most recent step's layout, falling back to the
@@ -953,6 +1076,7 @@ function StepsEditor({
               disabled={!editable}
               images={images}
               figMap={figMap}
+              onInlineUpload={onInlineUpload}
               onChange={(next: ManualStep) => {
                 const arr = [...steps];
                 arr[i] = next;
@@ -1113,6 +1237,12 @@ function WarningsEditor({
   );
 }
 
+function truncateMiddle(s: string, max = 30): string {
+  if (!s) return "";
+  if (s.length <= max) return s;
+  return s.slice(0, max - 1) + "…";
+}
+
 function ImagesPanel({
   assets,
   editable,
@@ -1133,6 +1263,73 @@ function ImagesPanel({
   const [url, setUrl] = useState("");
   const [caption, setCaption] = useState("");
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const zipRef = useRef<HTMLInputElement | null>(null);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
+
+  const handleFiles = async (files: FileList | File[]) => {
+    const list = Array.from(files);
+    if (list.length === 0) return;
+    setBulkProgress({ done: 0, total: list.length });
+    let done = 0;
+    for (const f of list) {
+      const cap = f.name.replace(/\.[^.]+$/, "");
+      try {
+        await onUpload(f, cap);
+      } catch (e) {
+        toast.error(`Failed: ${f.name} — ${(e as Error).message}`);
+      }
+      done += 1;
+      setBulkProgress({ done, total: list.length });
+    }
+    setBulkProgress(null);
+    setCaption("");
+  };
+
+  const handleZip = async (file: File) => {
+    try {
+      const { default: JSZip } = await import("jszip");
+      const zip = await JSZip.loadAsync(file);
+      const entries: { name: string; blob: Blob; type: string }[] = [];
+      const imageExt = /\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i;
+      const tasks: Promise<void>[] = [];
+      zip.forEach((relPath, entry) => {
+        if (entry.dir) return;
+        if (!imageExt.test(relPath)) return;
+        // Skip macOS metadata noise
+        if (relPath.startsWith("__MACOSX/") || relPath.includes("/.DS_Store")) return;
+        const ext = relPath.match(/\.([^.]+)$/)?.[1].toLowerCase() ?? "png";
+        const mime =
+          ext === "jpg" || ext === "jpeg"
+            ? "image/jpeg"
+            : ext === "svg"
+              ? "image/svg+xml"
+              : `image/${ext}`;
+        tasks.push(
+          entry.async("blob").then((blob) => {
+            entries.push({
+              name: relPath.split("/").pop() ?? relPath,
+              blob: new Blob([blob], { type: mime }),
+              type: mime,
+            });
+          }),
+        );
+      });
+      await Promise.all(tasks);
+      entries.sort((a, b) => a.name.localeCompare(b.name));
+      if (entries.length === 0) {
+        toast.warning("No images found in ZIP");
+        return;
+      }
+      const files = entries.map(
+        (e) => new File([e.blob], e.name, { type: e.type }),
+      );
+      await handleFiles(files);
+      toast.success(`Imported ${entries.length} images from ZIP`);
+    } catch (e) {
+      toast.error(`ZIP import failed: ${(e as Error).message}`);
+    }
+  };
+
   return (
     <div className="space-y-3">
       {assets.length === 0 && (
@@ -1150,13 +1347,26 @@ function ImagesPanel({
                   className="aspect-video w-full rounded object-cover"
                 />
               )}
-              <figcaption className="mt-1 flex items-center justify-between gap-2 text-xs">
-                <span className="font-semibold text-foreground">
-                  {figNum ? `Fig. ${figNum}` : "Unused"}
-                </span>
-                <span className="truncate text-muted-foreground">
-                  {a.metadata?.caption ?? a.url}
-                </span>
+              <figcaption className="mt-1 space-y-0.5 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-foreground shrink-0">
+                    {figNum ? `Fig. ${figNum}` : "Unused"}
+                  </span>
+                  <span className="truncate text-muted-foreground">
+                    {a.metadata?.caption ?? ""}
+                  </span>
+                </div>
+                {a.url && (
+                  <a
+                    href={a.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={a.url}
+                    className="block truncate text-primary underline underline-offset-2 hover:opacity-80"
+                  >
+                    {truncateMiddle(a.url, 30)}
+                  </a>
+                )}
               </figcaption>
               {editable && (
                 <Button
@@ -1177,10 +1387,10 @@ function ImagesPanel({
         <div className="space-y-3 rounded-md border border-dashed border-border p-3">
           <div className="space-y-2">
             <p className="text-xs font-semibold text-muted-foreground">
-              Upload image file
+              Upload image files
             </p>
             <Input
-              placeholder="Caption (optional)"
+              placeholder="Caption applies to single-file uploads only"
               value={caption}
               onChange={(e) => setCaption(e.target.value)}
               className="h-8 max-w-md text-sm"
@@ -1189,26 +1399,60 @@ function ImagesPanel({
               ref={fileRef}
               type="file"
               accept="image/*"
+              multiple
               className="hidden"
               onChange={async (e) => {
-                const f = e.target.files?.[0];
-                if (!f) return;
+                const files = e.target.files;
+                if (!files || files.length === 0) return;
                 try {
-                  await onUpload(f, caption.trim() || undefined);
-                  setCaption("");
+                  if (files.length === 1) {
+                    await onUpload(files[0], caption.trim() || undefined);
+                    setCaption("");
+                  } else {
+                    await handleFiles(files);
+                  }
                 } finally {
                   if (fileRef.current) fileRef.current.value = "";
                 }
               }}
             />
-            <Button
-              size="sm"
-              disabled={uploading}
-              onClick={() => fileRef.current?.click()}
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              {uploading ? "Uploading…" : "Choose image"}
-            </Button>
+            <input
+              ref={zipRef}
+              type="file"
+              accept=".zip,application/zip"
+              className="hidden"
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                try {
+                  await handleZip(f);
+                } finally {
+                  if (zipRef.current) zipRef.current.value = "";
+                }
+              }}
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                disabled={uploading || !!bulkProgress}
+                onClick={() => fileRef.current?.click()}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                {bulkProgress
+                  ? `Uploading ${bulkProgress.done}/${bulkProgress.total}…`
+                  : uploading
+                    ? "Uploading…"
+                    : "Choose image(s)"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={uploading || !!bulkProgress}
+                onClick={() => zipRef.current?.click()}
+              >
+                <Upload className="mr-2 h-4 w-4" /> Upload from ZIP
+              </Button>
+            </div>
           </div>
 
           <div className="space-y-2 border-t border-border pt-3">
@@ -1446,36 +1690,61 @@ function ManualPreviewDialog({
   branding,
   meta,
   content,
+  assets,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   branding: unknown;
   meta: { sku: string; name: string; variant?: string; versionLabel?: string };
   content: ManualContent;
+  assets?: Record<string, { url: string | null; caption?: string | null }>;
 }) {
-  const handlePrint = () => {
+  const [savingPdf, setSavingPdf] = useState(false);
+  const handleSavePdf = async () => {
     const node = document.getElementById("manual-print-area");
     if (!node) return;
-    const w = window.open("", "_blank", "width=900,height=1200");
-    if (!w) return;
-    w.document.write(`<!doctype html><html><head><title>${meta.sku} — ${meta.name}</title>
-      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Barlow+Condensed:wght@500;600;700;800&family=Bebas+Neue&family=Inter:wght@400;600;700&family=Oswald:wght@400;600;700&family=Roboto:wght@400;500;700&family=Roboto+Condensed:wght@400;600;700&family=Source+Sans+3:wght@400;600;700&display=swap">
-      <style>body{margin:0;background:white}@page{size:letter;margin:0}</style>
-    </head><body>${node.innerHTML}</body></html>`);
-    w.document.close();
-    setTimeout(() => { w.focus(); w.print(); }, 500);
+    try {
+      setSavingPdf(true);
+      const { default: html2canvas } = await import("html2canvas");
+      const { default: jsPDF } = await import("jspdf");
+      const canvas = await html2canvas(node, {
+        scale: 2,
+        backgroundColor: "#ffffff",
+        useCORS: true,
+      });
+      const imgData = canvas.toDataURL("image/jpeg", 0.92);
+      const pdf = new jsPDF({ unit: "pt", format: "letter", orientation: "portrait" });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const imgW = pageW;
+      const imgH = (canvas.height * imgW) / canvas.width;
+      let heightLeft = imgH;
+      let y = 0;
+      pdf.addImage(imgData, "JPEG", 0, y, imgW, imgH);
+      heightLeft -= pageH;
+      while (heightLeft > 0) {
+        y = heightLeft - imgH;
+        pdf.addPage();
+        pdf.addImage(imgData, "JPEG", 0, y, imgW, imgH);
+        heightLeft -= pageH;
+      }
+      pdf.save(`${meta.sku}-${meta.versionLabel ? `v${meta.versionLabel}` : "manual"}.pdf`);
+    } finally {
+      setSavingPdf(false);
+    }
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden p-0 flex flex-col">
         <DialogHeader className="px-6 pt-6 flex-row items-center justify-between space-y-0">
           <DialogTitle>Manual preview</DialogTitle>
-          <Button size="sm" onClick={handlePrint} className="mr-8">
-            <Printer className="mr-2 h-4 w-4" /> Print / Save as PDF
+          <Button size="sm" onClick={handleSavePdf} disabled={savingPdf} className="mr-8">
+            <Download className="mr-2 h-4 w-4" />
+            {savingPdf ? "Saving…" : "Save as PDF"}
           </Button>
         </DialogHeader>
         <div className="overflow-y-auto flex-1 bg-muted/30 py-4" id="manual-print-area">
-          <MasterManualPreview branding={branding} meta={meta} content={content} />
+          <MasterManualPreview branding={branding} meta={meta} content={content} assets={assets} />
         </div>
       </DialogContent>
     </Dialog>

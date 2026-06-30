@@ -4,6 +4,9 @@
 import { useMemo } from "react";
 import { type BrandingTokens, mergeBranding, resolveLogoUrl } from "@/lib/branding";
 import type { ManualContent } from "@/lib/types";
+import { normalizeStep } from "@/lib/types";
+import { StepLayoutView } from "@/components/manual/StepLayoutView";
+import { buildFigureMapFromSteps } from "@/lib/figure-refs";
 
 export interface ManualPreviewMeta {
   sku: string;
@@ -12,19 +15,31 @@ export interface ManualPreviewMeta {
   versionLabel?: string;
 }
 
+export type PreviewAssetMap = Record<
+  string,
+  { url: string | null; caption?: string | null }
+>;
+
 export function MasterManualPreview({
   branding: brandingInput,
   meta,
   content,
+  assets,
   scale = 1,
 }: {
   branding: unknown;
   meta: ManualPreviewMeta;
   content: ManualContent;
+  assets?: PreviewAssetMap;
   scale?: number;
 }) {
   const b = useMemo(() => mergeBranding(brandingInput), [brandingInput]);
   const logo = resolveLogoUrl(b);
+  const assetMap = assets ?? {};
+  const figMap = useMemo(
+    () => buildFigureMapFromSteps(content.steps),
+    [content.steps],
+  );
 
   // CSS vars on the wrapper let every child read tokens without prop drilling.
   const wrapStyle = {
@@ -157,12 +172,19 @@ export function MasterManualPreview({
           <>
             <div className="mm-section-h">INSTALLATION</div>
             <ol style={{ paddingLeft: 24, margin: 0, fontSize: 14, lineHeight: 1.5 }}>
-              {content.steps.map((s) => (
-                <li key={s.id} style={{ marginBottom: 14, breakInside: "avoid" }}>
-                  <div style={{ fontWeight: 700, fontFamily: `var(--mm-heading-font)`, fontSize: 16 }}>{s.title}</div>
-                  <div style={{ color: b.colors.muted, whiteSpace: "pre-wrap" }}>{s.body}</div>
-                </li>
-              ))}
+              {content.steps.map((raw, idx) => {
+                const s = normalizeStep(raw);
+                return (
+                  <li key={s.id ?? idx} style={{ marginBottom: 18, breakInside: "avoid" }}>
+                    <div style={{ fontWeight: 700, fontFamily: `var(--mm-heading-font)`, fontSize: 16, marginBottom: 6 }}>
+                      {s.title || `Step ${idx + 1}`}
+                    </div>
+                    <div style={{ color: b.colors.ink }}>
+                      <StepLayoutView step={s} assets={assetMap} figMap={figMap} />
+                    </div>
+                  </li>
+                );
+              })}
             </ol>
           </>
         )}
