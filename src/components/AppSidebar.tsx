@@ -39,7 +39,6 @@ const settingsItems = [
   { title: "ERP", url: "/settings/erp", icon: Plug },
 ];
 
-
 const adminItems = [
   { title: "Organizations", url: "/admin/orgs", icon: Building2 },
   { title: "Users", url: "/admin/users", icon: ShieldCheck },
@@ -50,19 +49,14 @@ export function AppSidebar({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const isActive = (url: string) =>
-    pathname === url || pathname.startsWith(url + "/");
+  const isActive = (url: string) => pathname === url || pathname.startsWith(url + "/");
 
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b border-sidebar-border">
         <div className="flex items-center gap-2 px-2 py-1.5">
           <Factory className="h-5 w-5 text-primary" />
-          {!collapsed && (
-            <span className="text-sm font-semibold tracking-tight">
-              ManuManuals
-            </span>
-          )}
+          {!collapsed && <span className="text-sm font-semibold tracking-tight">Manual Build</span>}
         </div>
       </SidebarHeader>
 

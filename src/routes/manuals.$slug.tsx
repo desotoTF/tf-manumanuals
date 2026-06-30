@@ -90,7 +90,7 @@ function PublicManualPage() {
       <header className="border-b border-border bg-card">
         <div className={`mx-auto flex ${maxW} items-center gap-2 px-6 py-4 text-sm`}>
           <Factory className="h-4 w-4 text-primary" />
-          <span className="font-medium">ManuManuals</span>
+          <span className="font-medium">Manual Build</span>
           <span className="text-muted-foreground">·</span>
           <span className="font-mono text-xs text-muted-foreground">{product!.sku}</span>
         </div>
