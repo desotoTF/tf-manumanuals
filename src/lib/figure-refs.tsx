@@ -9,11 +9,12 @@
 // steps (walking steps → blocks → two_column cells). Assets that are
 // never placed in a step have no number.
 import { useMemo } from "react";
-import type { ManualStep, StepBlock } from "./types";
+import { normalizeStep, type ManualStep, type StepBlock } from "./types";
 
 export interface FigureSource {
   asset_id: string;
   caption?: string | null;
+  url?: string | null;
 }
 
 // Legacy: number assets by their order in the supplied list. Kept so
@@ -29,27 +30,33 @@ export function useFigureMap(images: FigureSource[]): Map<string, number> {
   }, [images]);
 }
 
-// Walk every step's blocks (and two-column cells) in order and assign
-// sequential figure numbers to each *placed* image asset.
+// Walk every step's slots (or legacy blocks) in order and assign sequential
+// figure numbers to each placed image asset.
 export function buildFigureMapFromSteps(
   steps: ManualStep[] | undefined,
 ): Map<string, number> {
   const m = new Map<string, number>();
   if (!steps) return m;
   let n = 0;
-  const visit = (b: StepBlock) => {
-    if (b.type === "image" && b.asset_id) {
-      if (!m.has(b.asset_id)) {
-        n += 1;
-        m.set(b.asset_id, n);
-      }
-    } else if (b.type === "two_column") {
-      visit(b.left);
-      visit(b.right);
+  const place = (assetId: string | null | undefined) => {
+    if (!assetId || m.has(assetId)) return;
+    n += 1;
+    m.set(assetId, n);
+  };
+  const visitBlock = (b: StepBlock) => {
+    if (b.type === "image") place(b.asset_id);
+    else if (b.type === "two_column") {
+      visitBlock(b.left);
+      visitBlock(b.right);
     }
   };
-  for (const s of steps) {
-    for (const b of s.blocks ?? []) visit(b);
+  for (const raw of steps) {
+    const s = normalizeStep(raw);
+    if (s.slots) {
+      for (const slot of s.slots) place(slot.asset_id);
+    } else if (raw.blocks) {
+      for (const b of raw.blocks) visitBlock(b);
+    }
   }
   return m;
 }
@@ -60,27 +67,22 @@ export function useStepFigureMap(
   return useMemo(() => buildFigureMapFromSteps(steps), [steps]);
 }
 
-// First image-block figure number inside a single step, if any.
+// First image figure number inside a single step (used by ##Fig. / @Fig.
+// implicit refs).
 export function stepFirstImageNumber(
   step: ManualStep,
   figMap: Map<string, number>,
 ): number | null {
-  for (const b of step.blocks ?? []) {
-    if (b.type === "image" && b.asset_id) {
-      const n = figMap.get(b.asset_id);
+  const s = normalizeStep(step);
+  for (const slot of s.slots ?? []) {
+    if (slot.asset_id) {
+      const n = figMap.get(slot.asset_id);
       if (n) return n;
-    }
-    if (b.type === "two_column") {
-      for (const cell of [b.left, b.right]) {
-        if (cell.type === "image" && cell.asset_id) {
-          const n = figMap.get(cell.asset_id);
-          if (n) return n;
-        }
-      }
     }
   }
   return null;
 }
+
 
 export interface BrokenRef {
   assetId: string;
