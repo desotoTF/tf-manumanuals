@@ -31,7 +31,7 @@ function AuthPage() {
   const accept = useServerFn(acceptInvitation);
 
   const [mode, setMode] = useState<"signin" | "accept">(
-    invite_token ? "accept" : "signin",
+    invite_token ?         ? "accept" : "signin",
   );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -41,7 +41,7 @@ function AuthPage() {
   // Redirect away if already signed in
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
-      if (data.user) navigate({ to: "/dashboard" });
+      if (data.user) navigate({ to: "/products" });
     });
   }, [navigate]);
 
@@ -57,7 +57,7 @@ function AuthPage() {
       toast.error(error.message);
       return;
     }
-    navigate({ to: "/dashboard" });
+    navigate({ to: "/products" });
   };
 
   const handleAccept = async (e: React.FormEvent) => {
@@ -74,7 +74,7 @@ function AuthPage() {
         password,
       });
       if (error) throw error;
-      navigate({ to: "/dashboard" });
+      navigate({ to: "/products" });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to accept invitation");
     } finally {

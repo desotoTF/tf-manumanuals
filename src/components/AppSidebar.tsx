@@ -27,7 +27,6 @@ import {
 } from "@/components/ui/sidebar";
 
 const mainItems = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Manuals", url: "/products", icon: BookOpen },
 ];
 
