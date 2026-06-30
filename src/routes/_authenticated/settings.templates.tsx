@@ -15,7 +15,7 @@ import {
   upsertTemplate,
   type TemplateRow,
 } from "@/lib/templates.functions";
-import { emptyManualContent } from "@/lib/types";
+import { emptyManualContent, ALL_STEP_LAYOUTS, STEP_LAYOUT_LABEL } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -260,6 +260,41 @@ function TemplatesPage() {
           </Card>
         ))}
       </div>
+
+      <section className="space-y-3 pt-4">
+        <div>
+          <h2 className="text-lg font-semibold">Step layouts</h2>
+          <p className="text-sm text-muted-foreground">
+            Layouts authors can pick from on each step. Built-ins are always
+            available; custom layouts will be configurable here in a future
+            release.
+          </p>
+        </div>
+        <div className="grid gap-2 md:grid-cols-3">
+          {ALL_STEP_LAYOUTS.map((l) => (
+            <Card key={l}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">
+                  {STEP_LAYOUT_LABEL[l]}
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  {l === "one_col"
+                    ? "Single slot: text, image, optional callout."
+                    : l === "two_col"
+                      ? "Two side-by-side slots (default)."
+                      : "Two stacked slots, top and bottom."}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Badge variant="secondary" className="text-[10px] uppercase">
+                  Built-in
+                </Badge>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </section>
+
 
       <TemplateDialog
         open={dialogOpen}

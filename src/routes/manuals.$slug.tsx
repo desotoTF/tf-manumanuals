@@ -6,9 +6,10 @@ import { getPublishedManualBySlug } from "@/lib/public-manuals.functions";
 import type { ManualContent } from "@/lib/types";
 import { format } from "date-fns";
 import { Factory, AlertTriangle, ShieldAlert, Info } from "lucide-react";
-import { StepBlocksView } from "@/components/manual/StepBlocksView";
-import { useStepFigureMap, stepFirstImageNumber } from "@/lib/figure-refs";
+import { StepLayoutView } from "@/components/manual/StepLayoutView";
+import { useStepFigureMap } from "@/lib/figure-refs";
 import { useMemo } from "react";
+
 
 export const Route = createFileRoute("/manuals/$slug")({
   loader: async ({ params }) => {
@@ -235,13 +236,12 @@ function PublicManualPage() {
                     Step {i + 1}
                   </div>
                   <h3 className="mb-3 text-base font-semibold">{s.title}</h3>
-                  <StepBlocksView
-                    blocks={s.blocks}
-                    legacyBody={s.body}
+                  <StepLayoutView
+                    step={s}
                     assets={assetMap}
                     figMap={figMap}
-                    stepImageNumber={stepFirstImageNumber(s, figMap)}
                   />
+
                 </li>
               ))}
             </ol>

@@ -27,10 +27,19 @@ import {
 
 import { listTemplates } from "@/lib/templates.functions";
 import { useActiveOrg } from "@/components/AppShell";
-import { emptyManualContent, type ManualContent, newStepBlock, type StepBlock } from "@/lib/types";
-import { useStepFigureMap, stepFirstImageNumber } from "@/lib/figure-refs";
+import {
+  emptyManualContent,
+  type ManualContent,
+  type ManualStep,
+  type StepLayout,
+  DEFAULT_STEP_LAYOUT,
+  newStep,
+  normalizeStep,
+} from "@/lib/types";
+import { useStepFigureMap } from "@/lib/figure-refs";
 import { FigureRefField } from "@/components/manual-editor/FigureRefField";
-import { StepBlocksEditor } from "@/components/manual-editor/StepBlocksEditor";
+import { StepLayoutEditor } from "@/components/manual-editor/StepLayoutEditor";
+
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -841,17 +850,7 @@ function ContentEditor({
 }
 
 
-// Cheap HTML escape for migrating legacy plain-text step bodies into a text
-// block on first edit. Newlines become paragraph breaks downstream when the
-// editor reloads them.
-function escapeHtml(s: string) {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+
 
 function StepsEditor({
   steps,
@@ -866,112 +865,102 @@ function StepsEditor({
   images: { asset_id: string; caption?: string | null; url?: string | null }[];
   figMap: Map<string, number>;
 }) {
+  // Whatever layout the user last picked becomes the default for the next
+  // step. Seeded from the most recent step's layout, falling back to the
+  // global default.
+  const [nextLayout, setNextLayout] = useState<StepLayout>(() => {
+    const last = steps[steps.length - 1];
+    return (last?.layout as StepLayout | undefined) ?? DEFAULT_STEP_LAYOUT;
+  });
 
   return (
     <div className="space-y-3">
-      {steps.map((s, i) => (
-        <div key={s.id} className="rounded-md border border-border p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground">
-              Step {i + 1}
-            </span>
-            {editable && (
-              <div className="flex gap-1">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={i === 0}
-                  onClick={() => {
-                    const next = [...steps];
-                    [next[i - 1], next[i]] = [next[i], next[i - 1]];
-                    setSteps(next);
-                  }}
-                >
-                  ↑
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={i === steps.length - 1}
-                  onClick={() => {
-                    const next = [...steps];
-                    [next[i + 1], next[i]] = [next[i], next[i + 1]];
-                    setSteps(next);
-                  }}
-                >
-                  ↓
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setSteps(steps.filter((_, j) => j !== i))}
-                  className="text-destructive"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
+      {steps.map((s, i) => {
+        const normalized = normalizeStep(s);
+        return (
+          <div key={s.id} className="rounded-md border border-border p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs font-semibold text-muted-foreground">
+                Step {i + 1}
+              </span>
+              {editable && (
+                <div className="flex gap-1">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={i === 0}
+                    onClick={() => {
+                      const next = [...steps];
+                      [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                      setSteps(next);
+                    }}
+                  >
+                    ↑
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={i === steps.length - 1}
+                    onClick={() => {
+                      const next = [...steps];
+                      [next[i + 1], next[i]] = [next[i], next[i + 1]];
+                      setSteps(next);
+                    }}
+                  >
+                    ↓
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setSteps(steps.filter((_, j) => j !== i))}
+                    className="text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+            </div>
+            <Input
+              value={s.title}
+              onChange={(e) => {
+                const next = [...steps];
+                next[i] = { ...s, title: e.target.value };
+                setSteps(next);
+              }}
+              disabled={!editable}
+              placeholder="Step title"
+              className="mb-2"
+            />
+            <StepLayoutEditor
+              step={normalized}
+              disabled={!editable}
+              images={images}
+              figMap={figMap}
+              onChange={(next: ManualStep) => {
+                const arr = [...steps];
+                arr[i] = next;
+                setSteps(arr);
+                if (next.layout) setNextLayout(next.layout);
+              }}
+            />
           </div>
-          <Input
-            value={s.title}
-            onChange={(e) => {
-              const next = [...steps];
-              next[i] = { ...s, title: e.target.value };
-              setSteps(next);
-            }}
-            disabled={!editable}
-            placeholder="Step title"
-            className="mb-2"
-          />
-          <StepBlocksEditor
-            blocks={
-              s.blocks ??
-              // Migrate legacy plain-text body into a single text block on
-              // first edit so the user can format/extend it immediately.
-              (s.body
-                ? [{ id: `${s.id}-legacy`, type: "text", html: `<p>${escapeHtml(s.body)}</p>` } as StepBlock]
-                : [])
-            }
-            onChange={(blocks) => {
-              const next = [...steps];
-              // Drop legacy body once blocks exist.
-              next[i] = { ...s, blocks, body: undefined };
-              setSteps(next);
-            }}
-            disabled={!editable}
-            images={images.map((img) => ({
-              asset_id: img.asset_id,
-              caption: img.caption ?? null,
-              url: (img as { url?: string | null }).url ?? null,
-            }))}
-          />
-
-        </div>
-      ))}
+        );
+      })}
       {editable && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() =>
-            setSteps([
-              ...steps,
-              {
-                id:
-                  typeof crypto !== "undefined" && "randomUUID" in crypto
-                    ? crypto.randomUUID()
-                    : `s-${Date.now()}`,
-                title: "",
-                blocks: [newStepBlock("text")!],
-              },
-            ])
-          }
-        >
-          <Plus className="mr-2 h-4 w-4" /> Add step
-        </Button>
+        <div className="pt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSteps([...steps, newStep(nextLayout)])}
+          >
+            <Plus className="mr-2 h-4 w-4" /> Add step
+          </Button>
+        </div>
       )}
     </div>
   );
 }
+
 
 function SimpleListEditor<T extends Record<string, any>>({
   items,
