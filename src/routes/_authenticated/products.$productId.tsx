@@ -1085,6 +1085,7 @@ function StepsEditor({
               disabled={!editable}
               images={images}
               figMap={figMap}
+              onInlineUpload={onInlineUpload}
               onChange={(next: ManualStep) => {
                 const arr = [...steps];
                 arr[i] = next;
