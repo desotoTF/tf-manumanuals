@@ -1236,6 +1236,12 @@ function WarningsEditor({
   );
 }
 
+function truncateMiddle(s: string, max = 30): string {
+  if (!s) return "";
+  if (s.length <= max) return s;
+  return s.slice(0, max - 1) + "…";
+}
+
 function ImagesPanel({
   assets,
   editable,
@@ -1256,6 +1262,73 @@ function ImagesPanel({
   const [url, setUrl] = useState("");
   const [caption, setCaption] = useState("");
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const zipRef = useRef<HTMLInputElement | null>(null);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
+
+  const handleFiles = async (files: FileList | File[]) => {
+    const list = Array.from(files);
+    if (list.length === 0) return;
+    setBulkProgress({ done: 0, total: list.length });
+    let done = 0;
+    for (const f of list) {
+      const cap = f.name.replace(/\.[^.]+$/, "");
+      try {
+        await onUpload(f, cap);
+      } catch (e) {
+        toast.error(`Failed: ${f.name} — ${(e as Error).message}`);
+      }
+      done += 1;
+      setBulkProgress({ done, total: list.length });
+    }
+    setBulkProgress(null);
+    setCaption("");
+  };
+
+  const handleZip = async (file: File) => {
+    try {
+      const { default: JSZip } = await import("jszip");
+      const zip = await JSZip.loadAsync(file);
+      const entries: { name: string; blob: Blob; type: string }[] = [];
+      const imageExt = /\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i;
+      const tasks: Promise<void>[] = [];
+      zip.forEach((relPath, entry) => {
+        if (entry.dir) return;
+        if (!imageExt.test(relPath)) return;
+        // Skip macOS metadata noise
+        if (relPath.startsWith("__MACOSX/") || relPath.includes("/.DS_Store")) return;
+        const ext = relPath.match(/\.([^.]+)$/)?.[1].toLowerCase() ?? "png";
+        const mime =
+          ext === "jpg" || ext === "jpeg"
+            ? "image/jpeg"
+            : ext === "svg"
+              ? "image/svg+xml"
+              : `image/${ext}`;
+        tasks.push(
+          entry.async("blob").then((blob) => {
+            entries.push({
+              name: relPath.split("/").pop() ?? relPath,
+              blob: new Blob([blob], { type: mime }),
+              type: mime,
+            });
+          }),
+        );
+      });
+      await Promise.all(tasks);
+      entries.sort((a, b) => a.name.localeCompare(b.name));
+      if (entries.length === 0) {
+        toast.warning("No images found in ZIP");
+        return;
+      }
+      const files = entries.map(
+        (e) => new File([e.blob], e.name, { type: e.type }),
+      );
+      await handleFiles(files);
+      toast.success(`Imported ${entries.length} images from ZIP`);
+    } catch (e) {
+      toast.error(`ZIP import failed: ${(e as Error).message}`);
+    }
+  };
+
   return (
     <div className="space-y-3">
       {assets.length === 0 && (
@@ -1273,13 +1346,26 @@ function ImagesPanel({
                   className="aspect-video w-full rounded object-cover"
                 />
               )}
-              <figcaption className="mt-1 flex items-center justify-between gap-2 text-xs">
-                <span className="font-semibold text-foreground">
-                  {figNum ? `Fig. ${figNum}` : "Unused"}
-                </span>
-                <span className="truncate text-muted-foreground">
-                  {a.metadata?.caption ?? a.url}
-                </span>
+              <figcaption className="mt-1 space-y-0.5 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-foreground shrink-0">
+                    {figNum ? `Fig. ${figNum}` : "Unused"}
+                  </span>
+                  <span className="truncate text-muted-foreground">
+                    {a.metadata?.caption ?? ""}
+                  </span>
+                </div>
+                {a.url && (
+                  <a
+                    href={a.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={a.url}
+                    className="block truncate text-primary underline underline-offset-2 hover:opacity-80"
+                  >
+                    {truncateMiddle(a.url, 30)}
+                  </a>
+                )}
               </figcaption>
               {editable && (
                 <Button
@@ -1300,10 +1386,10 @@ function ImagesPanel({
         <div className="space-y-3 rounded-md border border-dashed border-border p-3">
           <div className="space-y-2">
             <p className="text-xs font-semibold text-muted-foreground">
-              Upload image file
+              Upload image files
             </p>
             <Input
-              placeholder="Caption (optional)"
+              placeholder="Caption applies to single-file uploads only"
               value={caption}
               onChange={(e) => setCaption(e.target.value)}
               className="h-8 max-w-md text-sm"
@@ -1312,26 +1398,60 @@ function ImagesPanel({
               ref={fileRef}
               type="file"
               accept="image/*"
+              multiple
               className="hidden"
               onChange={async (e) => {
-                const f = e.target.files?.[0];
-                if (!f) return;
+                const files = e.target.files;
+                if (!files || files.length === 0) return;
                 try {
-                  await onUpload(f, caption.trim() || undefined);
-                  setCaption("");
+                  if (files.length === 1) {
+                    await onUpload(files[0], caption.trim() || undefined);
+                    setCaption("");
+                  } else {
+                    await handleFiles(files);
+                  }
                 } finally {
                   if (fileRef.current) fileRef.current.value = "";
                 }
               }}
             />
-            <Button
-              size="sm"
-              disabled={uploading}
-              onClick={() => fileRef.current?.click()}
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              {uploading ? "Uploading…" : "Choose image"}
-            </Button>
+            <input
+              ref={zipRef}
+              type="file"
+              accept=".zip,application/zip"
+              className="hidden"
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                try {
+                  await handleZip(f);
+                } finally {
+                  if (zipRef.current) zipRef.current.value = "";
+                }
+              }}
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                disabled={uploading || !!bulkProgress}
+                onClick={() => fileRef.current?.click()}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                {bulkProgress
+                  ? `Uploading ${bulkProgress.done}/${bulkProgress.total}…`
+                  : uploading
+                    ? "Uploading…"
+                    : "Choose image(s)"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={uploading || !!bulkProgress}
+                onClick={() => zipRef.current?.click()}
+              >
+                <Upload className="mr-2 h-4 w-4" /> Upload from ZIP
+              </Button>
+            </div>
           </div>
 
           <div className="space-y-2 border-t border-border pt-3">
