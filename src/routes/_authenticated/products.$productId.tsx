@@ -1005,12 +1005,14 @@ function StepsEditor({
   editable,
   images,
   figMap,
+  onInlineUpload,
 }: {
   steps: ManualContent["steps"];
   setSteps: (s: ManualContent["steps"]) => void;
   editable: boolean;
   images: { asset_id: string; caption?: string | null; url?: string | null }[];
   figMap: Map<string, number>;
+  onInlineUpload?: (file: File) => Promise<string | null>;
 }) {
   // Whatever layout the user last picked becomes the default for the next
   // step. Seeded from the most recent step's layout, falling back to the
