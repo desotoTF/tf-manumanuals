@@ -883,6 +883,13 @@ function ContentEditor({
             editable={editable}
             images={figureSources}
             figMap={figMap}
+            onInlineUpload={async (file) => {
+              const asset = (await onUploadAsset(file)) as
+                | { id?: string }
+                | null
+                | undefined;
+              return asset?.id ?? null;
+            }}
           />
         )}
 
