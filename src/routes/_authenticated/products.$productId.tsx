@@ -482,7 +482,7 @@ function ProductEditorPage() {
                   pointerEvents: "none",
                 }}
               >
-                <div id="manual-print-area">
+                <div id="manual-pdf-source">
                   <MasterManualPreview
                     branding={masterQuery.data?.branding ?? {}}
                     meta={previewMeta}
