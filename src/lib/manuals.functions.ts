@@ -10,6 +10,17 @@ import { emptyManualContent, type ManualContent } from "@/lib/types";
 
 const uuid = z.string().uuid();
 
+const extractTfBaseSku = (value?: string | null): string | null => {
+  const match = String(value ?? "").trim().match(/\b(TF\d{6})\b/i);
+  return match ? match[1].toUpperCase() : null;
+};
+
+const normalizeManualSku = (value: string): string =>
+  extractTfBaseSku(value) ?? value.trim().toUpperCase();
+
+const bomBaseSku = (sku: string, templateSku?: string | null): string =>
+  extractTfBaseSku(templateSku) ?? extractTfBaseSku(sku) ?? sku.trim().toUpperCase();
+
 export interface ManualListRow {
   manual_id: string;
   product_id: string;
@@ -319,7 +330,7 @@ export const createManualFromSku = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
-    const sku = data.sku.trim();
+    const sku = normalizeManualSku(data.templateSku || data.sku);
     const name = data.name.trim();
     const slugBase =
       sku.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") ||
@@ -341,9 +352,7 @@ export const createManualFromSku = createServerFn({ method: "POST" })
           ...(data.odooProductId
             ? { erp_product_id: data.odooProductId }
             : {}),
-          ...(data.templateSku && data.templateSku !== sku
-            ? { template_sku: data.templateSku }
-            : {}),
+          template_sku: sku,
         },
         { onConflict: "organization_id,sku" },
       )
@@ -367,9 +376,7 @@ export const createManualFromSku = createServerFn({ method: "POST" })
             ...(data.odooProductId
               ? { erp_product_id: data.odooProductId }
               : {}),
-            ...(data.templateSku && data.templateSku !== sku
-              ? { template_sku: data.templateSku }
-              : {}),
+            template_sku: sku,
           },
           { onConflict: "organization_id,sku" },
         )
@@ -998,7 +1005,7 @@ export const loadBomForManual = createServerFn({ method: "GET" })
     // (e.g. TF300601-CC) the BOM is held against the template SKU
     // (TF300601) — fall back to the sibling product row that owns that BOM.
     let bomProductId = product.id;
-    let bomSku = product.sku;
+    let bomSku = bomBaseSku(product.sku, (product as { template_sku?: string | null }).template_sku);
     const tmplSku = (product as { template_sku?: string | null }).template_sku;
     let bomRow = await supabase
       .from("bom_snapshots")
@@ -1016,7 +1023,7 @@ export const loadBomForManual = createServerFn({ method: "GET" })
         .maybeSingle();
       if (tmplProduct) {
         bomProductId = tmplProduct.id;
-        bomSku = tmplProduct.sku;
+        bomSku = bomBaseSku(tmplProduct.sku);
         bomRow = await supabase
           .from("bom_snapshots")
           .select("normalized_items, captured_at")
