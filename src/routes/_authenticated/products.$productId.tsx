@@ -647,8 +647,10 @@ function ProductEditorPage() {
                   parts: loaded.parts,
                   hardware_kit: loaded.hardware_kit,
                 });
+                const totalLoaded =
+                  loaded.parts.length + loaded.hardware_kit.length;
                 toast.success(
-                  `Loaded ${loaded.parts.length} parts from ${searchSku}`,
+                  `Loaded ${totalLoaded} BOM line${totalLoaded === 1 ? "" : "s"} from ${searchSku}`,
                 );
               }}
 

@@ -1144,33 +1144,19 @@ export const loadBomForManual = createServerFn({ method: "GET" })
         // ignore — fall through to "no BOM" response.
       }
     }
-    if (!bom) {
-      return {
-        parts: [],
-        hardware_kit: [],
-        excluded: [] as string[],
-        hardwareSku: null as string | null,
-        hardwareBomMissing: false,
-        bomCapturedAt: null as string | null,
-      };
-    }
-
-
-
-
     const { data: rules } = await supabase
       .from("bom_exclusions")
       .select("pattern, match_type")
       .eq("organization_id", product.organization_id);
     const exclusionRules = rules ?? [];
 
-    const items = (bom.normalized_items as unknown as Array<{
+    const items = ((bom?.normalized_items as unknown as Array<{
       part_number: string;
       qty: number;
       description?: string;
       unit?: string;
       notes?: string;
-    }>) ?? [];
+    }>) ?? []);
 
     const excluded: string[] = [];
     const parts: typeof items = [];
@@ -1199,6 +1185,7 @@ export const loadBomForManual = createServerFn({ method: "GET" })
 
     let hardware_kit: typeof items = [];
     let hardwareBomMissing = false;
+    let hardwareBomCapturedAt: string | null = null;
     // Even when the parent BOM has no explicit `.x` marker line, the editor
     // still expects a hardware kit from `${bomSku}.x`. Try that as a final
     // fallback so freshly-created manuals show hardware automatically.
@@ -1231,7 +1218,7 @@ export const loadBomForManual = createServerFn({ method: "GET" })
       if (childProductId) {
         let { data: childBom } = await supabase
           .from("bom_snapshots")
-          .select("normalized_items")
+          .select("normalized_items, captured_at")
           .eq("product_id", childProductId)
           .order("captured_at", { ascending: false })
           .limit(1)
@@ -1245,7 +1232,7 @@ export const loadBomForManual = createServerFn({ method: "GET" })
             });
             const refetched = await supabase
               .from("bom_snapshots")
-              .select("normalized_items")
+                .select("normalized_items, captured_at")
               .eq("product_id", childProductId)
               .order("captured_at", { ascending: false })
               .limit(1)
@@ -1256,6 +1243,7 @@ export const loadBomForManual = createServerFn({ method: "GET" })
           }
         }
         if (childBom) {
+          hardwareBomCapturedAt = childBom.captured_at ?? null;
           const childItems =
             (childBom.normalized_items as unknown as typeof items) ?? [];
           hardware_kit = childItems.filter((it) => {
@@ -1291,7 +1279,7 @@ export const loadBomForManual = createServerFn({ method: "GET" })
       excluded,
       hardwareSku: hardwareMarker?.part_number ?? hardwareLookupSku ?? null,
       hardwareBomMissing,
-      bomCapturedAt: bom.captured_at,
+      bomCapturedAt: bom?.captured_at ?? hardwareBomCapturedAt,
     };
   });
 
