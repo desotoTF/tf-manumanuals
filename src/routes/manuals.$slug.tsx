@@ -15,7 +15,14 @@ export const Route = createFileRoute("/manuals/$slug")({
   loader: async ({ params }) => {
     const res = await getPublishedManualBySlug({ data: { slug: params.slug } });
     if (!res.product || !res.version) throw notFound();
-    return res;
+    // If a rendered PDF exists, redirect the browser to view it directly
+    // (native PDF viewer; user can save/print without our UI in the way).
+    const pdfUrl = (res.version as { published_pdf_url?: string | null })
+      .published_pdf_url;
+    if (pdfUrl && typeof window !== "undefined") {
+      window.location.replace(pdfUrl);
+    }
+    return { ...res, pdfUrl: pdfUrl ?? null };
   },
   head: ({ loaderData }) => {
     if (!loaderData?.product) return {};
