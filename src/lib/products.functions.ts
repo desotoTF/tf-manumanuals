@@ -89,6 +89,7 @@ export const lookupProductBySku = createServerFn({ method: "POST" })
         sku: string;
         name: string;
       }>;
+      variantTemplateSkus?: Record<string, string>;
       lookupError?: string;
     }> => {
       const { supabase } = context;
