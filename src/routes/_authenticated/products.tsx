@@ -162,13 +162,14 @@ function ManualsPage() {
               <TableHead>Latest version</TableHead>
               <TableHead>Last published</TableHead>
               <TableHead>Last BOM change</TableHead>
+              <TableHead className="w-12" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {manualsQuery.isLoading && (
               <TableRow>
                 <TableCell
-                  colSpan={5}
+                  colSpan={6}
                   className="text-center text-sm text-muted-foreground"
                 >
                   Loading…
@@ -178,7 +179,7 @@ function ManualsPage() {
             {!manualsQuery.isLoading && rows.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={5}
+                  colSpan={6}
                   className="text-center text-sm text-muted-foreground"
                 >
                   {manualsQuery.data?.length === 0
@@ -234,6 +235,25 @@ function ManualsPage() {
                           addSuffix: true,
                         })
                       : "—"}
+                  </TableCell>
+                  <TableCell
+                    className="text-right"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Delete manual"
+                      className="text-muted-foreground hover:text-destructive"
+                      onClick={() =>
+                        setToDelete({
+                          manualId: r.manual_id,
+                          label: formatManualLabel(r.sku, r.product_name),
+                        })
+                      }
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               );
