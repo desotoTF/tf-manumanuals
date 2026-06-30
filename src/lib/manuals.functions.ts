@@ -341,6 +341,9 @@ export const createManualFromSku = createServerFn({ method: "POST" })
           ...(data.odooProductId
             ? { erp_product_id: data.odooProductId }
             : {}),
+          ...(data.templateSku && data.templateSku !== sku
+            ? { template_sku: data.templateSku }
+            : {}),
         },
         { onConflict: "organization_id,sku" },
       )
