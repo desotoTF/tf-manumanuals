@@ -331,9 +331,9 @@ function CreateManualDialog({
     variantTemplateSkus?: Record<string, string>;
     lookupError?: string;
   } | null>(null);
-  // When the lookup returns multiple Odoo variants, the user picks one here.
-  // Selecting a variant promotes it into the lookup state (source=odoo).
-  const [selectedVariant, setSelectedVariant] = useState<string>("");
+  // When lookup returns multiple Odoo products, the user picks the main
+  // TF###### product. Variants/parts are intentionally not shown here.
+  const [selectedProduct, setSelectedProduct] = useState<string>("");
   const [looking, setLooking] = useState(false);
 
   // Reset on close.
@@ -343,7 +343,7 @@ function CreateManualDialog({
       setName("");
       setTemplateId("__none");
       setLookup(null);
-      setSelectedVariant("");
+      setSelectedProduct("");
       setLooking(false);
     }
   }, [open]);
@@ -365,7 +365,7 @@ function CreateManualDialog({
     const trimmed = sku.trim();
     if (!trimmed) return;
     setLooking(true);
-    setSelectedVariant("");
+    setSelectedProduct("");
     try {
       const res = await lookupSku({
         data: { organizationId: orgId, sku: trimmed },
@@ -389,24 +389,20 @@ function CreateManualDialog({
     }
   };
 
-  // If the lookup returned multiple variants, force the user to pick one
-  // before allowing create. The chosen variant's odooProductId + SKU win.
+  // If lookup returned multiple products, force the user to pick one before
+  // allowing create. The chosen product's main SKU is the manual SKU.
   const needsVariantPick =
-    lookup?.source === "odoo_variants" && !selectedVariant;
-  const variantChoice =
-    lookup?.variants?.find((v) => v.odooProductId === selectedVariant) ?? null;
+    lookup?.source === "odoo_variants" && !selectedProduct;
+  const productChoice =
+    lookup?.variants?.find((v) => v.odooProductId === selectedProduct) ?? null;
   const effectiveOdooProductId =
-    variantChoice?.odooProductId ?? lookup?.odooProductId;
-  // When a variant is chosen, store the variant SKU as the local product SKU
-  // (matches Odoo and unblocks BOM sync); keep the template SKU available for
-  // future display fixes (parts list).
-  const effectiveSku = variantChoice?.sku ?? sku.trim();
-  // Pick the right template SKU for BOM linkage. Prefix-search results
-  // can span multiple templates, so prefer the per-variant map.
+    productChoice?.odooProductId ?? lookup?.odooProductId ?? lookup?.odooTemplateId;
+  const effectiveSku = productChoice?.sku ?? lookup?.templateSku ?? sku.trim();
   const effectiveTemplateSku =
-    (variantChoice &&
-      lookup?.variantTemplateSkus?.[variantChoice.odooProductId]) ||
-    lookup?.templateSku;
+    (productChoice &&
+      lookup?.variantTemplateSkus?.[productChoice.odooProductId]) ||
+    lookup?.templateSku ||
+    effectiveSku;
 
   const createMut = useMutation({
     mutationFn: () =>
@@ -488,7 +484,7 @@ function CreateManualDialog({
                 {lookup.source === "odoo" &&
                   "Found in Odoo — name auto-filled."}
                 {lookup.source === "odoo_variants" &&
-                  `Matched the base SKU ${lookup.templateSku ?? sku} in Odoo — pick a variant below.`}
+                  "Matched multiple main products in Odoo — pick one below."}
                 {lookup.source === "not_found" && (
                   <>
                     Not found{lookup.lookupError ? ` (${lookup.lookupError})` : ""}.
@@ -501,13 +497,13 @@ function CreateManualDialog({
 
           {lookup?.source === "odoo_variants" && lookup.variants && (
             <div className="space-y-1">
-              <Label>Variant</Label>
+              <Label>Product</Label>
               <Select
-                value={selectedVariant}
-                onValueChange={setSelectedVariant}
+                value={selectedProduct}
+                onValueChange={setSelectedProduct}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Pick a variant…" />
+                  <SelectValue placeholder="Pick a product…" />
                 </SelectTrigger>
                 <SelectContent>
                   {lookup.variants.map((v) => (
@@ -521,9 +517,7 @@ function CreateManualDialog({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                The manual will use the variant SKU. The base SKU
-                ({lookup.templateSku ?? sku}) is kept as the template
-                reference for the parts list.
+                The manual will use only the main TF###### SKU.
               </p>
             </div>
           )}
@@ -540,7 +534,7 @@ function CreateManualDialog({
               <p className="text-xs text-muted-foreground">
                 Manual will be titled:{" "}
                 <span className="font-mono">
-                  {formatManualLabel(sku.trim(), name.trim())}
+                  {formatManualLabel(effectiveSku.trim(), name.trim())}
                 </span>
               </p>
             )}

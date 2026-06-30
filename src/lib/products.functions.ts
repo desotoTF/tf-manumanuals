@@ -3,6 +3,17 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 
+const extractTfBaseSku = (value: string): string | null => {
+  const match = value.trim().match(/\b(TF\d{6})\b/i);
+  return match ? match[1].toUpperCase() : null;
+};
+
+const normalizeLookupSku = (value: string): string =>
+  extractTfBaseSku(value) ?? value.trim().toUpperCase();
+
+const isMainTfSku = (value: string | false | null | undefined): value is string =>
+  typeof value === "string" && /^TF\d{6}$/i.test(value.trim());
+
 export const listProductsWithStatus = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: { organizationId: string }) => d)
@@ -57,10 +68,10 @@ export const listProductsWithoutManual = createServerFn({ method: "GET" })
 // SKU-first lookup used by the Create Manual flow.
 // Resolution order:
 //   1. Local product (org-scoped, exact SKU match).
-//   2. Odoo product.product.default_code (variant level).
-//   3. Odoo product.template.default_code → if the template has a single
-//      variant, return it; if it has multiple, return them all so the UI
-//      can show a variant picker.
+//   2. Odoo product.template.default_code (main product only).
+//
+// TF products must resolve to the main 6-digit SKU (TF######). Variant SKUs
+// and hardware/part SKUs must never become manual SKUs.
 export const lookupProductBySku = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
@@ -93,7 +104,8 @@ export const lookupProductBySku = createServerFn({ method: "POST" })
       lookupError?: string;
     }> => {
       const { supabase } = context;
-      const sku = data.sku.trim();
+      const rawSku = data.sku.trim();
+      const sku = normalizeLookupSku(rawSku);
 
       // 1) Local hit.
       const { data: local } = await supabase
@@ -148,38 +160,9 @@ export const lookupProductBySku = createServerFn({ method: "POST" })
         };
         const uid = await odooAuthenticate(creds);
 
-        // 2a) Variant-level exact match.
-        const variantHits = await odooExecuteKw<
-          Array<{
-            id: number;
-            default_code: string | false;
-            name: string;
-            product_tmpl_id: [number, string] | false;
-          }>
-        >(creds, uid, "product.product", "search_read", [
-          [["default_code", "=", sku]],
-        ], {
-          fields: ["id", "default_code", "name", "product_tmpl_id"],
-          limit: 1,
-        });
-        if (variantHits && variantHits.length > 0) {
-          const row = variantHits[0];
-          const tmpl = Array.isArray(row.product_tmpl_id)
-            ? row.product_tmpl_id
-            : null;
-          return {
-            source: "odoo",
-            sku,
-            name: row.name,
-            odooProductId: String(row.id),
-            odooTemplateId: tmpl ? String(tmpl[0]) : undefined,
-            templateSku: sku,
-            erpConnectionId: conn.id,
-          };
-        }
-
-        // 2b) Template-level fallback: customer typed the base SKU
-        // (e.g. TF300601) without the variant suffix (TF300601-CC).
+        // 2a) Template-level lookup: customer may type the base SKU
+        // (TF300601) or a variant/full SKU (TF300601-CC). We always resolve
+        // and return the main template SKU only.
         const tmplHits = await odooExecuteKw<
           Array<{ id: number; default_code: string | false; name: string }>
         >(creds, uid, "product.template", "search_read", [
@@ -188,111 +171,93 @@ export const lookupProductBySku = createServerFn({ method: "POST" })
 
         if (tmplHits && tmplHits.length > 0) {
           const tmpl = tmplHits[0];
-          const variants = await odooExecuteKw<
-            Array<{ id: number; default_code: string | false; name: string }>
-          >(creds, uid, "product.product", "search_read", [
-            [["product_tmpl_id", "=", tmpl.id]],
-          ], { fields: ["id", "default_code", "name"], limit: 50 });
-
-          if (variants.length === 1) {
-            const v = variants[0];
-            return {
-              source: "odoo",
-              sku: v.default_code ? String(v.default_code) : sku,
-              name: v.name,
-              odooProductId: String(v.id),
-              odooTemplateId: String(tmpl.id),
-              templateSku: sku,
-              erpConnectionId: conn.id,
-            };
-          }
-          if (variants.length > 1) {
-            return {
-              source: "odoo_variants",
-              sku,
-              name: tmpl.name,
-              odooTemplateId: String(tmpl.id),
-              templateSku: sku,
-              erpConnectionId: conn.id,
-              variants: variants.map((v) => ({
-                odooProductId: String(v.id),
-                sku: v.default_code ? String(v.default_code) : `${sku}?`,
-                name: v.name,
-              })),
-            };
-          }
-          // Template existed with zero variants — treat as single.
           return {
             source: "odoo",
-            sku,
+            sku: tmpl.default_code ? String(tmpl.default_code).toUpperCase() : sku,
             name: tmpl.name,
+            odooProductId: String(tmpl.id),
             odooTemplateId: String(tmpl.id),
-            templateSku: sku,
+            templateSku: tmpl.default_code ? String(tmpl.default_code).toUpperCase() : sku,
             erpConnectionId: conn.id,
           };
         }
 
-        // 2c) Loose/prefix fallback: user typed a partial base SKU
-        // (e.g. "TF3006") — search template default_code by prefix and
-        // gather all variants across matches so the UI can show a picker.
-        if (sku.length >= 3) {
+        // 2b) Loose/prefix fallback: search templates only. For TF SKUs,
+        // keep only exact main products (TF######), excluding hardware kits,
+        // variants, and part/helper SKUs such as TF######.x or TF######-CC.
+        if (sku.length >= 2) {
           const tmplPrefixHits = await odooExecuteKw<
             Array<{ id: number; default_code: string | false; name: string }>
           >(creds, uid, "product.template", "search_read", [
             [["default_code", "=ilike", `${sku}%`]],
           ], { fields: ["id", "default_code", "name"], limit: 20 });
 
-          if (tmplPrefixHits && tmplPrefixHits.length > 0) {
-            type FlatVariant = {
-              odooProductId: string;
-              sku: string;
-              name: string;
-              templateId: string;
-              templateSku: string;
-            };
-            const allVariants: FlatVariant[] = [];
-            for (const tmpl of tmplPrefixHits) {
-              const tmplSku = tmpl.default_code
-                ? String(tmpl.default_code)
-                : `tmpl-${tmpl.id}`;
-              const variants = await odooExecuteKw<
-                Array<{ id: number; default_code: string | false; name: string }>
-              >(creds, uid, "product.product", "search_read", [
-                [["product_tmpl_id", "=", tmpl.id]],
-              ], { fields: ["id", "default_code", "name"], limit: 50 });
-              for (const v of variants) {
-                allVariants.push({
-                  odooProductId: String(v.id),
-                  sku: v.default_code ? String(v.default_code) : tmplSku,
-                  name: v.name,
-                  templateId: String(tmpl.id),
-                  templateSku: tmplSku,
-                });
-              }
+          const productHits = (tmplPrefixHits ?? [])
+            .filter((tmpl) =>
+              /^TF/i.test(sku) ? isMainTfSku(tmpl.default_code) : !!tmpl.default_code,
+            )
+            .map((tmpl) => ({
+              odooProductId: String(tmpl.id),
+              sku: String(tmpl.default_code).toUpperCase(),
+              name: tmpl.name,
+            }));
+
+          if (productHits.length > 0) {
+            if (productHits.length === 1) {
+              const product = productHits[0];
+              return {
+                source: "odoo",
+                sku: product.sku,
+                name: product.name,
+                odooProductId: product.odooProductId,
+                odooTemplateId: product.odooProductId,
+                templateSku: product.sku,
+                erpConnectionId: conn.id,
+              };
             }
-            if (allVariants.length === 0) {
+            return {
+              source: "odoo_variants",
+              sku,
+              name: productHits[0].name,
+              odooTemplateId: productHits[0].odooProductId,
+              templateSku: productHits[0].sku,
+              erpConnectionId: conn.id,
+              variants: productHits,
+              variantTemplateSkus: Object.fromEntries(
+                productHits.map((p) => [p.odooProductId, p.sku]),
+              ),
+            };
+          }
+
+          if (tmplPrefixHits && tmplPrefixHits.length > 0 && /^TF/i.test(sku)) {
+            // We found templates, but they were not main TF products. Treat as
+            // not found instead of offering parts/hardware kits as manuals.
+            return { source: "not_found", sku, name: "" };
+          }
+
+          if (tmplPrefixHits && tmplPrefixHits.length > 0) {
+            const productHitsFallback = tmplPrefixHits
+              .filter((tmpl) => !!tmpl.default_code)
+              .map((tmpl) => ({
+                odooProductId: String(tmpl.id),
+                sku: String(tmpl.default_code).toUpperCase(),
+                name: tmpl.name,
+              }));
+            if (productHitsFallback.length === 0) {
               return { source: "not_found", sku, name: "" };
             }
             return {
               source: "odoo_variants",
               sku,
-              name: tmplPrefixHits[0].name,
-              odooTemplateId: String(tmplPrefixHits[0].id),
-              templateSku: tmplPrefixHits[0].default_code
-                ? String(tmplPrefixHits[0].default_code)
-                : sku,
+              name: productHitsFallback[0].name,
+              odooTemplateId: productHitsFallback[0].odooProductId,
+              templateSku: productHitsFallback[0].sku,
               erpConnectionId: conn.id,
-              variants: allVariants.map((v) => ({
-                odooProductId: v.odooProductId,
-                sku: v.sku,
-                name: v.name,
-              })),
-              // Per-variant templateSku so the client can link the local
-              // product row to the template-level BOM.
+              variants: productHitsFallback,
               variantTemplateSkus: Object.fromEntries(
-                allVariants.map((v) => [v.odooProductId, v.templateSku]),
+                productHitsFallback.map((p) => [p.odooProductId, p.sku]),
               ),
-            } as never;
+            };
           }
         }
 
