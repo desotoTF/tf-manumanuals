@@ -557,14 +557,15 @@ export async function syncBomBySkuImpl(
         };
         const uid = await odooAuthenticate(creds);
 
-        // 1) Find the template id for this SKU.
+        // 1) Find the template id for this SKU (case-insensitive exact).
         let tmplId: number | null = null;
+        let variantId: number | null = null;
         let tmplName = sku;
         let tmplDescription: string | null = null;
         const tmplRows = await odooExecuteKw<
           Array<{ id: number; name: string; default_code: string | false; description_sale: string | false }>
         >(creds, uid, "product.template", "search_read", [
-          [["default_code", "=", sku]],
+          [["default_code", "=ilike", sku]],
         ], { fields: ["id", "name", "default_code", "description_sale"], limit: 1 });
         if (tmplRows && tmplRows.length > 0) {
           tmplId = tmplRows[0].id;
@@ -574,15 +575,22 @@ export async function syncBomBySkuImpl(
             : null;
         } else {
           // Fall back to product.product (variant / inventory-only). This is
-          // how `.x` hardware kits often live in Odoo.
+          // how `.x` hardware kits often live in Odoo. Check active + archived.
           const variantRows = await odooExecuteKw<
             Array<{ id: number; name: string; product_tmpl_id: [number, string] | false }>
           >(creds, uid, "product.product", "search_read", [
-            [["default_code", "=", sku]],
+            [
+              "&",
+              ["default_code", "=ilike", sku],
+              "|",
+              ["active", "=", true],
+              ["active", "=", false],
+            ],
           ], { fields: ["id", "name", "product_tmpl_id"], limit: 1 });
           const v = variantRows?.[0];
           if (v && Array.isArray(v.product_tmpl_id)) {
             tmplId = v.product_tmpl_id[0];
+            variantId = v.id;
             tmplName = v.name;
           }
         }
@@ -591,11 +599,16 @@ export async function syncBomBySkuImpl(
           return { ok: true, found: false, sku };
         }
 
-        // 2) Find a mrp.bom for that template.
+        // 2) Find a mrp.bom for that template OR for the specific variant.
+        // `.x` hardware kits are typically attached to a variant via product_id,
+        // not to the template — search both.
+        const bomDomain: unknown[] = variantId !== null
+          ? ["|", ["product_id", "=", variantId], ["product_tmpl_id", "=", tmplId]]
+          : [["product_tmpl_id", "=", tmplId]];
         const boms = await odooExecuteKw<
           Array<{ id: number; code: string | false; product_qty: number }>
         >(creds, uid, "mrp.bom", "search_read", [
-          [["product_tmpl_id", "=", tmplId]],
+          bomDomain,
         ], { fields: ["id", "code", "product_qty"], limit: 1 });
         const bom = boms?.[0];
 
