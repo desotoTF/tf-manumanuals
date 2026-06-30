@@ -1072,7 +1072,7 @@ export const loadBomForManual = createServerFn({ method: "GET" })
 
     // Hardware kit = BOM of the `.x` child product. Prefer the one matching
     // `${parent_sku}.x`; otherwise just take the first marker.
-    const expectedHardwareSku = `${product.sku}.x`;
+    const expectedHardwareSku = `${bomSku}.x`;
     const hardwareMarker =
       hardwareMarkers.find(
         (m) => m.part_number.toLowerCase() === expectedHardwareSku.toLowerCase(),
