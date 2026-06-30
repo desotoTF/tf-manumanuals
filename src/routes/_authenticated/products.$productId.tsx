@@ -105,6 +105,7 @@ function ProductEditorPage() {
   const addAsset = useServerFn(addManualAsset);
   const removeAsset = useServerFn(removeManualAsset);
   const uploadAsset = useServerFn(uploadManualAssetFile);
+  const uploadPdf = useServerFn(uploadPublishedPdf);
   const importPdf = useServerFn(importLegacyManualFromPdf);
   const fetchTemplates = useServerFn(listTemplates);
 
