@@ -714,6 +714,8 @@ export const transitionManualVersion = createServerFn({ method: "POST" })
     z
       .object({
         versionId: uuid,
+        // "submit" kept for backward compat (legacy in_review path); UI now
+        // skips review and goes draft → approved → published.
         action: z.enum(["submit", "approve", "publish", "discard"]),
       })
       .parse(d),
@@ -736,18 +738,7 @@ export const transitionManualVersion = createServerFn({ method: "POST" })
       | undefined;
     if (!orgId) throw new Error("Could not resolve organization");
 
-    // approve/publish require admin or owner. submit/discard ok for editor.
-    if (data.action === "approve" || data.action === "publish") {
-      const { data: ok } = await supabase.rpc("has_org_any_role", {
-        _org_id: orgId,
-        _roles: ["owner", "admin"],
-      });
-      if (!ok) {
-        const { data: isSuper } = await supabase.rpc("is_super_admin");
-        if (!isSuper)
-          throw new Error("Only owners or admins can approve or publish");
-      }
-    }
+    // No role gating: same user can mark approved and publish.
 
     const current = version.state;
     let next: string | null = null;
@@ -755,11 +746,17 @@ export const transitionManualVersion = createServerFn({ method: "POST" })
       if (current !== "draft") throw new Error("Only drafts can be submitted");
       next = "in_review";
     } else if (data.action === "approve") {
-      if (current !== "in_review")
-        throw new Error("Only in-review versions can be approved");
+      // Allow approving directly from draft (skip review) or from in_review.
+      if (current !== "draft" && current !== "in_review")
+        throw new Error("Only draft or in-review versions can be approved");
       next = "approved";
     } else if (data.action === "publish") {
-      if (current !== "approved" && current !== "in_review")
+      // Allow re-publish of an already-published version (regenerates PDF).
+      if (
+        current !== "approved" &&
+        current !== "in_review" &&
+        current !== "published"
+      )
         throw new Error("Only approved versions can be published");
       next = "published";
     } else if (data.action === "discard") {
@@ -791,6 +788,66 @@ export const transitionManualVersion = createServerFn({ method: "POST" })
     });
 
     return { ok: true as const, state: next };
+  });
+
+// Upload a freshly-rendered PDF for a published version and persist a
+// long-lived signed URL on manual_versions.published_pdf_url. Called from the
+// client right after a successful publish transition.
+export const uploadPublishedPdf = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        versionId: uuid,
+        filename: z.string().min(1).max(200),
+        // base64 PDF, cap ~24MB encoded.
+        dataBase64: z.string().min(1).max(32_000_000),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { data: version, error: vErr } = await supabase
+      .from("manual_versions")
+      .select(
+        "id, manual_id, version_number, manuals!inner(product_id, products!inner(organization_id))",
+      )
+      .eq("id", data.versionId)
+      .maybeSingle();
+    if (vErr) throw vErr;
+    if (!version) throw new Error("Version not found");
+    const nested = version as unknown as {
+      manual_id: string;
+      version_number: number;
+      manuals: { product_id: string; products: { organization_id: string } };
+    };
+    const orgId = nested.manuals.products.organization_id;
+
+    const { supabaseAdmin } = await import(
+      "@/integrations/supabase/client.server"
+    );
+
+    const safeName = data.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const path = `published-pdfs/${orgId}/${nested.manual_id}/v${nested.version_number}-${Date.now()}-${safeName}`;
+    const bytes = Buffer.from(data.dataBase64, "base64");
+
+    const { error: upErr } = await supabaseAdmin.storage
+      .from("manual-assets")
+      .upload(path, bytes, { contentType: "application/pdf", upsert: true });
+    if (upErr) throw new Error(`PDF upload failed: ${upErr.message}`);
+
+    const { data: signed, error: sErr } = await supabaseAdmin.storage
+      .from("manual-assets")
+      .createSignedUrl(path, 60 * 60 * 24 * 365 * 10);
+    if (sErr) throw new Error(`Signing PDF URL failed: ${sErr.message}`);
+
+    const { error: updErr } = await supabaseAdmin
+      .from("manual_versions")
+      .update({ published_pdf_url: signed.signedUrl } as never)
+      .eq("id", data.versionId);
+    if (updErr) throw updErr;
+
+    return { ok: true as const, url: signed.signedUrl };
   });
 
 export const addManualAsset = createServerFn({ method: "POST" })
