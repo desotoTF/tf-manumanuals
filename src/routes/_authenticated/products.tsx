@@ -93,13 +93,30 @@ function ProductsRoutePage() {
 function ManualsPage() {
   const { orgId } = useActiveOrg();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const fetchManuals = useServerFn(listManualsWithStatus);
+  const deleteManualFn = useServerFn(deleteManual);
   const [filter, setFilter] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [toDelete, setToDelete] = useState<{
+    manualId: string;
+    label: string;
+  } | null>(null);
 
   const manualsQuery = useQuery({
     queryKey: ["manuals", orgId],
     queryFn: () => fetchManuals({ data: { organizationId: orgId } }),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (manualId: string) =>
+      deleteManualFn({ data: { manualId } }),
+    onSuccess: () => {
+      toast.success("Manual deleted");
+      qc.invalidateQueries({ queryKey: ["manuals", orgId] });
+      setToDelete(null);
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const rows = useMemo(() => {
