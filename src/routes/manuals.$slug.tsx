@@ -236,13 +236,12 @@ function PublicManualPage() {
                     Step {i + 1}
                   </div>
                   <h3 className="mb-3 text-base font-semibold">{s.title}</h3>
-                  <StepBlocksView
-                    blocks={s.blocks}
-                    legacyBody={s.body}
+                  <StepLayoutView
+                    step={s}
                     assets={assetMap}
                     figMap={figMap}
-                    stepImageNumber={stepFirstImageNumber(s, figMap)}
                   />
+
                 </li>
               ))}
             </ol>
