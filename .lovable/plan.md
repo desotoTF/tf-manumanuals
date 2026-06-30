@@ -1,98 +1,64 @@
-## Goal
+This touches ~6 areas. I'll ship them in one commit but in a deliberate order so each piece can be smoke-tested. Total ~4.6k lines of editor code involved; most edits are surgical.
 
-Replace the generic "add block" step editor with a layout-driven step editor. Each step has a layout (one column, two column, two row), and each layout has fixed slots — each slot holds: title + text + optional single image + optional callout. Layouts are configurable in Templates (new section), default to one-column on new manuals, and the most recently used layout becomes the default for the next step. Figure references get a thumbnail picker overlay.
+## 1. Images tab (`src/components/manual-editor/ManualListEditors.tsx` images panel)
 
-## 1. New step shape
+- **Multi-select upload.** `<input type="file" accept="image/*" multiple>` on the existing "Choose Image" button. Loop uploads sequentially through the existing `uploadAsset` server fn so progress is visible; bail individual failures with a toast, don't abort the batch.
+- **URL row layout.** In the asset row, move the URL onto its own second line below the `Fig X · caption` line. Truncate display to 30 chars (`url.length > 30 ? url.slice(0,27)+'…' : url`). Wrap in `<a href={url} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2 truncate">`.
+- **Upload from ZIP button.** New button next to "Choose Image". Uses `JSZip` (already a transitive dep? — if not, `bun add jszip`). Client-side: unzip → filter image entries → for each, derive caption = filename without extension, then call `uploadAsset` + write the caption into `manual_assets.caption`. Progress toast: "Uploading 3/12…".
 
-Replace the free-form `blocks: StepBlock[]` model with a layout + slot model.
+## 2. Steps tab — inline Choose Image thumb
 
-```text
-ManualStep
-├── id, title (kept)
-├── layout: "one_col" | "two_col" | "two_row"   (default "one_col")
-└── slots: StepSlot[]            // length = 1 (one_col) or 2 (two/two_row)
+In `StepLayoutEditor.tsx` image slot picker, append an extra grid tile after the real thumbnails. The tile is a dashed border box, same dimensions as thumbs, with a centered "Choose image" button. Clicking it triggers the same file input + `uploadAsset` flow as the Images tab, and on success the new asset is auto-selected for that slot. Works when zero thumbs exist (tile is the only one shown).
 
-StepSlot
-├── id
-├── text_html         // TipTap HTML, replaces the old text block
-├── asset_id | null   // single image (thumb in editor)
-├── caption?
-└── callout? { severity, body }   // optional, one per slot
+## 3. Preview / PDF
+
+- **Layout rendering bug.** `MasterManualPreview.tsx` + `StepLayoutView.tsx` — verify slot data is being passed through. Likely the preview path reads `step.blocks` while the editor now writes `step.slots`. Run `normalizeStep()` on every step before render (same helper figure-refs already uses). Fix any missing case.
+- **"Print / Save as PDF" → "Save as PDF" with download.** Replace the current `window.print()` button with one that calls the new client-side renderer:
+  - Use `html2canvas` + `jsPDF` (both small, browser-only, no server). Wrap the preview DOM, paginate by page-break markers we already emit, output `manual-{slug}-v{n}.pdf`, trigger `link.click()`.
+  - Icon: `Download` from lucide.
+  - `bun add jspdf html2canvas`.
+
+## 4. Manuals page layout (`products.$productId.tsx`)
+
+Currently a single column with: Current Version → Save Draft → Latest BOM → Versions list. Move into a two-col grid (`lg:grid-cols-2`):
+- Left column: Current Version card, Save Draft card.
+- Right column: Latest BOM card, Versions list card.
+
+On `< lg` they stack as today. No data changes.
+
+## 5. Draft → Approved → Published flow
+
+DB enum `manual_versions.state` already has `draft | in_review | approved | published | superseded`. Work:
+- **UI rename.** "Submit for review" button → "Mark Approved"; transitions state directly to `approved` (skip `in_review`).
+- **Publish button** appears whenever state is `approved` (or already published, to allow re-publish). Same user can click both.
+- **Server fn `publishManualVersion`.** Trigger `tg_version_state_change` already supersedes prior published versions on the same manual → public URL (`/manuals/:slug` keyed by `manuals.public_slug`) keeps resolving to the newest published version. Verify `getPublicManual` selects `state='published' ORDER BY published_at DESC LIMIT 1`; older published versions become `superseded` and remain in DB for internal viewing only — which they already do.
+- **Internal version history** in the Versions card continues to show all states.
+
+## 6. Public URL serves PDF
+
+- **Storage.** Reuse existing `manual-assets` bucket; add a new `public-manuals` bucket (public read), created via `supabase--storage_create_bucket`.
+- **Render at publish time.** Inside `publishManualVersion` server fn, after the state transition:
+  1. Use `@react-pdf/renderer` (Worker-compatible, pure JS) to render a server-side PDF of the manual using the same data shape `MasterManualPreview` consumes. Build a `<ManualPdfDocument>` component mirroring the preview layout (cover, sections, steps with slots, figure numbering).
+  2. `pdf(<Document/>).toBuffer()` → upload to `public-manuals/{manual_id}/v{n}.pdf`.
+  3. Store the public URL on `manual_versions.published_pdf_url` (new column via migration).
+- **Public route `/manuals/:slug`** (`src/routes/manuals.$slug.tsx`): rewrite to a server route under `src/routes/api/public/manuals.$slug.ts` that 302-redirects to the stored `published_pdf_url`. Browsers will render the PDF inline with native viewer; save/download works out of the box.
+- The old HTML preview route stays available at `/manuals/:slug/preview` for internal share, but the canonical public URL becomes the PDF.
+
+### Migration
+```sql
+ALTER TABLE public.manual_versions
+  ADD COLUMN published_pdf_url text;
 ```
+(No grants needed — column on existing table.)
 
-Each step owns at most `slots.length` images (so one_col = 1, two_col / two_row = 2). The drop-down "Add block" UI is removed.
+### Risk notes
+- `@react-pdf/renderer` works in Cloudflare Workers (pure JS, no native). Bundle adds ~250kb to server, fine.
+- If the bucket's public-buckets policy blocks creation, I'll surface that and ask the user to enable it.
+- `html2canvas` PDF on the client gives a raster PDF (good fidelity, larger file). Acceptable for the "Save as PDF" button; the canonical public PDF is the vector one from `@react-pdf/renderer`.
 
-Migration: an additive shape change in the `manual_versions.content` JSON. A small reader-side adapter converts any legacy `blocks[]` step to the new `slots[]` shape on load so existing drafts keep rendering. No SQL migration.  
-Edit: No migration needed. All existing drafts have been deleted.
+### Out of scope
+- Approver vs publisher role split (you chose same-user).
+- ZIP CSV manifest (you chose filename-as-caption).
+- Print stylesheet polish beyond what the new renderer needs.
 
-## 2. Editor UI (per step card)
-
-Card layout per step:
-
-```text
-┌─ Step N ────────────────── [layout switcher ▾] [↑ ↓ 🗑] ┐
-│  [ Title input ]                                        │
-│  ┌── slot 1 ──┐  ┌── slot 2 ──┐    (slot 2 hidden if    │
-│  │ rich text  │  │ rich text  │     layout = one_col;   │
-│  │ [+ image]  │  │ [+ image]  │     stacked if two_row) │
-│  │ [+ callout]│  │ [+ callout]│                         │
-│  └────────────┘  └────────────┘                         │
-└─────────────────────────────────────────────────────────┘
-[ + Add step ]      ← lives outside / below the cards
-```
-
-- Layout switcher: segmented control on the card header. Switching preserves slot 1; switching from two→one drops slot 2 (with confirm if it has content).
-- `+ Image` opens the existing image picker for that slot, replaces the thumb when set, with a "Remove" affordance.
-- `+ Callout` reveals the existing callout editor inline below the text; "remove" hides it again.
-- Generic "Add block" menu is removed entirely.
-- "Add step" button moves to a standalone row beneath all step cards. New step inherits the previously used layout.
-
-## 3. Templates: Step Layouts section
-
-Add a second section to `settings.templates.tsx` below "Manual templates":
-
-- List of available step layouts. Built-ins (one_col, two_col, two_row) are always present and not deletable.
-- Admin can add custom layout rows now (name + slot count + orientation: row/column). Authoring the actual render is out of scope for this pass — custom layouts are stored but mapped to the closest built-in renderer; this gives the data foundation for future custom layouts.
-- Per template, an "Allowed layouts" multi-select picks which layouts authors see in the layout switcher (defaults: all three built-ins enabled). Stored on the existing template row's JSON config.
-
-Layouts list is org-scoped, stored as a small JSON array on the org's template settings (no new table needed for this iteration; if appetite is bigger we add a `manual_step_layouts` table — flagged below).
-
-## 4. Figure reference picker
-
-Keep the `##Fig.` trigger and the "Fig. ref" button, but the popover becomes a thumbnail grid:
-
-- Grid of all images currently placed in steps, in figure order, each tile showing the thumbnail + "Fig. N" + caption.
-- Selecting a tile inserts `{{fig:<assetId>}}` at the caret (replacing `##Fig.` if it triggered the popover).
-- Reordering, adding, or removing step images recomputes Fig. N — already handled by `buildFigureMapFromSteps`; this stays.
-- Implicit same-step token `{{fig:step}}` is kept for in-slot self-reference.
-
-The picker is wired into the rich text editor for each slot's text and into the callout body.
-
-## 5. Renderer
-
-`StepBlocksView` is replaced by `StepLayoutView`:
-
-- Reads `step.layout` + `step.slots`, renders `one_col` as a single column, `two_col` as a two-column grid, `two_row` as stacked rows.
-- For each slot: text (with figure tokens resolved) → image (with caption) → callout if present.
-- Adapter converts any remaining legacy `blocks[]` step into the new shape before render.
-
-## Technical notes
-
-Files to add/edit:
-
-- `src/lib/types.ts` — add `StepLayout`, `StepSlot`, extend `ManualStep`; keep old block types exported for the adapter.
-- `src/lib/step-layout-adapter.ts` (new) — `legacyBlocksToSlots(step)` + `normalizeStep(step)`.
-- `src/components/manual-editor/StepBlocksEditor.tsx` — rewrite as `StepLayoutEditor` (layout switcher, slot cards, +image/+callout buttons, no add-block menu).
-- `src/components/manual/StepBlocksView.tsx` — rewrite as `StepLayoutView`.
-- `src/components/manual-editor/FigureRefField.tsx` + figure picker — thumbnail grid popover; accept image URL in `FigureSource`.
-- `src/lib/figure-refs.tsx` — extend `FigureSource` with optional `url`; numbering logic walks `slots[].asset_id`.
-- `src/routes/_authenticated/products.$productId.tsx` — pass new shape; persist `step.layout` as the next-step default; "Add step" button moved outside the card list; pipe image URLs into the figure picker.
-- `src/routes/_authenticated/settings.templates.tsx` — new "Step layouts" section + "Allowed layouts" multi-select on each template.
-- `src/lib/templates.functions.ts` — extend template config JSON with `allowed_step_layouts` and an org-level `step_layouts` array.
-- `src/routes/manuals.$slug.tsx` — switch to `StepLayoutView` via adapter.
-
-No DB schema migration; everything fits in existing `manual_versions.content` JSON and template config JSON. If you'd prefer a dedicated `manual_step_layouts` table for org-scoped custom layouts, call that out and I'll add it.
-
-## Open question
-
-Custom layouts in Templates: do you want them to actually render differently in this pass (which means defining a slot grid spec + a generic renderer), or is "data only now, renderer later" fine? My plan above assumes data-only for now.
+Ship order: 4 → 1 → 2 → 3 (preview fix first, then PDF button) → 5 → 6. Each step verified in the preview before moving on.
