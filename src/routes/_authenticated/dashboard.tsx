@@ -23,6 +23,9 @@ import { formatDistanceToNow } from "date-fns";
 import { CheckCircle2, AlertTriangle, Clock } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
+  beforeLoad: () => {
+    throw redirect({ to: "/products" });
+  },
   component: DashboardPage,
 });
 
