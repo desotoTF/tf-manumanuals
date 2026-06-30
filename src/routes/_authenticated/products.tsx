@@ -328,6 +328,7 @@ function CreateManualDialog({
     templateSku?: string;
     erpConnectionId?: string;
     variants?: Array<{ odooProductId: string; sku: string; name: string }>;
+    variantTemplateSkus?: Record<string, string>;
     lookupError?: string;
   } | null>(null);
   // When the lookup returns multiple Odoo variants, the user picks one here.
