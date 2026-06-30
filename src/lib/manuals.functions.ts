@@ -1289,7 +1289,7 @@ export const loadBomForManual = createServerFn({ method: "GET" })
         notes: it.notes,
       })),
       excluded,
-      hardwareSku: hardwareMarker?.part_number ?? null,
+      hardwareSku: hardwareMarker?.part_number ?? hardwareLookupSku ?? null,
       hardwareBomMissing,
       bomCapturedAt: bom.captured_at,
     };
