@@ -92,6 +92,11 @@ const STATE_VARIANT: Record<string, string> = {
   superseded: "bg-zinc-500/15 text-zinc-600 dark:text-zinc-400",
 };
 
+const baseTfSku = (sku: string): string => {
+  const match = sku.match(/\b(TF\d{6})\b/i);
+  return match ? match[1].toUpperCase() : sku;
+};
+
 function ProductEditorPage() {
   const { productId } = Route.useParams();
   const navigate = useNavigate();
@@ -575,7 +580,7 @@ function ProductEditorPage() {
                   );
                 }
               }}
-              productSku={ws.product.sku}
+              productSku={baseTfSku(ws.product.sku)}
             />
 
           )}
