@@ -231,6 +231,70 @@ export const lookupProductBySku = createServerFn({ method: "POST" })
           };
         }
 
+        // 2c) Loose/prefix fallback: user typed a partial base SKU
+        // (e.g. "TF3006") — search template default_code by prefix and
+        // gather all variants across matches so the UI can show a picker.
+        if (sku.length >= 3) {
+          const tmplPrefixHits = await odooExecuteKw<
+            Array<{ id: number; default_code: string | false; name: string }>
+          >(creds, uid, "product.template", "search_read", [
+            [["default_code", "=ilike", `${sku}%`]],
+          ], { fields: ["id", "default_code", "name"], limit: 20 });
+
+          if (tmplPrefixHits && tmplPrefixHits.length > 0) {
+            type FlatVariant = {
+              odooProductId: string;
+              sku: string;
+              name: string;
+              templateId: string;
+              templateSku: string;
+            };
+            const allVariants: FlatVariant[] = [];
+            for (const tmpl of tmplPrefixHits) {
+              const tmplSku = tmpl.default_code
+                ? String(tmpl.default_code)
+                : `tmpl-${tmpl.id}`;
+              const variants = await odooExecuteKw<
+                Array<{ id: number; default_code: string | false; name: string }>
+              >(creds, uid, "product.product", "search_read", [
+                [["product_tmpl_id", "=", tmpl.id]],
+              ], { fields: ["id", "default_code", "name"], limit: 50 });
+              for (const v of variants) {
+                allVariants.push({
+                  odooProductId: String(v.id),
+                  sku: v.default_code ? String(v.default_code) : tmplSku,
+                  name: v.name,
+                  templateId: String(tmpl.id),
+                  templateSku: tmplSku,
+                });
+              }
+            }
+            if (allVariants.length === 0) {
+              return { source: "not_found", sku, name: "" };
+            }
+            return {
+              source: "odoo_variants",
+              sku,
+              name: tmplPrefixHits[0].name,
+              odooTemplateId: String(tmplPrefixHits[0].id),
+              templateSku: tmplPrefixHits[0].default_code
+                ? String(tmplPrefixHits[0].default_code)
+                : sku,
+              erpConnectionId: conn.id,
+              variants: allVariants.map((v) => ({
+                odooProductId: v.odooProductId,
+                sku: v.sku,
+                name: v.name,
+              })),
+              // Per-variant templateSku so the client can link the local
+              // product row to the template-level BOM.
+              variantTemplateSkus: Object.fromEntries(
+                allVariants.map((v) => [v.odooProductId, v.templateSku]),
+              ),
+            } as never;
+          }
+        }
+
         return { source: "not_found", sku, name: "" };
       } catch (e) {
         return {
