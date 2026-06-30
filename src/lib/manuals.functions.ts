@@ -310,6 +310,9 @@ export const createManualFromSku = createServerFn({ method: "POST" })
         odooProductId: z.string().optional(),
         erpConnectionId: uuid.optional(),
         templateId: uuid.optional(),
+        // Template-level SKU (e.g. TF300601) when the variant SKU
+        // (TF300601-CC) differs — used for BOM linkage.
+        templateSku: z.string().trim().max(120).optional(),
       })
       .parse(d),
   )
