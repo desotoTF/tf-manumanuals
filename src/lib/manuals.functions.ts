@@ -1226,13 +1226,14 @@ export const loadBomForManual = createServerFn({ method: "GET" })
         if (!childBom) {
           try {
             const { syncBomBySkuImpl } = await import("./erp.functions");
-            await syncBomBySkuImpl(supabase, {
+            const res = await syncBomBySkuImpl(supabase, {
               organizationId: product.organization_id,
               sku: hardwareLookupSku,
             });
+            if (res.ok && res.productId) childProductId = res.productId;
             const refetched = await supabase
               .from("bom_snapshots")
-                .select("normalized_items, captured_at")
+              .select("normalized_items, captured_at")
               .eq("product_id", childProductId)
               .order("captured_at", { ascending: false })
               .limit(1)
