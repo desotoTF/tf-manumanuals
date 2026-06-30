@@ -15,7 +15,7 @@ import {
   upsertTemplate,
   type TemplateRow,
 } from "@/lib/templates.functions";
-import { emptyManualContent } from "@/lib/types";
+import { emptyManualContent, ALL_STEP_LAYOUTS, STEP_LAYOUT_LABEL } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
