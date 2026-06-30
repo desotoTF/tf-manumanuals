@@ -149,7 +149,7 @@ export const getManualVersion = createServerFn({ method: "GET" })
       .eq("id", data.versionId)
       .maybeSingle();
     if (error) throw error;
-    if (!version) throw new Error("Version not found");
+    if (!version) return { version: null, assets: [] };
 
     const { data: assets } = await supabase
       .from("manual_assets")

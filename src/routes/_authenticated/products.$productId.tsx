@@ -145,13 +145,22 @@ function ProductEditorPage() {
 
   const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
 
-  // Pick the most recent version (draft preferred) when workspace loads.
+  // Pick the most recent version (draft preferred) when workspace loads, and
+  // recover if the selected version was deleted or became inaccessible.
   useEffect(() => {
-    if (activeVersionId || !workspaceQuery.data) return;
+    if (!workspaceQuery.data) return;
     const versions = workspaceQuery.data.versions;
-    if (!versions.length) return;
+    if (!versions.length) {
+      if (activeVersionId) {
+        setActiveVersionId(null);
+        loadedVersionRef.current = null;
+      }
+      return;
+    }
+    if (activeVersionId && versions.some((v) => v.id === activeVersionId)) return;
     const draft = versions.find((v) => v.state === "draft");
     setActiveVersionId(draft?.id ?? versions[0].id);
+    loadedVersionRef.current = null;
   }, [workspaceQuery.data, activeVersionId]);
 
   const versionQuery = useQuery({
@@ -173,6 +182,14 @@ function ProductEditorPage() {
   const loadedVersionRef = useRef<string | null>(null);
   useEffect(() => {
     if (!versionQuery.data) return;
+    if (!versionQuery.data.version) {
+      if (activeVersionId) {
+        setActiveVersionId(null);
+        loadedVersionRef.current = null;
+        qc.invalidateQueries({ queryKey: ["product-workspace", productId] });
+      }
+      return;
+    }
     if (loadedVersionRef.current === versionQuery.data.version.id) return;
     loadedVersionRef.current = versionQuery.data.version.id;
     const c = {
@@ -181,7 +198,7 @@ function ProductEditorPage() {
     } as ManualContent;
     setContent(c);
     setChangeSummary(versionQuery.data.version.change_summary ?? "");
-  }, [versionQuery.data]);
+  }, [versionQuery.data, activeVersionId, productId, qc]);
 
   const activeVersion = versionQuery.data?.version;
   const assets = versionQuery.data?.assets ?? [];
