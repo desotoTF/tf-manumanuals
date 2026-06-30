@@ -27,10 +27,19 @@ import {
 
 import { listTemplates } from "@/lib/templates.functions";
 import { useActiveOrg } from "@/components/AppShell";
-import { emptyManualContent, type ManualContent, newStepBlock, type StepBlock } from "@/lib/types";
-import { useStepFigureMap, stepFirstImageNumber } from "@/lib/figure-refs";
+import {
+  emptyManualContent,
+  type ManualContent,
+  type ManualStep,
+  type StepLayout,
+  DEFAULT_STEP_LAYOUT,
+  newStep,
+  normalizeStep,
+} from "@/lib/types";
+import { useStepFigureMap } from "@/lib/figure-refs";
 import { FigureRefField } from "@/components/manual-editor/FigureRefField";
-import { StepBlocksEditor } from "@/components/manual-editor/StepBlocksEditor";
+import { StepLayoutEditor } from "@/components/manual-editor/StepLayoutEditor";
+
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
