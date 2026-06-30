@@ -871,6 +871,7 @@ function ContentEditor({
   onCreateTool,
   creatingTool,
   onLoadBom,
+  onSearchBom,
   productSku,
 }: {
   content: ManualContent;
@@ -887,8 +888,10 @@ function ContentEditor({
   ) => Promise<{ id: string; name: string; spec: string | null }>;
   creatingTool: boolean;
   onLoadBom: () => Promise<void>;
+  onSearchBom: (sku: string) => Promise<void>;
   productSku: string;
 }) {
+
   const [tab, setTab] = useState<
     "steps" | "tools" | "parts" | "warnings" | "torque" | "images"
   >("steps");
