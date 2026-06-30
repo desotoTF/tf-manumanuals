@@ -31,7 +31,7 @@ function AuthPage() {
   const accept = useServerFn(acceptInvitation);
 
   const [mode, setMode] = useState<"signin" | "accept">(
-    invite_token ?         ? "accept" : "signin",
+    invite_token ? "accept" : "signin",
   );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
