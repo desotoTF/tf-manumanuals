@@ -1534,36 +1534,61 @@ function ManualPreviewDialog({
   branding,
   meta,
   content,
+  assets,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   branding: unknown;
   meta: { sku: string; name: string; variant?: string; versionLabel?: string };
   content: ManualContent;
+  assets?: Record<string, { url: string | null; caption?: string | null }>;
 }) {
-  const handlePrint = () => {
+  const [savingPdf, setSavingPdf] = useState(false);
+  const handleSavePdf = async () => {
     const node = document.getElementById("manual-print-area");
     if (!node) return;
-    const w = window.open("", "_blank", "width=900,height=1200");
-    if (!w) return;
-    w.document.write(`<!doctype html><html><head><title>${meta.sku} — ${meta.name}</title>
-      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Barlow+Condensed:wght@500;600;700;800&family=Bebas+Neue&family=Inter:wght@400;600;700&family=Oswald:wght@400;600;700&family=Roboto:wght@400;500;700&family=Roboto+Condensed:wght@400;600;700&family=Source+Sans+3:wght@400;600;700&display=swap">
-      <style>body{margin:0;background:white}@page{size:letter;margin:0}</style>
-    </head><body>${node.innerHTML}</body></html>`);
-    w.document.close();
-    setTimeout(() => { w.focus(); w.print(); }, 500);
+    try {
+      setSavingPdf(true);
+      const { default: html2canvas } = await import("html2canvas");
+      const { default: jsPDF } = await import("jspdf");
+      const canvas = await html2canvas(node, {
+        scale: 2,
+        backgroundColor: "#ffffff",
+        useCORS: true,
+      });
+      const imgData = canvas.toDataURL("image/jpeg", 0.92);
+      const pdf = new jsPDF({ unit: "pt", format: "letter", orientation: "portrait" });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const imgW = pageW;
+      const imgH = (canvas.height * imgW) / canvas.width;
+      let heightLeft = imgH;
+      let y = 0;
+      pdf.addImage(imgData, "JPEG", 0, y, imgW, imgH);
+      heightLeft -= pageH;
+      while (heightLeft > 0) {
+        y = heightLeft - imgH;
+        pdf.addPage();
+        pdf.addImage(imgData, "JPEG", 0, y, imgW, imgH);
+        heightLeft -= pageH;
+      }
+      pdf.save(`${meta.sku}-${meta.versionLabel ? `v${meta.versionLabel}` : "manual"}.pdf`);
+    } finally {
+      setSavingPdf(false);
+    }
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden p-0 flex flex-col">
         <DialogHeader className="px-6 pt-6 flex-row items-center justify-between space-y-0">
           <DialogTitle>Manual preview</DialogTitle>
-          <Button size="sm" onClick={handlePrint} className="mr-8">
-            <Printer className="mr-2 h-4 w-4" /> Print / Save as PDF
+          <Button size="sm" onClick={handleSavePdf} disabled={savingPdf} className="mr-8">
+            <Download className="mr-2 h-4 w-4" />
+            {savingPdf ? "Saving…" : "Save as PDF"}
           </Button>
         </DialogHeader>
         <div className="overflow-y-auto flex-1 bg-muted/30 py-4" id="manual-print-area">
-          <MasterManualPreview branding={branding} meta={meta} content={content} />
+          <MasterManualPreview branding={branding} meta={meta} content={content} assets={assets} />
         </div>
       </DialogContent>
     </Dialog>
