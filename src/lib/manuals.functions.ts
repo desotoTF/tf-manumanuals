@@ -440,6 +440,30 @@ export const createManualFromSku = createServerFn({ method: "POST" })
       .single();
     if (mErr) throw mErr;
 
+    // Best-effort: pull the main BOM and the `.x` hardware BOM live from
+    // Odoo so a freshly-created manual has parts populated immediately.
+    if (data.erpConnectionId) {
+      try {
+        const { syncBomBySku } = await import("./erp.functions");
+        await syncBomBySku({
+          data: {
+            organizationId: data.organizationId,
+            sku,
+            connectionId: data.erpConnectionId,
+          },
+        });
+        await syncBomBySku({
+          data: {
+            organizationId: data.organizationId,
+            sku: `${sku}.x`,
+            connectionId: data.erpConnectionId,
+          },
+        });
+      } catch {
+        // non-fatal — user can retry via the editor's BOM controls.
+      }
+    }
+
     const { data: latestBom } = await supabase
       .from("bom_snapshots")
       .select("id, normalized_items")
@@ -447,6 +471,7 @@ export const createManualFromSku = createServerFn({ method: "POST" })
       .order("captured_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+
 
     if (latestBom?.normalized_items && seedContent.parts.length === 0) {
       const items = (latestBom.normalized_items as Array<Record<string, unknown>>) ?? [];
