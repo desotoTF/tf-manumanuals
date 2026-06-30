@@ -415,10 +415,10 @@ function ProductEditorPage() {
         <div>
           <button
             type="button"
-            onClick={() => navigate({ to: "/dashboard" })}
+            onClick={() => navigate({ to: "/products" })}
             className="text-xs text-muted-foreground hover:underline"
           >
-            ← Back to dashboard
+            ← Back to Manuals
           </button>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">
             <span className="font-mono text-base text-muted-foreground">

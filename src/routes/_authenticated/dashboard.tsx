@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { dashboardSummary } from "@/lib/dashboard.functions";
@@ -23,6 +23,9 @@ import { formatDistanceToNow } from "date-fns";
 import { CheckCircle2, AlertTriangle, Clock } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
+  beforeLoad: () => {
+    throw redirect({ to: "/products" });
+  },
   component: DashboardPage,
 });
 

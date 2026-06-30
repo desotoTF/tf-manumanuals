@@ -9,7 +9,7 @@ export const Route = createFileRoute("/_authenticated/_superadmin")({
     try {
       await assertSuperAdmin();
     } catch {
-      throw redirect({ to: "/dashboard" });
+      throw redirect({ to: "/products" });
     }
   },
   component: () => <Outlet />,
