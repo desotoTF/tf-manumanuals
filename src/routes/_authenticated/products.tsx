@@ -267,6 +267,37 @@ function ManualsPage() {
         onOpenChange={setCreateOpen}
         orgId={orgId}
       />
+
+      <AlertDialog
+        open={!!toDelete}
+        onOpenChange={(o) => !o && !deleteMut.isPending && setToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this manual?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {toDelete?.label
+                ? `“${toDelete.label}” and every draft, version, image, and published PDF tied to it will be permanently removed. This can't be undone.`
+                : "This can't be undone."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMut.isPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteMut.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                if (toDelete) deleteMut.mutate(toDelete.manualId);
+              }}
+            >
+              {deleteMut.isPending ? "Deleting…" : "Delete manual"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
