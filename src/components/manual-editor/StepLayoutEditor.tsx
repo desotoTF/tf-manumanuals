@@ -190,6 +190,7 @@ function SlotEditor({
   images,
   figMap,
   onChange,
+  onInlineUpload,
 }: {
   slot: StepSlot;
   label: string;
@@ -197,6 +198,7 @@ function SlotEditor({
   images: FigureSource[];
   figMap: Map<string, number>;
   onChange: (s: StepSlot) => void;
+  onInlineUpload?: (file: File) => Promise<string | null>;
 }) {
   const selectedImage = useMemo(
     () => images.find((i) => i.asset_id === slot.asset_id) ?? null,
@@ -240,6 +242,7 @@ function SlotEditor({
                 value={slot.asset_id}
                 disabled={disabled}
                 onChange={(id) => onChange({ ...slot, asset_id: id })}
+                onInlineUpload={onInlineUpload}
               />
               <Input
                 value={slot.caption ?? ""}
@@ -268,6 +271,7 @@ function SlotEditor({
               disabled={disabled}
               onChange={(id) => onChange({ ...slot, asset_id: id })}
               triggerLabel="Add image"
+              onInlineUpload={onInlineUpload}
             />
           )
         )}
