@@ -107,7 +107,22 @@ export function MasterManualPreview({
           </div>
         </div>
 
-        <div style={{ marginTop: "auto", paddingTop: 240, textAlign: "center", color: b.colors.ink }}>
+        {content.hero_image_url && (
+          <div style={{ marginTop: 32, textAlign: "center" }}>
+            <img
+              src={content.hero_image_url}
+              alt={meta.name}
+              crossOrigin="anonymous"
+              style={{
+                maxWidth: "100%",
+                maxHeight: 420 * scale,
+                objectFit: "contain",
+              }}
+            />
+          </div>
+        )}
+
+        <div style={{ marginTop: content.hero_image_url ? 48 : "auto", paddingTop: content.hero_image_url ? 0 : 240, textAlign: "center", color: b.colors.ink }}>
           <div style={{ fontWeight: 700, fontFamily: `var(--mm-heading-font)`, fontSize: 18 }}>{b.footer.companyName}</div>
           <div style={{ marginTop: 4, color: b.colors.muted }}>{b.footer.address}</div>
           <div style={{ color: b.colors.muted }}>Customer Service: {b.footer.phone}</div>
