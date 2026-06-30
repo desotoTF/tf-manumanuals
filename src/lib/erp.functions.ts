@@ -167,7 +167,7 @@ type NormalizedItem = {
   notes: string;
 };
 
-function normalizeBomLines(
+export function normalizeBomLines(
   lines: Array<Record<string, unknown>>,
   variantToTemplateSku?: Map<number, string>,
 ): NormalizedItem[] {
@@ -216,12 +216,13 @@ function normalizeBomLines(
     );
 }
 
-async function sha256Hex(input: string): Promise<string> {
+export async function sha256Hex(input: string): Promise<string> {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
   return Array.from(new Uint8Array(buf))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
+
 
 export const syncBoms = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
