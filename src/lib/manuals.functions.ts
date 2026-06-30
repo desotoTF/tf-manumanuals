@@ -440,6 +440,27 @@ export const createManualFromSku = createServerFn({ method: "POST" })
       .single();
     if (mErr) throw mErr;
 
+    // Best-effort: pull the main BOM and the `.x` hardware BOM live from
+    // Odoo so a freshly-created manual has parts populated immediately.
+    if (data.erpConnectionId) {
+      try {
+        const { syncBomBySkuImpl } = await import("./erp.functions");
+        await syncBomBySkuImpl(supabase, {
+          organizationId: data.organizationId,
+          sku,
+          connectionId: data.erpConnectionId,
+        });
+        await syncBomBySkuImpl(supabase, {
+          organizationId: data.organizationId,
+          sku: `${sku}.x`,
+          connectionId: data.erpConnectionId,
+        });
+      } catch {
+        // non-fatal — user can retry via the editor's BOM controls.
+      }
+    }
+
+
     const { data: latestBom } = await supabase
       .from("bom_snapshots")
       .select("id, normalized_items")
@@ -447,6 +468,7 @@ export const createManualFromSku = createServerFn({ method: "POST" })
       .order("captured_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+
 
     if (latestBom?.normalized_items && seedContent.parts.length === 0) {
       const items = (latestBom.normalized_items as Array<Record<string, unknown>>) ?? [];
@@ -1092,7 +1114,36 @@ export const loadBomForManual = createServerFn({ method: "GET" })
           .maybeSingle();
       }
     }
-    const bom = bomRow.data;
+    let bom = bomRow.data;
+    // Fallback: if no local snapshot exists for this product, attempt a
+    // live Odoo fetch keyed off the base/template SKU before giving up.
+    if (!bom) {
+      try {
+        const { syncBomBySkuImpl } = await import("./erp.functions");
+        const res = await syncBomBySkuImpl(supabase, {
+          organizationId: product.organization_id,
+          sku: bomSku,
+        });
+        // Hardware kit too — fire-and-forget so the next load picks it up.
+        await syncBomBySkuImpl(supabase, {
+          organizationId: product.organization_id,
+          sku: `${bomSku}.x`,
+        });
+        if (res.ok && res.productId) {
+          bomProductId = res.productId;
+          const refetched = await supabase
+            .from("bom_snapshots")
+            .select("normalized_items, captured_at")
+            .eq("product_id", res.productId)
+            .order("captured_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          bom = refetched.data ?? null;
+        }
+      } catch {
+        // ignore — fall through to "no BOM" response.
+      }
+    }
     if (!bom) {
       return {
         parts: [],
@@ -1103,6 +1154,8 @@ export const loadBomForManual = createServerFn({ method: "GET" })
         bomCapturedAt: null as string | null,
       };
     }
+
+
 
 
     const { data: rules } = await supabase
@@ -1146,21 +1199,62 @@ export const loadBomForManual = createServerFn({ method: "GET" })
 
     let hardware_kit: typeof items = [];
     let hardwareBomMissing = false;
-    if (hardwareMarker) {
+    // Even when the parent BOM has no explicit `.x` marker line, the editor
+    // still expects a hardware kit from `${bomSku}.x`. Try that as a final
+    // fallback so freshly-created manuals show hardware automatically.
+    const hardwareLookupSku =
+      hardwareMarker?.part_number ?? expectedHardwareSku;
+    if (hardwareLookupSku) {
+      let childProductId: string | null = null;
       const { data: childProduct } = await supabase
         .from("products")
         .select("id")
         .eq("organization_id", product.organization_id)
-        .ilike("sku", hardwareMarker.part_number)
+        .ilike("sku", hardwareLookupSku)
         .maybeSingle();
-      if (childProduct) {
-        const { data: childBom } = await supabase
+      childProductId = childProduct?.id ?? null;
+
+      // Live Odoo fetch if we don't yet have the hardware BOM locally.
+      if (!childProductId) {
+        try {
+          const { syncBomBySkuImpl } = await import("./erp.functions");
+          const res = await syncBomBySkuImpl(supabase, {
+            organizationId: product.organization_id,
+            sku: hardwareLookupSku,
+          });
+          if (res.ok && res.productId) childProductId = res.productId;
+        } catch {
+          // ignore
+        }
+      }
+
+      if (childProductId) {
+        let { data: childBom } = await supabase
           .from("bom_snapshots")
           .select("normalized_items")
-          .eq("product_id", childProduct.id)
+          .eq("product_id", childProductId)
           .order("captured_at", { ascending: false })
           .limit(1)
           .maybeSingle();
+        if (!childBom) {
+          try {
+            const { syncBomBySkuImpl } = await import("./erp.functions");
+            await syncBomBySkuImpl(supabase, {
+              organizationId: product.organization_id,
+              sku: hardwareLookupSku,
+            });
+            const refetched = await supabase
+              .from("bom_snapshots")
+              .select("normalized_items")
+              .eq("product_id", childProductId)
+              .order("captured_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            childBom = refetched.data ?? null;
+          } catch {
+            // ignore
+          }
+        }
         if (childBom) {
           const childItems =
             (childBom.normalized_items as unknown as typeof items) ?? [];
@@ -1172,13 +1266,14 @@ export const loadBomForManual = createServerFn({ method: "GET" })
             }
             return true;
           });
-        } else {
+        } else if (hardwareMarker) {
           hardwareBomMissing = true;
         }
-      } else {
+      } else if (hardwareMarker) {
         hardwareBomMissing = true;
       }
     }
+
 
     return {
       parts: parts.map((it) => ({
@@ -1194,7 +1289,7 @@ export const loadBomForManual = createServerFn({ method: "GET" })
         notes: it.notes,
       })),
       excluded,
-      hardwareSku: hardwareMarker?.part_number ?? null,
+      hardwareSku: hardwareMarker?.part_number ?? hardwareLookupSku ?? null,
       hardwareBomMissing,
       bomCapturedAt: bom.captured_at,
     };

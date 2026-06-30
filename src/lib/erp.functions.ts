@@ -167,7 +167,7 @@ type NormalizedItem = {
   notes: string;
 };
 
-function normalizeBomLines(
+export function normalizeBomLines(
   lines: Array<Record<string, unknown>>,
   variantToTemplateSku?: Map<number, string>,
 ): NormalizedItem[] {
@@ -216,12 +216,13 @@ function normalizeBomLines(
     );
 }
 
-async function sha256Hex(input: string): Promise<string> {
+export async function sha256Hex(input: string): Promise<string> {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
   return Array.from(new Uint8Array(buf))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
+
 
 export const syncBoms = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -493,3 +494,242 @@ export const syncBoms = createServerFn({ method: "POST" })
       return { ok: false as const, error: msg };
     }
   });
+
+// ---------------- On-demand BOM sync for a single SKU ---------------------
+// Used by the manual editor so freshly-created manuals can pull their BOM
+// (and `.x` hardware kit) live from Odoo without requiring a full
+// `syncBoms` run first. Resolves the SKU against `product.template` first,
+// then `product.product` (variants / inventory-only items), then takes the
+// first `mrp.bom` for that template and snapshots its lines.
+export async function syncBomBySkuImpl(
+  supabase: import("@supabase/supabase-js").SupabaseClient,
+  params: { organizationId: string; sku: string; connectionId?: string },
+): Promise<{
+  ok: boolean;
+  found: boolean;
+  productId?: string;
+  snapshotId?: string;
+  lineCount?: number;
+  sku: string;
+  error?: string;
+}> {
+  const sku = params.sku.trim().toUpperCase();
+  const data = params;
+  const context = { supabase } as { supabase: typeof supabase };
+  {
+
+
+      // Resolve connection.
+      const connQuery = supabase
+        .from("erp_connections")
+        .select("id, base_url, database, username, organization_id")
+        .eq("organization_id", data.organizationId)
+        .eq("provider", "odoo")
+        .eq("is_active", true)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      const { data: conn } = data.connectionId
+        ? await supabase
+            .from("erp_connections")
+            .select("id, base_url, database, username, organization_id")
+            .eq("id", data.connectionId)
+            .maybeSingle()
+        : await connQuery.maybeSingle();
+      if (!conn) return { ok: false, found: false, sku, error: "No active Odoo connection" };
+
+      try {
+        const { data: cred, error: credErr } = await supabase.rpc(
+          "erp_read_credentials",
+          { _connection_id: conn.id },
+        );
+        if (credErr) throw credErr;
+        const apiKey = (cred as { api_key?: string } | null)?.api_key;
+        if (!apiKey) throw new Error("No stored credential for Odoo");
+
+        const { odooAuthenticate, odooExecuteKw } = await import(
+          "./odoo-xmlrpc.server"
+        );
+        const creds = {
+          baseUrl: conn.base_url,
+          database: conn.database ?? "",
+          username: conn.username,
+          apiKey,
+        };
+        const uid = await odooAuthenticate(creds);
+
+        // 1) Find the template id for this SKU.
+        let tmplId: number | null = null;
+        let tmplName = sku;
+        let tmplDescription: string | null = null;
+        const tmplRows = await odooExecuteKw<
+          Array<{ id: number; name: string; default_code: string | false; description_sale: string | false }>
+        >(creds, uid, "product.template", "search_read", [
+          [["default_code", "=", sku]],
+        ], { fields: ["id", "name", "default_code", "description_sale"], limit: 1 });
+        if (tmplRows && tmplRows.length > 0) {
+          tmplId = tmplRows[0].id;
+          tmplName = tmplRows[0].name;
+          tmplDescription = tmplRows[0].description_sale
+            ? String(tmplRows[0].description_sale)
+            : null;
+        } else {
+          // Fall back to product.product (variant / inventory-only). This is
+          // how `.x` hardware kits often live in Odoo.
+          const variantRows = await odooExecuteKw<
+            Array<{ id: number; name: string; product_tmpl_id: [number, string] | false }>
+          >(creds, uid, "product.product", "search_read", [
+            [["default_code", "=", sku]],
+          ], { fields: ["id", "name", "product_tmpl_id"], limit: 1 });
+          const v = variantRows?.[0];
+          if (v && Array.isArray(v.product_tmpl_id)) {
+            tmplId = v.product_tmpl_id[0];
+            tmplName = v.name;
+          }
+        }
+
+        if (tmplId === null) {
+          return { ok: true, found: false, sku };
+        }
+
+        // 2) Find a mrp.bom for that template.
+        const boms = await odooExecuteKw<
+          Array<{ id: number; code: string | false; product_qty: number }>
+        >(creds, uid, "mrp.bom", "search_read", [
+          [["product_tmpl_id", "=", tmplId]],
+        ], { fields: ["id", "code", "product_qty"], limit: 1 });
+        const bom = boms?.[0];
+
+        // Even if there's no BOM, upsert the product row so the rest of the
+        // editor has a stable reference for the SKU.
+        const slugBase = sku
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "") || `tmpl-${tmplId}`;
+        const { data: prod } = await supabase
+          .from("products")
+          .upsert(
+            {
+              organization_id: conn.organization_id,
+              erp_connection_id: conn.id,
+              erp_product_id: String(tmplId),
+              sku,
+              name: tmplName,
+              description: tmplDescription,
+              is_active: true,
+              web_slug: slugBase,
+            },
+            { onConflict: "organization_id,sku" },
+          )
+          .select("id")
+          .single();
+        const productId = prod?.id;
+        if (!productId) return { ok: false, found: false, sku, error: "Could not upsert product" };
+
+        if (!bom) {
+          return { ok: true, found: false, productId, sku };
+        }
+
+        // 3) Fetch lines + resolve variant->template SKU mapping.
+        const lines = await odooExecuteKw<Array<Record<string, unknown>>>(
+          creds,
+          uid,
+          "mrp.bom.line",
+          "search_read",
+          [[["bom_id", "=", bom.id]]],
+          { fields: ["product_id", "product_qty", "product_uom_id"], limit: 500 },
+        );
+
+        const variantIds = Array.from(
+          new Set(
+            lines
+              .map((l) => {
+                const f = l.product_id;
+                return Array.isArray(f) && typeof f[0] === "number"
+                  ? (f[0] as number)
+                  : null;
+              })
+              .filter((v): v is number => v !== null),
+          ),
+        );
+        const variantToTemplateSku = new Map<number, string>();
+        if (variantIds.length > 0) {
+          const variantRows = await odooExecuteKw<
+            Array<{ id: number; product_tmpl_id: [number, string] | false }>
+          >(creds, uid, "product.product", "read", [variantIds], {
+            fields: ["id", "product_tmpl_id"],
+          });
+          const tmplIds = Array.from(
+            new Set(
+              variantRows
+                .map((r) => (Array.isArray(r.product_tmpl_id) ? r.product_tmpl_id[0] : null))
+                .filter((v): v is number => v !== null),
+            ),
+          );
+          const tmplSkuById = new Map<number, string>();
+          if (tmplIds.length > 0) {
+            const tmplRows2 = await odooExecuteKw<
+              Array<{ id: number; default_code: string | false }>
+            >(creds, uid, "product.template", "read", [tmplIds], {
+              fields: ["id", "default_code"],
+            });
+            for (const t of tmplRows2) {
+              if (t.default_code) tmplSkuById.set(t.id, String(t.default_code));
+            }
+          }
+          for (const v of variantRows) {
+            const t = Array.isArray(v.product_tmpl_id) ? v.product_tmpl_id[0] : null;
+            const tplSku = t !== null ? tmplSkuById.get(t) : undefined;
+            if (tplSku) variantToTemplateSku.set(v.id, tplSku);
+          }
+        }
+
+        const normalized = normalizeBomLines(lines, variantToTemplateSku);
+        const hash = await sha256Hex(JSON.stringify(normalized));
+
+        const { data: snapIns, error: sErr } = await supabase
+          .from("bom_snapshots")
+          .insert({
+            product_id: productId,
+            erp_connection_id: conn.id,
+            erp_bom_id: String(bom.id),
+            erp_bom_revision: bom.code ? String(bom.code) : null,
+            raw_payload: { bom, lines } as never,
+            normalized_items: normalized as never,
+            content_hash: hash,
+            captured_at: new Date().toISOString(),
+          })
+          .select("id")
+          .single();
+
+        // Duplicate hash is fine — snapshot already exists for this content.
+        if (sErr && !String(sErr.message).includes("duplicate")) {
+          throw sErr;
+        }
+
+        return {
+          ok: true,
+          found: true,
+          productId,
+          snapshotId: snapIns?.id,
+          lineCount: normalized.length,
+          sku,
+        };
+      } catch (e) {
+        return { ok: false, found: false, sku, error: (e as Error).message };
+      }
+    }
+}
+
+export const syncBomBySku = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        organizationId: z.string().uuid(),
+        sku: z.string().trim().min(1).max(120),
+        connectionId: z.string().uuid().optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => syncBomBySkuImpl(context.supabase, data));
+

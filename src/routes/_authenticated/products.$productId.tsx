@@ -22,6 +22,8 @@ import {
   importLegacyManualFromPdf,
   loadBomForManual,
 } from "@/lib/manuals.functions";
+import { syncBomBySku } from "@/lib/erp.functions";
+
 import { listTools, upsertTool } from "@/lib/tools.functions";
 import {
   PartsListEditor,
@@ -138,6 +140,8 @@ function ProductEditorPage() {
   const fetchTools = useServerFn(listTools);
   const createTool = useServerFn(upsertTool);
   const loadBom = useServerFn(loadBomForManual);
+  const syncBom = useServerFn(syncBomBySku);
+
   const toolsQuery = useQuery({
     queryKey: ["tools", orgId],
     queryFn: () => fetchTools({ data: { organizationId: orgId } }),
@@ -621,6 +625,33 @@ function ProductEditorPage() {
                 }
               }}
               productSku={baseTfSku(ws.product.sku)}
+              onSearchBom={async (searchSku: string) => {
+                const res = await syncBom({
+                  data: {
+                    organizationId: orgId,
+                    sku: searchSku.trim().toUpperCase(),
+                  },
+                });
+                if (!res.ok) {
+                  toast.error(res.error ?? "Could not search Odoo");
+                  return;
+                }
+                if (!res.found) {
+                  toast.info(`No BOM found in Odoo for ${searchSku}.`);
+                  return;
+                }
+                // Pull the new snapshot into the editor.
+                const loaded = await loadBom({ data: { productId } });
+                setContent({
+                  ...content,
+                  parts: loaded.parts,
+                  hardware_kit: loaded.hardware_kit,
+                });
+                toast.success(
+                  `Loaded ${loaded.parts.length} parts from ${searchSku}`,
+                );
+              }}
+
             />
             </>
           )}
@@ -840,6 +871,7 @@ function ContentEditor({
   onCreateTool,
   creatingTool,
   onLoadBom,
+  onSearchBom,
   productSku,
 }: {
   content: ManualContent;
@@ -856,8 +888,10 @@ function ContentEditor({
   ) => Promise<{ id: string; name: string; spec: string | null }>;
   creatingTool: boolean;
   onLoadBom: () => Promise<void>;
+  onSearchBom: (sku: string) => Promise<void>;
   productSku: string;
 }) {
+
   const [tab, setTab] = useState<
     "steps" | "tools" | "parts" | "warnings" | "torque" | "images"
   >("steps");
@@ -940,57 +974,16 @@ function ContentEditor({
           />
         )}
         {tab === "parts" && (
-          <div className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h3 className="text-sm font-semibold">Parts</h3>
-                <p className="text-xs text-muted-foreground">
-                  From the BOM of{" "}
-                  <span className="font-mono">{productSku}</span>. Hardware
-                  Kit comes from{" "}
-                  <span className="font-mono">{productSku}.x</span>.
-                </p>
-              </div>
-              {editable && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    onLoadBom().catch((e: Error) =>
-                      toast.error(e.message),
-                    );
-                  }}
-                >
-                  <Upload className="mr-2 h-4 w-4" /> Load from BOM
-                </Button>
-              )}
-            </div>
-            <PartsListEditor
-              items={content.parts}
-              setItems={(items) => update("parts", items)}
-              editable={editable}
-              emptyHint="No parts yet. Click 'Load from BOM' to autofill, or add manually."
-              rowKeyPrefix="part"
-            />
-
-            <Separator />
-
-            <div>
-              <h3 className="text-sm font-semibold">Hardware Kit</h3>
-              <p className="mb-2 text-xs text-muted-foreground">
-                Sourced from{" "}
-                <span className="font-mono">{productSku}.x</span> BOM lines.
-              </p>
-            </div>
-            <PartsListEditor
-              items={content.hardware_kit}
-              setItems={(items) => update("hardware_kit", items)}
-              editable={editable}
-              emptyHint="No hardware kit lines. Load BOM or add manually."
-              rowKeyPrefix="hw"
-            />
-          </div>
+          <PartsTabPanel
+            content={content}
+            update={update}
+            editable={editable}
+            productSku={productSku}
+            onLoadBom={onLoadBom}
+            onSearchBom={onSearchBom}
+          />
         )}
+
         {tab === "warnings" && (
           <WarningsEditor
             warnings={content.warnings}
@@ -1936,5 +1929,158 @@ function CoverImageCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// ---- Parts tab ----
+// Shows Parts + Hardware Kit editors with a "Load from BOM" button and
+// a Search-by-SKU input that re-runs the Odoo BOM pull for any SKU
+// (handy when the parent SKU has no BOM but `${parent}.x` does, or vice
+// versa). When the manual has no parts AND no hardware, a one-time
+// dismissible alert points the user at these controls.
+function PartsTabPanel({
+  content,
+  update,
+  editable,
+  productSku,
+  onLoadBom,
+  onSearchBom,
+}: {
+  content: ManualContent;
+  update: <K extends keyof ManualContent>(k: K, v: ManualContent[K]) => void;
+  editable: boolean;
+  productSku: string;
+  onLoadBom: () => Promise<void>;
+  onSearchBom: (sku: string) => Promise<void>;
+}) {
+  const dismissKey = `manumanuals.noBomDismissed.${productSku}`;
+  const [dismissed, setDismissed] = useState(false);
+  useEffect(() => {
+    try {
+      setDismissed(localStorage.getItem(dismissKey) === "1");
+    } catch {
+      // ignore
+    }
+  }, [dismissKey]);
+  const [searchSku, setSearchSku] = useState("");
+  const [searching, setSearching] = useState(false);
+
+  const noBom =
+    content.parts.length === 0 && content.hardware_kit.length === 0;
+
+  return (
+    <div className="space-y-6">
+      {noBom && !dismissed && editable && (
+        <div className="flex items-start gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+          <div className="flex-1">
+            <p className="font-medium text-amber-900 dark:text-amber-300">
+              No BOM loaded yet
+            </p>
+            <p className="mt-1 text-muted-foreground">
+              We couldn't find a BOM for{" "}
+              <span className="font-mono">{productSku}</span> or{" "}
+              <span className="font-mono">{productSku}.x</span>. Try
+              "Load from BOM" again, search by a different SKU below, or
+              add parts manually.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              try {
+                localStorage.setItem(dismissKey, "1");
+              } catch {
+                // ignore
+              }
+              setDismissed(true);
+            }}
+          >
+            Dismiss
+          </Button>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold">Parts</h3>
+          <p className="text-xs text-muted-foreground">
+            From the BOM of{" "}
+            <span className="font-mono">{productSku}</span>. Hardware Kit
+            comes from <span className="font-mono">{productSku}.x</span>.
+          </p>
+        </div>
+        {editable && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              onLoadBom().catch((e: Error) => toast.error(e.message));
+            }}
+          >
+            <Upload className="mr-2 h-4 w-4" /> Load from BOM
+          </Button>
+        )}
+      </div>
+
+      {editable && (
+        <div className="flex flex-wrap items-end gap-2 rounded-md border border-dashed p-3">
+          <div className="flex-1 min-w-[180px]">
+            <label className="text-xs font-medium text-muted-foreground">
+              Search BOM by SKU
+            </label>
+            <Input
+              value={searchSku}
+              onChange={(e) => setSearchSku(e.target.value)}
+              placeholder="e.g. TF300601 or TF300601.x"
+              className="mt-1 font-mono"
+            />
+          </div>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={searching || searchSku.trim().length === 0}
+            onClick={async () => {
+              setSearching(true);
+              try {
+                await onSearchBom(searchSku.trim());
+              } catch (e) {
+                toast.error((e as Error).message);
+              } finally {
+                setSearching(false);
+              }
+            }}
+          >
+            {searching ? "Searching…" : "Search Odoo"}
+          </Button>
+        </div>
+      )}
+
+      <PartsListEditor
+        items={content.parts}
+        setItems={(items) => update("parts", items)}
+        editable={editable}
+        emptyHint="No parts yet. Click 'Load from BOM' to autofill, or add manually."
+        rowKeyPrefix="part"
+      />
+
+      <Separator />
+
+      <div>
+        <h3 className="text-sm font-semibold">Hardware Kit</h3>
+        <p className="mb-2 text-xs text-muted-foreground">
+          Sourced from{" "}
+          <span className="font-mono">{productSku}.x</span> BOM lines.
+        </p>
+      </div>
+      <PartsListEditor
+        items={content.hardware_kit}
+        setItems={(items) => update("hardware_kit", items)}
+        editable={editable}
+        emptyHint="No hardware kit lines. Load BOM or add manually."
+        rowKeyPrefix="hw"
+      />
+    </div>
   );
 }
