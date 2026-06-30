@@ -22,6 +22,8 @@ import {
   importLegacyManualFromPdf,
   loadBomForManual,
 } from "@/lib/manuals.functions";
+import { syncBomBySku } from "@/lib/erp.functions";
+
 import { listTools, upsertTool } from "@/lib/tools.functions";
 import {
   PartsListEditor,
