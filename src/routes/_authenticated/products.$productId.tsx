@@ -694,82 +694,6 @@ function ProductEditorPage() {
                   )}
                 </div>
 
-                {/* Latest BOM card (moved from left rail) */}
-                <Card className="mt-4">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Latest BOM</CardTitle>
-                  </CardHeader>
-                  <CardContent className="text-xs">
-                    {ws.latestBom ? (
-                      <>
-                        <div className="mb-2 text-muted-foreground">
-                          Captured{" "}
-                          {formatDistanceToNow(
-                            new Date(ws.latestBom.captured_at),
-                            { addSuffix: true },
-                          )}
-                          {ws.latestBom.erp_bom_revision && (
-                            <> · rev {ws.latestBom.erp_bom_revision}</>
-                          )}
-                        </div>
-                        <ul className="space-y-1">
-                          {((ws.latestBom.normalized_items as any[]) ?? [])
-                            .slice(0, 20)
-                            .map((it, i) => (
-                              <li
-                                key={i}
-                                className="flex justify-between gap-2"
-                              >
-                                <span className="truncate font-mono">
-                                  {it.part_number}
-                                </span>
-                                <span className="text-muted-foreground">
-                                  ×{it.qty}
-                                </span>
-                              </li>
-                            ))}
-                        </ul>
-                      </>
-                    ) : (
-                      <p className="text-muted-foreground">
-                        No BOM synced yet.
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Versions card (moved from left rail) */}
-                <Card className="mt-4">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Versions</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-1 text-xs">
-                    {ws.versions.length === 0 && (
-                      <p className="text-muted-foreground">No versions yet.</p>
-                    )}
-                    {ws.versions.map((v) => (
-                      <button
-                        key={v.id}
-                        onClick={() => setActiveVersionId(v.id)}
-                        className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left hover:bg-muted ${
-                          activeVersionId === v.id ? "bg-muted" : ""
-                        }`}
-                      >
-                        <span className="font-medium">
-                          v{v.version_number}
-                        </span>
-                        <Badge
-                          variant="secondary"
-                          className={STATE_VARIANT[v.state] ?? ""}
-                        >
-                          {v.state}
-                        </Badge>
-                      </button>
-                    ))}
-                  </CardContent>
-                </Card>
-
-
                 {activeVersion.state === "published" && ws.product.web_slug && (
                   <a
                     href={`/manuals/${ws.product.web_slug}`}
@@ -783,6 +707,73 @@ function ProductEditorPage() {
               </CardContent>
             </Card>
           )}
+
+          {/* Latest BOM card (moved from left rail) */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Latest BOM</CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs">
+              {ws.latestBom ? (
+                <>
+                  <div className="mb-2 text-muted-foreground">
+                    Captured{" "}
+                    {formatDistanceToNow(new Date(ws.latestBom.captured_at), {
+                      addSuffix: true,
+                    })}
+                    {ws.latestBom.erp_bom_revision && (
+                      <> · rev {ws.latestBom.erp_bom_revision}</>
+                    )}
+                  </div>
+                  <ul className="space-y-1">
+                    {((ws.latestBom.normalized_items as any[]) ?? [])
+                      .slice(0, 20)
+                      .map((it, i) => (
+                        <li key={i} className="flex justify-between gap-2">
+                          <span className="truncate font-mono">
+                            {it.part_number}
+                          </span>
+                          <span className="text-muted-foreground">
+                            ×{it.qty}
+                          </span>
+                        </li>
+                      ))}
+                  </ul>
+                </>
+              ) : (
+                <p className="text-muted-foreground">No BOM synced yet.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Versions card (moved from left rail) */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Versions</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1 text-xs">
+              {ws.versions.length === 0 && (
+                <p className="text-muted-foreground">No versions yet.</p>
+              )}
+              {ws.versions.map((v) => (
+                <button
+                  key={v.id}
+                  onClick={() => setActiveVersionId(v.id)}
+                  className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left hover:bg-muted ${
+                    activeVersionId === v.id ? "bg-muted" : ""
+                  }`}
+                >
+                  <span className="font-medium">v{v.version_number}</span>
+                  <Badge
+                    variant="secondary"
+                    className={STATE_VARIANT[v.state] ?? ""}
+                  >
+                    {v.state}
+                  </Badge>
+                </button>
+              ))}
+            </CardContent>
+          </Card>
         </aside>
       </div>
     </div>
