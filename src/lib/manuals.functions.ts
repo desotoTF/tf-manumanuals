@@ -1114,7 +1114,36 @@ export const loadBomForManual = createServerFn({ method: "GET" })
           .maybeSingle();
       }
     }
-    const bom = bomRow.data;
+    let bom = bomRow.data;
+    // Fallback: if no local snapshot exists for this product, attempt a
+    // live Odoo fetch keyed off the base/template SKU before giving up.
+    if (!bom) {
+      try {
+        const { syncBomBySkuImpl } = await import("./erp.functions");
+        const res = await syncBomBySkuImpl(supabase, {
+          organizationId: product.organization_id,
+          sku: bomSku,
+        });
+        // Hardware kit too — fire-and-forget so the next load picks it up.
+        await syncBomBySkuImpl(supabase, {
+          organizationId: product.organization_id,
+          sku: `${bomSku}.x`,
+        });
+        if (res.ok && res.productId) {
+          bomProductId = res.productId;
+          const refetched = await supabase
+            .from("bom_snapshots")
+            .select("normalized_items, captured_at")
+            .eq("product_id", res.productId)
+            .order("captured_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          bom = refetched.data ?? null;
+        }
+      } catch {
+        // ignore — fall through to "no BOM" response.
+      }
+    }
     if (!bom) {
       return {
         parts: [],
@@ -1125,6 +1154,8 @@ export const loadBomForManual = createServerFn({ method: "GET" })
         bomCapturedAt: null as string | null,
       };
     }
+
+
 
 
     const { data: rules } = await supabase
