@@ -378,6 +378,7 @@ function CreateManualDialog({
         templateSku: res.templateSku,
         erpConnectionId: res.erpConnectionId,
         variants: res.variants,
+        variantTemplateSkus: res.variantTemplateSkus,
         lookupError: res.lookupError,
       });
       if (res.name) setName(res.name);
