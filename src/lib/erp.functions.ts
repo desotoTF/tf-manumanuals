@@ -602,9 +602,9 @@ export async function syncBomBySkuImpl(
         // 2) Find a mrp.bom for that template OR for the specific variant.
         // `.x` hardware kits are typically attached to a variant via product_id,
         // not to the template — search both.
-        const bomDomain: unknown[] = variantId !== null
+        const bomDomain = (variantId !== null
           ? ["|", ["product_id", "=", variantId], ["product_tmpl_id", "=", tmplId]]
-          : [["product_tmpl_id", "=", tmplId]];
+          : [["product_tmpl_id", "=", tmplId]]) as never;
         const boms = await odooExecuteKw<
           Array<{ id: number; code: string | false; product_qty: number }>
         >(creds, uid, "mrp.bom", "search_read", [
