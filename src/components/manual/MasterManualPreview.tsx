@@ -99,8 +99,10 @@ export function MasterManualPreview({
   scale?: number;
 }) {
   const b = useMemo(() => mergeBranding(brandingInput), [brandingInput]);
-  const headerSvg = resolveHeaderSvgUrl(b);
-  const logoSvg = resolveLogoSvgUrl(b);
+  const headerSvgUrl = resolveHeaderSvgUrl(b);
+  const logoSvgUrl = resolveLogoSvgUrl(b);
+  const headerSvgMarkup = useInlineSvg(headerSvgUrl);
+  const logoSvgMarkup = useInlineSvg(logoSvgUrl);
   const assetMap = assets ?? {};
   const catalogMap = partCatalog ?? {};
   const figMap = useMemo(
