@@ -533,9 +533,11 @@ export const createManualFromSku = createServerFn({ method: "POST" })
             }
           }
         }
-      } catch {
+      } catch (err) {
+        console.error("[createManual] Odoo cover-image fetch failed:", err);
         // ignore — manual creation must not fail because the image lookup did.
       }
+
     }
 
 
