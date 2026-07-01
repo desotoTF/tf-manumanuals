@@ -156,13 +156,13 @@ export function MasterManualPreview({
       {/* ---------- PAGE 1 · COVER ---------- */}
       <div style={pageStyle}>
         <div style={{ padding: PAGE_PAD * scale, height: "100%", display: "flex", flexDirection: "column" }}>
-          {/* SVG header band */}
-          <img
-            src={headerSvg}
-            alt={b.footer.companyName}
-            crossOrigin="anonymous"
-            style={{ width: "100%", height: "auto", display: "block", marginBottom: 20 * scale }}
+          {/* SVG header band — inlined so it renders reliably and is captured by html2canvas */}
+          <div
+            aria-label={b.footer.companyName}
+            style={{ width: "100%", marginBottom: 20 * scale }}
+            dangerouslySetInnerHTML={{ __html: headerSvgMarkup }}
           />
+
 
           {/* Title block */}
           <div style={{ marginBottom: 20 * scale }}>
