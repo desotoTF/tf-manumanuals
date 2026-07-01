@@ -1,9 +1,11 @@
-// BOM exclusions admin page — owners/admins manage the list of part-number
-// patterns that get dropped from the manual editor's BOM autofill.
+// BOM settings admin page — two tabs:
+//   1. Part exclusions  — SKU-pattern list dropped from BOM autofill.
+//   2. Part catalog     — per-org SKU → alias + image overrides used by the
+//      manual editor and the PDF renderer.
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useActiveOrg } from "@/components/AppShell";
 import {
@@ -11,6 +13,7 @@ import {
   listExclusions,
   removeExclusion,
 } from "@/lib/bom-exclusions.functions";
+import { usePartCatalog } from "@/lib/use-part-catalog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,15 +40,43 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Trash2 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ImagePlus, Plus, RotateCcw, Trash2, X } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/settings/bom-exclusions")({
-  component: BomExclusionsPage,
+  component: BomSettingsPage,
 });
+
+function BomSettingsPage() {
+  return (
+    <div className="space-y-6">
+      <header>
+        <h1 className="text-2xl font-semibold tracking-tight">BOM settings</h1>
+        <p className="text-sm text-muted-foreground">
+          Control how BOM lines from Odoo are filtered and displayed in your
+          manuals.
+        </p>
+      </header>
+
+      <Tabs defaultValue="exclusions">
+        <TabsList>
+          <TabsTrigger value="exclusions">Part exclusions</TabsTrigger>
+          <TabsTrigger value="catalog">Part catalog</TabsTrigger>
+        </TabsList>
+        <TabsContent value="exclusions" className="pt-4">
+          <PartExclusionsPanel />
+        </TabsContent>
+        <TabsContent value="catalog" className="pt-4">
+          <PartCatalogPanel />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
 
 type MatchType = "exact" | "prefix" | "suffix" | "contains";
 
-function BomExclusionsPage() {
+function PartExclusionsPanel() {
   const { orgId, isAdmin } = useActiveOrg();
   const qc = useQueryClient();
   const fetchList = useServerFn(listExclusions);
@@ -92,13 +123,13 @@ function BomExclusionsPage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">BOM exclusions</h1>
-        <p className="text-sm text-muted-foreground">
-          Part-number patterns to drop from the manual editor's BOM autofill.
-          Seeded defaults cover packaging and instruction-sheet line items.
+      <div>
+        <h2 className="text-base font-semibold">Part exclusions</h2>
+        <p className="text-xs text-muted-foreground">
+          SKU patterns dropped from the manual editor's BOM autofill. Seeded
+          defaults cover packaging and instruction-sheet line items.
         </p>
-      </header>
+      </div>
 
       {isAdmin && (
         <Card>
@@ -224,5 +255,214 @@ function BomExclusionsPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function PartCatalogPanel() {
+  const { orgId, isAdmin } = useActiveOrg();
+  const { query, controls, deleteEntry } = usePartCatalog(orgId, isAdmin);
+  const [search, setSearch] = useState("");
+
+  const rows = (query.data ?? []).filter((r) => {
+    if (!search.trim()) return true;
+    const q = search.trim().toLowerCase();
+    return (
+      r.sku.toLowerCase().includes(q) ||
+      (r.alias ?? "").toLowerCase().includes(q)
+    );
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold">Part catalog</h2>
+          <p className="text-xs text-muted-foreground">
+            Per-SKU friendly names and thumbnail images that override the raw
+            Odoo description in every manual for this organization. Admins can
+            edit entries here or inline in the Parts tab of any manual.
+          </p>
+        </div>
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Filter by SKU or alias"
+          className="max-w-xs"
+        />
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-16"></TableHead>
+                <TableHead className="w-48">SKU</TableHead>
+                <TableHead>Alias</TableHead>
+                {isAdmin && <TableHead className="w-16"></TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {query.isLoading && (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-sm text-muted-foreground">
+                    Loading…
+                  </TableCell>
+                </TableRow>
+              )}
+              {!query.isLoading && rows.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-sm text-muted-foreground">
+                    {search
+                      ? "No matches."
+                      : "No catalog entries yet. Add aliases and images from the Parts tab of any manual."}
+                  </TableCell>
+                </TableRow>
+              )}
+              {rows.map((r) => (
+                <CatalogRow
+                  key={r.id}
+                  id={r.id}
+                  sku={r.sku}
+                  alias={r.alias}
+                  imageUrl={r.image_url}
+                  isAdmin={isAdmin}
+                  onAliasChange={(alias) =>
+                    controls.onAliasChange(r.sku, alias)
+                  }
+                  onImageUpload={(file) =>
+                    controls.onImageUpload(r.sku, file)
+                  }
+                  onImageClear={() => controls.onImageClear(r.id)}
+                  onDelete={() => {
+                    if (confirm(`Remove catalog entry for "${r.sku}"?`))
+                      deleteEntry(r.id);
+                  }}
+                />
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function CatalogRow({
+  id,
+  sku,
+  alias,
+  imageUrl,
+  isAdmin,
+  onAliasChange,
+  onImageUpload,
+  onImageClear,
+  onDelete,
+}: {
+  id: string;
+  sku: string;
+  alias: string | null;
+  imageUrl: string | null;
+  isAdmin: boolean;
+  onAliasChange: (alias: string | null) => void;
+  onImageUpload: (file: File) => void;
+  onImageClear: () => void;
+  onDelete: () => void;
+}) {
+  const [draft, setDraft] = useState(alias ?? "");
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  const commit = () => {
+    const t = draft.trim();
+    const next = t === "" ? null : t;
+    if (next === alias) return;
+    onAliasChange(next);
+  };
+
+  return (
+    <TableRow key={id}>
+      <TableCell>
+        {imageUrl ? (
+          <div className="group relative h-10 w-10 overflow-hidden rounded border bg-muted">
+            <img src={imageUrl} alt={sku} className="h-full w-full object-cover" />
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={onImageClear}
+                aria-label="Remove image"
+                className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100"
+              >
+                <X className="h-3 w-3 text-white" />
+              </button>
+            )}
+          </div>
+        ) : (
+          <button
+            type="button"
+            disabled={!isAdmin}
+            onClick={() => fileRef.current?.click()}
+            className="flex h-10 w-10 items-center justify-center rounded border border-dashed text-muted-foreground hover:bg-muted disabled:opacity-40"
+            aria-label="Add image"
+          >
+            <ImagePlus className="h-4 w-4" />
+          </button>
+        )}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) onImageUpload(f);
+            if (fileRef.current) fileRef.current.value = "";
+          }}
+        />
+      </TableCell>
+      <TableCell className="font-mono text-sm">{sku}</TableCell>
+      <TableCell>
+        <div className="flex items-center gap-2">
+          <Input
+            value={draft}
+            disabled={!isAdmin}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            }}
+            placeholder="Friendly display name"
+            className="h-8 text-sm"
+          />
+          {isAdmin && alias && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setDraft("");
+                onAliasChange(null);
+              }}
+              className="h-8 w-8 p-0"
+              aria-label="Clear alias"
+              title="Clear alias"
+            >
+              <RotateCcw className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      </TableCell>
+      {isAdmin && (
+        <TableCell>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onDelete}
+            className="text-destructive hover:text-destructive"
+            aria-label="Delete entry"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </TableCell>
+      )}
+    </TableRow>
   );
 }

@@ -20,22 +20,31 @@ export type PreviewAssetMap = Record<
   { url: string | null; caption?: string | null }
 >;
 
+// Per-SKU lookup used by the parts table to render friendly alias + image.
+export type PartCatalogLookup = Record<
+  string,
+  { alias?: string | null; imageUrl?: string | null }
+>;
+
 export function MasterManualPreview({
   branding: brandingInput,
   meta,
   content,
   assets,
+  partCatalog,
   scale = 1,
 }: {
   branding: unknown;
   meta: ManualPreviewMeta;
   content: ManualContent;
   assets?: PreviewAssetMap;
+  partCatalog?: PartCatalogLookup;
   scale?: number;
 }) {
   const b = useMemo(() => mergeBranding(brandingInput), [brandingInput]);
   const logo = resolveLogoUrl(b);
   const assetMap = assets ?? {};
+  const catalogMap = partCatalog ?? {};
   const figMap = useMemo(
     () => buildFigureMapFromSteps(content.steps),
     [content.steps],
@@ -144,14 +153,14 @@ export function MasterManualPreview({
         {content.parts.length > 0 && (
           <>
             <div className="mm-section-h">{b.tables.partsHeaderUppercase ? "PARTS" : "Parts"}</div>
-            <PartsTable parts={content.parts} b={b} />
+            <PartsTable parts={content.parts} b={b} catalog={catalogMap} />
           </>
         )}
 
         {content.hardware_kit.length > 0 && (
           <>
             <div className="mm-section-h">{b.tables.partsHeaderUppercase ? "HARDWARE KIT" : "Hardware Kit"}</div>
-            <PartsTable parts={content.hardware_kit} b={b} />
+            <PartsTable parts={content.hardware_kit} b={b} catalog={catalogMap} />
           </>
         )}
 
@@ -236,24 +245,49 @@ function PageFooter({ b }: { b: BrandingTokens }) {
   );
 }
 
-function PartsTable({ parts, b }: { parts: { part_number: string; qty: number; description?: string }[]; b: BrandingTokens }) {
+function PartsTable({
+  parts,
+  b,
+  catalog,
+}: {
+  parts: { part_number: string; qty: number; description?: string }[];
+  b: BrandingTokens;
+  catalog: PartCatalogLookup;
+}) {
+  const anyImages = parts.some((p) => catalog[p.part_number]?.imageUrl);
   return (
     <table style={{ marginBottom: 16 }}>
       <thead>
         <tr>
+          {anyImages && <th style={{ width: 56 }}></th>}
           <th style={{ width: 60 }}>REF</th>
           <th style={{ width: 60 }}>QTY</th>
           <th>DESCRIPTION</th>
         </tr>
       </thead>
       <tbody>
-        {parts.map((p, i) => (
-          <tr key={i} style={b.tables.zebra && i % 2 ? { background: "#F7F7F7" } : undefined}>
-            <td>{p.part_number}</td>
-            <td>{p.qty}</td>
-            <td>{p.description ?? ""}</td>
-          </tr>
-        ))}
+        {parts.map((p, i) => {
+          const c = catalog[p.part_number];
+          const name = c?.alias ?? p.description ?? "";
+          return (
+            <tr key={i} style={b.tables.zebra && i % 2 ? { background: "#F7F7F7" } : undefined}>
+              {anyImages && (
+                <td style={{ width: 56, padding: 4 }}>
+                  {c?.imageUrl ? (
+                    <img
+                      src={c.imageUrl}
+                      alt={name}
+                      style={{ width: 48, height: 48, objectFit: "contain", display: "block" }}
+                    />
+                  ) : null}
+                </td>
+              )}
+              <td>{p.part_number}</td>
+              <td>{p.qty}</td>
+              <td>{name}</td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );
