@@ -50,6 +50,19 @@ function useInlineSvg(url: string | undefined): string {
   return markup;
 }
 
+// Compute a wrapper width that matches the SVG's viewBox aspect ratio for a
+// given height. Needed because flexbox does not size SVGs proportionally when
+// only height is set — the SVG falls back to its 300×150 intrinsic default.
+function logoAspectWidth(svgMarkup: string, height: number): number {
+  const m = svgMarkup.match(/viewBox\s*=\s*["']\s*[\d.-]+\s+[\d.-]+\s+([\d.]+)\s+([\d.]+)/i);
+  if (!m) return height;
+  const w = parseFloat(m[1]);
+  const h = parseFloat(m[2]);
+  if (!w || !h) return height;
+  return Math.round(height * (w / h));
+}
+
+
 export interface ManualPreviewMeta {
   sku: string;
   name: string;
