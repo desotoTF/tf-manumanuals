@@ -9,7 +9,7 @@
 //            right · BOM images grid spanning both columns · warnings block.
 //   Page 3+ — Installation steps under a compact interior header (logo right)
 //            with a per-page footer showing SKU · title · page number.
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   type BrandingTokens,
   mergeBranding,
@@ -20,6 +20,35 @@ import type { ManualContent } from "@/lib/types";
 import { normalizeStep } from "@/lib/types";
 import { StepLayoutView } from "@/components/manual/StepLayoutView";
 import { buildFigureMapFromSteps } from "@/lib/figure-refs";
+
+// Fetch an SVG once and inline it as markup. Inlining sidesteps
+// `Content-Disposition: attachment` / CORS quirks that leave `<img>` broken,
+// and lets html2canvas rasterize the vector cleanly on every page.
+const svgCache = new Map<string, Promise<string>>();
+function useInlineSvg(url: string | undefined): string {
+  const [markup, setMarkup] = useState("");
+  useEffect(() => {
+    if (!url) {
+      setMarkup("");
+      return;
+    }
+    let cancelled = false;
+    let promise = svgCache.get(url);
+    if (!promise) {
+      promise = fetch(url, { credentials: "omit" })
+        .then((r) => (r.ok ? r.text() : ""))
+        .catch(() => "");
+      svgCache.set(url, promise);
+    }
+    promise.then((text) => {
+      if (!cancelled) setMarkup(text);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+  return markup;
+}
 
 export interface ManualPreviewMeta {
   sku: string;
