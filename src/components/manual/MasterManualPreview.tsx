@@ -417,7 +417,7 @@ function InteriorFrame({
           aria-hidden
           style={{
             height: 56 * scale,
-            width: "auto",
+            width: logoAspectWidth(logoSvgMarkup, 56 * scale),
             display: "flex",
             alignItems: "center",
             flexShrink: 0,
@@ -428,11 +428,12 @@ function InteriorFrame({
             __html: logoSvgMarkup
               ? logoSvgMarkup.replace(
                   /<svg\b([^>]*)>/i,
-                  `<svg$1 style="height:${56 * scale}px;width:auto;display:block">`,
+                  `<svg$1 style="height:100%;width:100%;display:block" preserveAspectRatio="xMidYMid meet">`,
                 )
               : "",
           }}
         />
+
       </div>
 
       {/* 4px black horizontal line */}
