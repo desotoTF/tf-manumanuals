@@ -115,7 +115,13 @@ export function EditBrandingDialog({
               </TabsList>
 
               <TabsContent value="identity" className="space-y-3 pt-3">
-                <Field label="Logo URL (leave blank for built-in)">
+                <Field label="Cover header SVG URL (page 1 banner)">
+                  <Input value={b.header_svg_url} onChange={(e) => setB({ ...b, header_svg_url: e.target.value })} placeholder="/__l5e/assets-v1/…/tf-pdf-header.svg" />
+                </Field>
+                <Field label="Interior logo SVG URL (page 2+ header)">
+                  <Input value={b.logo_svg_url} onChange={(e) => setB({ ...b, logo_svg_url: e.target.value })} placeholder="/__l5e/assets-v1/…/tf-pdf-logo.svg" />
+                </Field>
+                <Field label="Legacy logo URL (leave blank for built-in)">
                   <Input value={b.logo_url} onChange={(e) => setB({ ...b, logo_url: e.target.value })} placeholder="https://…/logo.png" />
                 </Field>
                 <Field label="Tagline">
