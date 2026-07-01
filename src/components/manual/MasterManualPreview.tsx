@@ -358,14 +358,14 @@ export function MasterManualPreview({
 // ---------- Interior page chrome (header + footer) ----------
 function InteriorFrame({
   meta,
-  logoSvg,
+  logoSvgMarkup,
   pageNum,
   totalPages,
   scale,
   children,
 }: {
   meta: ManualPreviewMeta;
-  logoSvg: string;
+  logoSvgMarkup: string;
   pageNum: number;
   totalPages: number;
   scale: number;
@@ -413,11 +413,25 @@ function InteriorFrame({
             SKU: {meta.sku}
           </div>
         </div>
-        <img
-          src={logoSvg}
-          alt=""
-          crossOrigin="anonymous"
-          style={{ height: 56 * scale, width: "auto", display: "block" }}
+        <div
+          aria-hidden
+          style={{
+            height: 56 * scale,
+            width: "auto",
+            display: "flex",
+            alignItems: "center",
+            flexShrink: 0,
+          }}
+          // Inline the SVG so it renders on every page (no per-request CORS/
+          // Content-Disposition surprises) and html2canvas captures it cleanly.
+          dangerouslySetInnerHTML={{
+            __html: logoSvgMarkup
+              ? logoSvgMarkup.replace(
+                  /<svg\b([^>]*)>/i,
+                  `<svg$1 style="height:${56 * scale}px;width:auto;display:block">`,
+                )
+              : "",
+          }}
         />
       </div>
 
