@@ -1,9 +1,15 @@
 // Shared branding token shape used by the master template renderer.
 // Mirrors the `branding` JSONB column on manual_templates.
 import thumperfabLogo from "@/assets/thumperfab-logo.png";
+import tfPdfHeader from "@/assets/tf-pdf-header.svg.asset.json";
+import tfPdfLogo from "@/assets/tf-pdf-logo.svg.asset.json";
 
 export interface BrandingTokens {
   logo_url: string;
+  // Cover header SVG shown on page 1 (full-width band).
+  header_svg_url: string;
+  // Compact logo SVG shown right-aligned on interior page headers.
+  logo_svg_url: string;
   colors: {
     brand: string;
     ink: string;
@@ -38,17 +44,19 @@ export interface BrandingTokens {
 
 export const DEFAULT_BRANDING: BrandingTokens = {
   logo_url: "",
+  header_svg_url: tfPdfHeader.url,
+  logo_svg_url: tfPdfLogo.url,
   colors: {
-    brand: "#E11D2A",
-    ink: "#111111",
+    brand: "#ED1C24",
+    ink: "#000000",
     muted: "#4B4B4B",
-    tableHeaderBg: "#E11D2A",
+    tableHeaderBg: "#ED1C24",
     tableHeaderFg: "#FFFFFF",
   },
   fonts: {
-    heading: "Barlow Condensed",
-    body: "Barlow",
-    headingWeight: 700,
+    heading: "Teko",
+    body: "Arial",
+    headingWeight: 600,
     bodyWeight: 400,
   },
   cover: {
@@ -66,11 +74,12 @@ export const DEFAULT_BRANDING: BrandingTokens = {
   tables: {
     partsHeaderUppercase: true,
     zebra: false,
-    borderColor: "#111111",
+    borderColor: "#000000",
   },
 };
 
 export const FONT_CHOICES = [
+  "Teko",
   "Barlow Condensed",
   "Barlow",
   "Oswald",
@@ -79,6 +88,7 @@ export const FONT_CHOICES = [
   "Inter",
   "Roboto",
   "Source Sans 3",
+  "Arial",
 ];
 
 export function mergeBranding(b: unknown): BrandingTokens {
@@ -97,4 +107,12 @@ export function mergeBranding(b: unknown): BrandingTokens {
 
 export function resolveLogoUrl(b: BrandingTokens): string {
   return b.logo_url?.trim() ? b.logo_url : thumperfabLogo;
+}
+
+export function resolveHeaderSvgUrl(b: BrandingTokens): string {
+  return b.header_svg_url?.trim() ? b.header_svg_url : tfPdfHeader.url;
+}
+
+export function resolveLogoSvgUrl(b: BrandingTokens): string {
+  return b.logo_svg_url?.trim() ? b.logo_svg_url : tfPdfLogo.url;
 }
