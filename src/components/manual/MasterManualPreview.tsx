@@ -262,7 +262,7 @@ export function MasterManualPreview({
 
       {/* ---------- PAGE 2 · PARTS / TOOLS / BOM IMAGES ---------- */}
       <div style={pageStyle}>
-        <InteriorFrame meta={meta} logoSvg={logoSvg} pageNum={2} totalPages={totalPages} scale={scale}>
+        <InteriorFrame meta={meta} logoSvgMarkup={logoSvgMarkup} pageNum={2} totalPages={totalPages} scale={scale}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             {/* Left column: Parts + Hardware Kit as one continuous table */}
             <div>
