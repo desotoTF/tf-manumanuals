@@ -314,7 +314,7 @@ export function MasterManualPreview({
         const pageNum = 3 + idx;
         return (
           <div key={s.id ?? idx} style={pageStyle}>
-            <InteriorFrame meta={meta} logoSvg={logoSvg} pageNum={pageNum} totalPages={totalPages} scale={scale}>
+            <InteriorFrame meta={meta} logoSvgMarkup={logoSvgMarkup} pageNum={pageNum} totalPages={totalPages} scale={scale}>
               {idx === 0 && (
                 <div
                   style={{
