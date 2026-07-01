@@ -675,6 +675,53 @@ export type Database = {
         }
         Relationships: []
       }
+      part_catalog: {
+        Row: {
+          alias: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          image_path: string | null
+          image_url: string | null
+          organization_id: string
+          sku: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          alias?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          image_path?: string | null
+          image_url?: string | null
+          organization_id: string
+          sku: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          alias?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          image_path?: string | null
+          image_url?: string | null
+          organization_id?: string
+          sku?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "part_catalog_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       platform_audit: {
         Row: {
           action: string

@@ -34,7 +34,7 @@ const settingsItems = [
   { title: "Account", url: "/account", icon: UserCircle2 },
   { title: "Team", url: "/settings/team", icon: Users },
   { title: "Templates", url: "/settings/templates", icon: LayoutTemplate },
-  { title: "BOM exclusions", url: "/settings/bom-exclusions", icon: Filter },
+  { title: "BOM settings", url: "/settings/bom-exclusions", icon: Filter },
   { title: "ERP", url: "/settings/erp", icon: Plug },
 ];
 

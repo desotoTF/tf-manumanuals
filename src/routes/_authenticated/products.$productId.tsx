@@ -44,6 +44,7 @@ import {
 import { useStepFigureMap } from "@/lib/figure-refs";
 import { FigureRefField } from "@/components/manual-editor/FigureRefField";
 import { StepLayoutEditor } from "@/components/manual-editor/StepLayoutEditor";
+import { usePartCatalog } from "@/lib/use-part-catalog";
 
 
 import { Button } from "@/components/ui/button";
@@ -105,7 +106,8 @@ function ProductEditorPage() {
   const { productId } = Route.useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { orgId } = useActiveOrg();
+  const { orgId, isAdmin } = useActiveOrg();
+  const { map: partCatalogMap } = usePartCatalog(orgId, isAdmin);
   const fetchWorkspace = useServerFn(getProductWorkspace);
   const fetchVersion = useServerFn(getManualVersion);
   const createDraft = useServerFn(createManualDraft);
@@ -466,6 +468,11 @@ function ProductEditorPage() {
         for (const a of assets as Array<{ id: string; url: string | null; metadata: any }>) {
           assetMap[a.id] = { url: a.url, caption: a.metadata?.caption ?? null };
         }
+        const partCatalogLookup: Record<string, { alias?: string | null; imageUrl?: string | null }> = {};
+        for (const p of [...content.parts, ...content.hardware_kit]) {
+          const c = partCatalogMap.get(p.part_number);
+          if (c) partCatalogLookup[p.part_number] = { alias: c.alias, imageUrl: c.image_url };
+        }
         const previewMeta = {
           sku: ws.product.sku,
           name: ws.product.name,
@@ -481,6 +488,7 @@ function ProductEditorPage() {
               meta={previewMeta}
               content={content}
               assets={assetMap}
+              partCatalog={partCatalogLookup}
             />
             {/* Hidden always-mounted preview so publish can render PDF
                 without the user opening the dialog first. */}
@@ -501,6 +509,7 @@ function ProductEditorPage() {
                     meta={previewMeta}
                     content={content}
                     assets={assetMap}
+                    partCatalog={partCatalogLookup}
                   />
                 </div>
               </div>
@@ -1731,6 +1740,7 @@ function ManualPreviewDialog({
   meta,
   content,
   assets,
+  partCatalog,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -1738,6 +1748,7 @@ function ManualPreviewDialog({
   meta: { sku: string; name: string; variant?: string; versionLabel?: string };
   content: ManualContent;
   assets?: Record<string, { url: string | null; caption?: string | null }>;
+  partCatalog?: Record<string, { alias?: string | null; imageUrl?: string | null }>;
 }) {
   const [savingPdf, setSavingPdf] = useState(false);
   const handleSavePdf = async () => {
@@ -1784,7 +1795,7 @@ function ManualPreviewDialog({
           </Button>
         </DialogHeader>
         <div className="overflow-y-auto flex-1 bg-muted/30 py-4" id="manual-print-area">
-          <MasterManualPreview branding={branding} meta={meta} content={content} assets={assets} />
+          <MasterManualPreview branding={branding} meta={meta} content={content} assets={assets} partCatalog={partCatalog} />
         </div>
       </DialogContent>
     </Dialog>
@@ -1955,6 +1966,8 @@ function PartsTabPanel({
   onLoadBom: () => Promise<void>;
   onSearchBom: (sku: string) => Promise<void>;
 }) {
+  const { orgId, isAdmin } = useActiveOrg();
+  const { controls: catalogControls } = usePartCatalog(orgId, isAdmin);
   const dismissKey = `manumanuals.noBomDismissed.${productSku}`;
   const [dismissed, setDismissed] = useState(false);
   useEffect(() => {
@@ -2065,6 +2078,7 @@ function PartsTabPanel({
         editable={editable}
         emptyHint="No parts yet. Click 'Load from BOM' to autofill, or add manually."
         rowKeyPrefix="part"
+        catalog={catalogControls}
       />
 
       <Separator />
@@ -2082,6 +2096,7 @@ function PartsTabPanel({
         editable={editable}
         emptyHint="No hardware kit lines. Load BOM or add manually."
         rowKeyPrefix="hw"
+        catalog={catalogControls}
       />
     </div>
   );
