@@ -9,7 +9,7 @@
 //            right · BOM images grid spanning both columns · warnings block.
 //   Page 3+ — Installation steps under a compact interior header (logo right)
 //            with a per-page footer showing SKU · title · page number.
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   type BrandingTokens,
   mergeBranding,
@@ -20,6 +20,35 @@ import type { ManualContent } from "@/lib/types";
 import { normalizeStep } from "@/lib/types";
 import { StepLayoutView } from "@/components/manual/StepLayoutView";
 import { buildFigureMapFromSteps } from "@/lib/figure-refs";
+
+// Fetch an SVG once and inline it as markup. Inlining sidesteps
+// `Content-Disposition: attachment` / CORS quirks that leave `<img>` broken,
+// and lets html2canvas rasterize the vector cleanly on every page.
+const svgCache = new Map<string, Promise<string>>();
+function useInlineSvg(url: string | undefined): string {
+  const [markup, setMarkup] = useState("");
+  useEffect(() => {
+    if (!url) {
+      setMarkup("");
+      return;
+    }
+    let cancelled = false;
+    let promise = svgCache.get(url);
+    if (!promise) {
+      promise = fetch(url, { credentials: "omit" })
+        .then((r) => (r.ok ? r.text() : ""))
+        .catch(() => "");
+      svgCache.set(url, promise);
+    }
+    promise.then((text) => {
+      if (!cancelled) setMarkup(text);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+  return markup;
+}
 
 export interface ManualPreviewMeta {
   sku: string;
@@ -70,8 +99,10 @@ export function MasterManualPreview({
   scale?: number;
 }) {
   const b = useMemo(() => mergeBranding(brandingInput), [brandingInput]);
-  const headerSvg = resolveHeaderSvgUrl(b);
-  const logoSvg = resolveLogoSvgUrl(b);
+  const headerSvgUrl = resolveHeaderSvgUrl(b);
+  const logoSvgUrl = resolveLogoSvgUrl(b);
+  const headerSvgMarkup = useInlineSvg(headerSvgUrl);
+  const logoSvgMarkup = useInlineSvg(logoSvgUrl);
   const assetMap = assets ?? {};
   const catalogMap = partCatalog ?? {};
   const figMap = useMemo(
@@ -125,13 +156,13 @@ export function MasterManualPreview({
       {/* ---------- PAGE 1 · COVER ---------- */}
       <div style={pageStyle}>
         <div style={{ padding: PAGE_PAD * scale, height: "100%", display: "flex", flexDirection: "column" }}>
-          {/* SVG header band */}
-          <img
-            src={headerSvg}
-            alt={b.footer.companyName}
-            crossOrigin="anonymous"
-            style={{ width: "100%", height: "auto", display: "block", marginBottom: 20 * scale }}
+          {/* SVG header band — inlined so it renders reliably and is captured by html2canvas */}
+          <div
+            aria-label={b.footer.companyName}
+            style={{ width: "100%", marginBottom: 20 * scale }}
+            dangerouslySetInnerHTML={{ __html: headerSvgMarkup }}
           />
+
 
           {/* Title block */}
           <div style={{ marginBottom: 20 * scale }}>
@@ -231,7 +262,7 @@ export function MasterManualPreview({
 
       {/* ---------- PAGE 2 · PARTS / TOOLS / BOM IMAGES ---------- */}
       <div style={pageStyle}>
-        <InteriorFrame meta={meta} logoSvg={logoSvg} pageNum={2} totalPages={totalPages} scale={scale}>
+        <InteriorFrame meta={meta} logoSvgMarkup={logoSvgMarkup} pageNum={2} totalPages={totalPages} scale={scale}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             {/* Left column: Parts + Hardware Kit as one continuous table */}
             <div>
@@ -283,7 +314,7 @@ export function MasterManualPreview({
         const pageNum = 3 + idx;
         return (
           <div key={s.id ?? idx} style={pageStyle}>
-            <InteriorFrame meta={meta} logoSvg={logoSvg} pageNum={pageNum} totalPages={totalPages} scale={scale}>
+            <InteriorFrame meta={meta} logoSvgMarkup={logoSvgMarkup} pageNum={pageNum} totalPages={totalPages} scale={scale}>
               {idx === 0 && (
                 <div
                   style={{
@@ -327,14 +358,14 @@ export function MasterManualPreview({
 // ---------- Interior page chrome (header + footer) ----------
 function InteriorFrame({
   meta,
-  logoSvg,
+  logoSvgMarkup,
   pageNum,
   totalPages,
   scale,
   children,
 }: {
   meta: ManualPreviewMeta;
-  logoSvg: string;
+  logoSvgMarkup: string;
   pageNum: number;
   totalPages: number;
   scale: number;
@@ -382,11 +413,25 @@ function InteriorFrame({
             SKU: {meta.sku}
           </div>
         </div>
-        <img
-          src={logoSvg}
-          alt=""
-          crossOrigin="anonymous"
-          style={{ height: 56 * scale, width: "auto", display: "block" }}
+        <div
+          aria-hidden
+          style={{
+            height: 56 * scale,
+            width: "auto",
+            display: "flex",
+            alignItems: "center",
+            flexShrink: 0,
+          }}
+          // Inline the SVG so it renders on every page (no per-request CORS/
+          // Content-Disposition surprises) and html2canvas captures it cleanly.
+          dangerouslySetInnerHTML={{
+            __html: logoSvgMarkup
+              ? logoSvgMarkup.replace(
+                  /<svg\b([^>]*)>/i,
+                  `<svg$1 style="height:${56 * scale}px;width:auto;display:block">`,
+                )
+              : "",
+          }}
         />
       </div>
 
