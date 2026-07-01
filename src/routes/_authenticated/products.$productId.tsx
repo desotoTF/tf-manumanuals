@@ -1754,14 +1754,16 @@ function ManualPreviewDialog({
   const handleSavePdf = async () => {
     const node = document.getElementById("manual-print-area");
     if (!node) return;
+    setSavingPdf(true);
     try {
-      setSavingPdf(true);
       const { default: html2canvas } = await import("html2canvas");
       const { default: jsPDF } = await import("jspdf");
       const canvas = await html2canvas(node, {
         scale: 2,
         backgroundColor: "#ffffff",
         useCORS: true,
+        allowTaint: false,
+        logging: false,
       });
       const imgData = canvas.toDataURL("image/jpeg", 0.92);
       const pdf = new jsPDF({ unit: "pt", format: "letter", orientation: "portrait" });
@@ -1779,11 +1781,30 @@ function ManualPreviewDialog({
         pdf.addImage(imgData, "JPEG", 0, y, imgW, imgH);
         heightLeft -= pageH;
       }
-      pdf.save(`${meta.sku}-${meta.versionLabel ? `v${meta.versionLabel}` : "manual"}.pdf`);
+      const filename = `${meta.sku}-${meta.versionLabel ? `v${meta.versionLabel}` : "manual"}.pdf`;
+      // Use a blob + anchor click so the browser reliably prompts a download
+      // (jsPDF.save() can be swallowed by some popup/download blockers).
+      const blob = pdf.output("blob");
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      console.error("[Save as PDF] failed:", err);
+      toast.error(
+        err instanceof Error && /tainted|cross-origin|CORS/i.test(err.message)
+          ? "Couldn't save PDF: an image blocked cross-origin capture. Re-upload the image or contact support."
+          : "Couldn't save PDF. Check the console for details.",
+      );
     } finally {
       setSavingPdf(false);
     }
   };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden p-0 flex flex-col">
