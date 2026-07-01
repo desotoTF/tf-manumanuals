@@ -260,6 +260,12 @@ export function MasterManualPreview({
             </div>
           )}
 
+          {/* Torque Specs (static reference) */}
+          <div style={{ marginTop: 20 }}>
+            <SectionHeader>TORQUE SPECS</SectionHeader>
+            <TorqueSpecsTables />
+          </div>
+
           {/* Warnings block */}
           {content.warnings.length > 0 && (
             <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 8, alignItems: "center" }}>
