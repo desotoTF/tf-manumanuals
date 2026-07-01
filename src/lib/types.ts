@@ -43,7 +43,7 @@ export interface ManualContent {
   parts: ManualPart[];
   hardware_kit: ManualPart[];
   steps: ManualStep[];
-  warnings: { severity: "info" | "caution" | "danger"; body: string }[];
+  warnings: { severity: "info" | "caution" | "danger"; title?: string; body: string }[];
   torque_specs: {
     fastener: string;
     value: number;

@@ -1,8 +1,21 @@
-// Branded preview of a manual using a template's branding tokens.
-// Renders cover + parts/tools/steps/warnings using the template fonts/colors,
-// so it matches what the printed PDF will look like.
+// Branded preview of a manual using the ThumperFab master template.
+// The DOM is html2canvas + jsPDF-snapshotted at publish time, so every layout
+// value is fixed pixels (816×1056 @ 96dpi = 8.5×11in).
+//
+// Layout summary:
+//   Page 1 — Cover: [SVG header] · Make/Model · Product · SKU · hero image ·
+//            centered company footer · right-aligned "Ver. X".
+//   Page 2 — Two columns: PARTS (+ Hardware Kit) on the left · TOOLS on the
+//            right · BOM images grid spanning both columns · warnings block.
+//   Page 3+ — Installation steps under a compact interior header (logo right)
+//            with a per-page footer showing SKU · title · page number.
 import { useMemo } from "react";
-import { type BrandingTokens, mergeBranding, resolveLogoUrl } from "@/lib/branding";
+import {
+  type BrandingTokens,
+  mergeBranding,
+  resolveHeaderSvgUrl,
+  resolveLogoSvgUrl,
+} from "@/lib/branding";
 import type { ManualContent } from "@/lib/types";
 import { normalizeStep } from "@/lib/types";
 import { StepLayoutView } from "@/components/manual/StepLayoutView";
@@ -20,11 +33,26 @@ export type PreviewAssetMap = Record<
   { url: string | null; caption?: string | null }
 >;
 
-// Per-SKU lookup used by the parts table to render friendly alias + image.
+// Per-SKU lookup used by the parts table + BOM images grid.
 export type PartCatalogLookup = Record<
   string,
   { alias?: string | null; imageUrl?: string | null }
 >;
+
+const PAGE_W = 816;
+const PAGE_H = 1056;
+const PAGE_PAD = 48;
+const CONTENT_W = PAGE_W - PAGE_PAD * 2;
+const RED = "#ED1C24";
+const INK = "#000000";
+const FONT_HEADING = `"Teko", "Barlow Condensed", system-ui, sans-serif`;
+const FONT_BODY = `Arial, Helvetica, sans-serif`;
+
+const WARNING_DEFAULT_TITLES: Record<"info" | "caution" | "danger", string> = {
+  info: "INFO",
+  caution: "CAUTION",
+  danger: "DANGER",
+};
 
 export function MasterManualPreview({
   branding: brandingInput,
@@ -42,7 +70,8 @@ export function MasterManualPreview({
   scale?: number;
 }) {
   const b = useMemo(() => mergeBranding(brandingInput), [brandingInput]);
-  const logo = resolveLogoUrl(b);
+  const headerSvg = resolveHeaderSvgUrl(b);
+  const logoSvg = resolveLogoSvgUrl(b);
   const assetMap = assets ?? {};
   const catalogMap = partCatalog ?? {};
   const figMap = useMemo(
@@ -50,245 +79,533 @@ export function MasterManualPreview({
     [content.steps],
   );
 
-  // CSS vars on the wrapper let every child read tokens without prop drilling.
-  const wrapStyle = {
-    "--mm-brand": b.colors.brand,
-    "--mm-ink": b.colors.ink,
-    "--mm-muted": b.colors.muted,
-    "--mm-th-bg": b.colors.tableHeaderBg,
-    "--mm-th-fg": b.colors.tableHeaderFg,
-    "--mm-border": b.tables.borderColor,
-    "--mm-heading-font": `"${b.fonts.heading}", system-ui, sans-serif`,
-    "--mm-body-font": `"${b.fonts.body}", system-ui, sans-serif`,
-    fontFamily: `var(--mm-body-font)`,
-    color: b.colors.ink,
-    fontWeight: b.fonts.bodyWeight,
-  } as React.CSSProperties;
+  // Build the ordered list of interior "content pages" so we can render the
+  // interior header/footer + page number consistently. Page 1 = cover, page 2
+  // = parts/tools/BOM/warnings, page 3+ = one page per step (kept 1:1 with the
+  // existing step layout; html2canvas will re-slice as needed if a step
+  // overflows).
+  const stepsPages = content.steps.length > 0 ? content.steps : [];
+  const totalPages = 2 + stepsPages.length;
 
-  const pageBase: React.CSSProperties = {
-    width: 816 * scale, // 8.5in @ 96dpi
-    minHeight: 1056 * scale, // 11in
+  const pageStyle: React.CSSProperties = {
+    width: PAGE_W * scale,
+    height: PAGE_H * scale,
     margin: "0 auto 24px",
-    padding: 48 * scale,
-    background: "white",
+    background: "#fff",
     boxShadow: "0 4px 24px rgba(0,0,0,0.08)",
     boxSizing: "border-box",
+    position: "relative",
+    color: INK,
+    fontFamily: FONT_BODY,
+    fontSize: 11,
+    lineHeight: 1.35,
+    overflow: "hidden",
   };
 
   return (
-    <div style={wrapStyle} className="mm-preview">
+    <div className="mm-preview" style={{ color: INK }}>
       <style>{`
-        .mm-preview h1, .mm-preview h2, .mm-preview h3, .mm-preview .mm-heading {
-          font-family: var(--mm-heading-font);
-          color: var(--mm-ink);
-          letter-spacing: -0.01em;
-          line-height: 1.05;
-          margin: 0;
+        .mm-preview table { border-collapse: collapse; }
+        .mm-preview .tf-tbl { width: 100%; font-family: ${FONT_BODY}; font-size: 11px; }
+        .mm-preview .tf-tbl th, .mm-preview .tf-tbl td {
+          border: 1px solid ${INK}; padding: 4px 8px; vertical-align: middle;
         }
-        .mm-preview .mm-brand { color: var(--mm-brand); }
-        .mm-preview table { border-collapse: collapse; width: 100%; font-size: 13px; }
-        .mm-preview th { background: var(--mm-th-bg); color: var(--mm-th-fg);
-          text-align: left; padding: 6px 10px; font-family: var(--mm-heading-font); }
-        .mm-preview td { padding: 6px 10px; border-top: 1px solid var(--mm-border); }
-        .mm-preview .mm-section-h { color: var(--mm-brand); font-size: 22px;
-          font-family: var(--mm-heading-font); font-weight: 700;
-          border-bottom: 3px solid var(--mm-brand); padding-bottom: 4px; margin: 20px 0 12px; }
+        .mm-preview .tf-tbl thead th {
+          background: ${RED}; color: #fff; font-family: ${FONT_HEADING};
+          font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em;
+          font-size: 13px; text-align: left;
+        }
+        .mm-preview .tf-tbl .subhead td {
+          background: ${INK}; color: #fff; font-family: ${FONT_HEADING};
+          font-weight: 600; text-transform: uppercase; text-align: center;
+          font-size: 13px;
+        }
       `}</style>
 
-      {/* Cover */}
-      <div style={pageBase}>
-        <header style={{ display: "flex", alignItems: "center", gap: 16, borderBottom: `1px solid ${b.colors.ink}`, paddingBottom: 12 }}>
-          {logo && (
-            <img src={logo} alt={b.footer.companyName} style={{ height: 64, objectFit: "contain" }} />
-          )}
-          <div style={{ flex: 1 }}>
-            <div style={{ fontFamily: `var(--mm-heading-font)`, fontSize: 12, color: b.colors.muted, letterSpacing: "0.04em" }}>
-              {b.cover.tagline}
-            </div>
-          </div>
-        </header>
+      {/* ---------- PAGE 1 · COVER ---------- */}
+      <div style={pageStyle}>
+        <div style={{ padding: PAGE_PAD * scale, height: "100%", display: "flex", flexDirection: "column" }}>
+          {/* SVG header band */}
+          <img
+            src={headerSvg}
+            alt={b.footer.companyName}
+            crossOrigin="anonymous"
+            style={{ width: "100%", height: "auto", display: "block", marginBottom: 20 * scale }}
+          />
 
-        <div style={{ marginTop: 56 }}>
-          <h1 className="mm-brand" style={{ fontSize: 48, fontWeight: 800 }}>{meta.name}</h1>
-          {meta.variant && <h2 style={{ fontSize: 32, fontWeight: 700, marginTop: 6 }}>{meta.variant}</h2>}
-          <div style={{ marginTop: 12, fontWeight: 700, fontFamily: `var(--mm-heading-font)`, fontSize: 16 }}>
-            SKU: {meta.sku}
-          </div>
-        </div>
-
-        {content.hero_image_url && (
-          <div style={{ marginTop: 32, textAlign: "center" }}>
-            <img
-              src={content.hero_image_url}
-              alt={meta.name}
-              crossOrigin="anonymous"
+          {/* Title block */}
+          <div style={{ marginBottom: 20 * scale }}>
+            <div
               style={{
-                maxWidth: "100%",
-                maxHeight: 420 * scale,
-                objectFit: "contain",
+                fontFamily: FONT_HEADING,
+                fontWeight: 600,
+                fontSize: 32,
+                lineHeight: 1.0,
+                color: RED,
               }}
-            />
-          </div>
-        )}
-
-        <div style={{ marginTop: content.hero_image_url ? 48 : "auto", paddingTop: content.hero_image_url ? 0 : 240, textAlign: "center", color: b.colors.ink }}>
-          <div style={{ fontWeight: 700, fontFamily: `var(--mm-heading-font)`, fontSize: 18 }}>{b.footer.companyName}</div>
-          <div style={{ marginTop: 4, color: b.colors.muted }}>{b.footer.address}</div>
-          <div style={{ color: b.colors.muted }}>Customer Service: {b.footer.phone}</div>
-          <div style={{ marginTop: 18 }}>
-            <span className="mm-brand" style={{ fontWeight: 700 }}>{b.footer.website}</span>
-          </div>
-          {meta.versionLabel && (
-            <div style={{ marginTop: 24, textAlign: "right", fontWeight: 700 }}>
-              {b.cover.versionLabelPrefix} {meta.versionLabel}
+            >
+              {meta.name}
             </div>
-          )}
+            {meta.variant && (
+              <div
+                style={{
+                  fontFamily: FONT_HEADING,
+                  fontWeight: 500,
+                  fontSize: 30,
+                  lineHeight: 1.05,
+                  color: INK,
+                  marginTop: 2,
+                }}
+              >
+                {meta.variant}
+              </div>
+            )}
+            <div
+              style={{
+                fontFamily: FONT_BODY,
+                fontSize: 11,
+                color: INK,
+                marginTop: 6,
+                fontWeight: 700,
+              }}
+            >
+              SKU: {meta.sku}
+            </div>
+          </div>
+
+          {/* Hero image */}
+          <div
+            style={{
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              minHeight: 0,
+            }}
+          >
+            {content.hero_image_url ? (
+              <img
+                src={content.hero_image_url}
+                alt={meta.name}
+                crossOrigin="anonymous"
+                style={{
+                  maxWidth: "100%",
+                  maxHeight: "100%",
+                  objectFit: "contain",
+                }}
+              />
+            ) : null}
+          </div>
+
+          {/* Footer */}
+          <div style={{ marginTop: 12 * scale, textAlign: "center" }}>
+            <div style={{ fontFamily: "Arial Black, Arial, sans-serif", fontSize: 13, color: INK }}>
+              {b.footer.companyName}
+            </div>
+            <div style={{ fontFamily: FONT_BODY, fontSize: 13, color: INK, marginTop: 2 }}>
+              {b.footer.address}
+            </div>
+            <div style={{ fontFamily: FONT_BODY, fontSize: 13, color: INK }}>
+              Customer Service: {b.footer.phone}
+            </div>
+            <div style={{ fontFamily: FONT_BODY, fontSize: 13, color: RED, marginTop: 8 }}>
+              {b.footer.website}
+            </div>
+            {meta.versionLabel && (
+              <div
+                style={{
+                  marginTop: 16 * scale,
+                  textAlign: "right",
+                  fontFamily: FONT_BODY,
+                  fontWeight: 700,
+                  fontSize: 15,
+                  color: INK,
+                }}
+              >
+                {b.cover.versionLabelPrefix} {meta.versionLabel}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Inner page */}
-      <div style={pageBase}>
-        <PageHeader b={b} meta={meta} />
+      {/* ---------- PAGE 2 · PARTS / TOOLS / BOM IMAGES ---------- */}
+      <div style={pageStyle}>
+        <InteriorFrame meta={meta} logoSvg={logoSvg} pageNum={2} totalPages={totalPages} scale={scale}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            {/* Left column: Parts + Hardware Kit as one continuous table */}
+            <div>
+              <SectionHeader>PARTS</SectionHeader>
+              <PartsTable
+                parts={content.parts}
+                hardwareKit={content.hardware_kit}
+                catalog={catalogMap}
+              />
+            </div>
 
-        {content.parts.length > 0 && (
-          <>
-            <div className="mm-section-h">{b.tables.partsHeaderUppercase ? "PARTS" : "Parts"}</div>
-            <PartsTable parts={content.parts} b={b} catalog={catalogMap} />
-          </>
-        )}
+            {/* Right column: Tools */}
+            <div>
+              <SectionHeader>TOOLS</SectionHeader>
+              <ToolsList tools={content.tools} />
+            </div>
+          </div>
 
-        {content.hardware_kit.length > 0 && (
-          <>
-            <div className="mm-section-h">{b.tables.partsHeaderUppercase ? "HARDWARE KIT" : "Hardware Kit"}</div>
-            <PartsTable parts={content.hardware_kit} b={b} catalog={catalogMap} />
-          </>
-        )}
+          {/* BOM images grid spanning both columns */}
+          {(content.parts.length > 0 || content.hardware_kit.length > 0) && (
+            <div style={{ marginTop: 20 }}>
+              <BomImagesGrid
+                parts={[...content.parts, ...content.hardware_kit]}
+                catalog={catalogMap}
+              />
+            </div>
+          )}
 
-        {content.tools.length > 0 && (
-          <>
-            <div className="mm-section-h">{b.tables.partsHeaderUppercase ? "TOOLS" : "Tools"}</div>
-            <ul style={{ columns: 2, columnGap: 32, fontSize: 14, paddingLeft: 18, margin: 0 }}>
-              {content.tools.map((t, i) => (
-                <li key={i} style={{ breakInside: "avoid" }}>
-                  {t.name}{t.spec ? ` — ${t.spec}` : ""}
-                </li>
+          {/* Warnings block */}
+          {content.warnings.length > 0 && (
+            <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 8, alignItems: "center" }}>
+              {content.warnings.map((w, i) => (
+                <WarningBlock key={i} severity={w.severity} title={w.title} body={w.body} />
               ))}
-            </ul>
-          </>
-        )}
+            </div>
+          )}
+        </InteriorFrame>
+      </div>
 
-        {content.warnings.length > 0 && (
-          <>
-            <div className="mm-section-h">SAFETY</div>
-            {content.warnings.map((w, i) => (
-              <div key={i} style={{
-                borderLeft: `4px solid ${b.colors.brand}`, padding: "8px 12px",
-                background: "#FFF5F6", marginBottom: 8, fontSize: 13,
-              }}>
-                <strong style={{ textTransform: "uppercase", color: b.colors.brand, marginRight: 8 }}>{w.severity}</strong>
-                {w.body}
+      {/* ---------- PAGE 3+ · STEPS ---------- */}
+      {stepsPages.map((raw, idx) => {
+        const s = normalizeStep(raw);
+        const pageNum = 3 + idx;
+        return (
+          <div key={s.id ?? idx} style={pageStyle}>
+            <InteriorFrame meta={meta} logoSvg={logoSvg} pageNum={pageNum} totalPages={totalPages} scale={scale}>
+              {idx === 0 && (
+                <div
+                  style={{
+                    fontFamily: FONT_HEADING,
+                    fontWeight: 600,
+                    fontSize: 24,
+                    color: RED,
+                    borderBottom: `3px solid ${RED}`,
+                    paddingBottom: 4,
+                    marginBottom: 12,
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Installation
+                </div>
+              )}
+              <div style={{ marginBottom: 10 }}>
+                <div
+                  style={{
+                    fontFamily: FONT_HEADING,
+                    fontWeight: 600,
+                    fontSize: 18,
+                    color: INK,
+                    marginBottom: 4,
+                  }}
+                >
+                  Step {idx + 1}. {s.title || "Untitled step"}
+                </div>
+                <div style={{ color: INK, fontSize: 12, lineHeight: 1.4 }}>
+                  <StepLayoutView step={s} assets={assetMap} figMap={figMap} />
+                </div>
               </div>
-            ))}
-          </>
-        )}
+            </InteriorFrame>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
-        {content.steps.length > 0 && (
-          <>
-            <div className="mm-section-h">INSTALLATION</div>
-            <ol style={{ paddingLeft: 24, margin: 0, fontSize: 14, lineHeight: 1.5 }}>
-              {content.steps.map((raw, idx) => {
-                const s = normalizeStep(raw);
-                return (
-                  <li key={s.id ?? idx} style={{ marginBottom: 18, breakInside: "avoid" }}>
-                    <div style={{ fontWeight: 700, fontFamily: `var(--mm-heading-font)`, fontSize: 16, marginBottom: 6 }}>
-                      {s.title || `Step ${idx + 1}`}
-                    </div>
-                    <div style={{ color: b.colors.ink }}>
-                      <StepLayoutView step={s} assets={assetMap} figMap={figMap} />
-                    </div>
-                  </li>
-                );
-              })}
-            </ol>
-          </>
-        )}
+// ---------- Interior page chrome (header + footer) ----------
+function InteriorFrame({
+  meta,
+  logoSvg,
+  pageNum,
+  totalPages,
+  scale,
+  children,
+}: {
+  meta: ManualPreviewMeta;
+  logoSvg: string;
+  pageNum: number;
+  totalPages: number;
+  scale: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        padding: PAGE_PAD * scale,
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        boxSizing: "border-box",
+      }}
+    >
+      {/* Top header: title block left, logo SVG right */}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+        <div style={{ flex: 1 }}>
+          <div
+            style={{
+              fontFamily: FONT_HEADING,
+              fontWeight: 600,
+              fontSize: 24,
+              color: RED,
+              lineHeight: 1.0,
+            }}
+          >
+            {meta.name}
+          </div>
+          {meta.variant && (
+            <div
+              style={{
+                fontFamily: FONT_HEADING,
+                fontWeight: 500,
+                fontSize: 22,
+                color: INK,
+                lineHeight: 1.05,
+                marginTop: 1,
+              }}
+            >
+              {meta.variant}
+            </div>
+          )}
+          <div style={{ fontFamily: FONT_BODY, fontSize: 11, color: INK, marginTop: 4 }}>
+            SKU: {meta.sku}
+          </div>
+        </div>
+        <img
+          src={logoSvg}
+          alt=""
+          crossOrigin="anonymous"
+          style={{ height: 56 * scale, width: "auto", display: "block" }}
+        />
+      </div>
 
-        <PageFooter b={b} />
+      {/* 4px black horizontal line */}
+      <div style={{ borderTop: `4px solid ${INK}`, marginTop: 8, marginBottom: 12 }} />
+
+      {/* Body */}
+      <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>{children}</div>
+
+      {/* Footer */}
+      <div
+        style={{
+          marginTop: 12,
+          paddingTop: 6,
+          borderTop: `1px solid ${INK}`,
+          display: "grid",
+          gridTemplateColumns: "1fr 2fr 1fr",
+          fontFamily: FONT_BODY,
+          fontSize: 10,
+          color: INK,
+        }}
+      >
+        <div style={{ textAlign: "left" }}>SKU: {meta.sku}</div>
+        <div style={{ textAlign: "center" }}>{meta.name} Install Manual</div>
+        <div style={{ textAlign: "right" }}>
+          Page {pageNum} of {totalPages}
+        </div>
       </div>
     </div>
   );
 }
 
-function PageHeader({ b, meta }: { b: BrandingTokens; meta: ManualPreviewMeta }) {
-  if (!b.header.show) return null;
+// ---------- Sub-components ----------
+function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
-    <header style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline",
-      borderBottom: `2px solid ${b.colors.brand}`, paddingBottom: 8, marginBottom: 16 }}>
-      <div>
-        <span className="mm-brand" style={{ fontFamily: `var(--mm-heading-font)`, fontWeight: 700, fontSize: 18 }}>{meta.name}</span>
-        {meta.variant && <span style={{ marginLeft: 8, fontFamily: `var(--mm-heading-font)`, fontWeight: 600 }}>{meta.variant}</span>}
-      </div>
-      {b.header.showSku && (
-        <div style={{ fontFamily: `var(--mm-heading-font)`, fontWeight: 700, fontSize: 13 }}>SKU: {meta.sku}</div>
-      )}
-    </header>
-  );
-}
-
-function PageFooter({ b }: { b: BrandingTokens }) {
-  return (
-    <footer style={{ marginTop: 32, paddingTop: 8, borderTop: `1px solid ${b.colors.muted}`,
-      display: "flex", justifyContent: "space-between", fontSize: 11, color: b.colors.muted }}>
-      <span>{b.footer.companyName} · {b.footer.phone}</span>
-      <span className="mm-brand" style={{ fontWeight: 700 }}>{b.footer.website}</span>
-    </footer>
+    <div
+      style={{
+        fontFamily: FONT_HEADING,
+        fontWeight: 600,
+        fontSize: 20,
+        color: RED,
+        textTransform: "uppercase",
+        letterSpacing: "0.02em",
+        borderBottom: `3px solid ${RED}`,
+        paddingBottom: 3,
+        marginBottom: 6,
+      }}
+    >
+      {children}
+    </div>
   );
 }
 
 function PartsTable({
   parts,
-  b,
+  hardwareKit,
   catalog,
 }: {
   parts: { part_number: string; qty: number; description?: string }[];
-  b: BrandingTokens;
+  hardwareKit: { part_number: string; qty: number; description?: string }[];
   catalog: PartCatalogLookup;
 }) {
-  const anyImages = parts.some((p) => catalog[p.part_number]?.imageUrl);
+  const nameFor = (p: { part_number: string; description?: string }) =>
+    catalog[p.part_number]?.alias ?? p.description ?? "";
   return (
-    <table style={{ marginBottom: 16 }}>
+    <table className="tf-tbl">
       <thead>
         <tr>
-          {anyImages && <th style={{ width: 56 }}></th>}
-          <th style={{ width: 60 }}>REF</th>
-          <th style={{ width: 60 }}>QTY</th>
-          <th>DESCRIPTION</th>
+          <th style={{ width: 48, textAlign: "center" }}>REF</th>
+          <th style={{ width: 48, textAlign: "center" }}>QTY</th>
+          <th>HARDWARE</th>
         </tr>
       </thead>
       <tbody>
-        {parts.map((p, i) => {
-          const c = catalog[p.part_number];
-          const name = c?.alias ?? p.description ?? "";
-          return (
-            <tr key={i} style={b.tables.zebra && i % 2 ? { background: "#F7F7F7" } : undefined}>
-              {anyImages && (
-                <td style={{ width: 56, padding: 4 }}>
-                  {c?.imageUrl ? (
-                    <img
-                      src={c.imageUrl}
-                      alt={name}
-                      style={{ width: 48, height: 48, objectFit: "contain", display: "block" }}
-                    />
-                  ) : null}
-                </td>
-              )}
-              <td>{p.part_number}</td>
-              <td>{p.qty}</td>
-              <td>{name}</td>
-            </tr>
-          );
-        })}
+        {parts.map((p, i) => (
+          <tr key={`p-${i}`}>
+            <td style={{ textAlign: "center", fontWeight: 700 }}>{p.part_number}</td>
+            <td style={{ textAlign: "center" }}>{p.qty}</td>
+            <td>{nameFor(p)}</td>
+          </tr>
+        ))}
+        {hardwareKit.length > 0 && (
+          <tr className="subhead">
+            <td colSpan={3}>Hardware Kit</td>
+          </tr>
+        )}
+        {hardwareKit.map((p, i) => (
+          <tr key={`h-${i}`}>
+            <td style={{ textAlign: "center", fontWeight: 700 }}>{p.part_number}</td>
+            <td style={{ textAlign: "center" }}>{p.qty}</td>
+            <td>{nameFor(p)}</td>
+          </tr>
+        ))}
       </tbody>
     </table>
+  );
+}
+
+function ToolsList({ tools }: { tools: { name: string; spec?: string }[] }) {
+  if (tools.length === 0) {
+    return <div style={{ fontSize: 11, color: "#777" }}>No tools listed.</div>;
+  }
+  return (
+    <ul
+      style={{
+        margin: 0,
+        paddingLeft: 18,
+        fontFamily: FONT_BODY,
+        fontSize: 12,
+        lineHeight: 1.5,
+        color: INK,
+      }}
+    >
+      {tools.map((t, i) => (
+        <li key={i}>
+          {t.name}
+          {t.spec ? ` — ${t.spec}` : ""}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function BomImagesGrid({
+  parts,
+  catalog,
+}: {
+  parts: { part_number: string; description?: string }[];
+  catalog: PartCatalogLookup;
+}) {
+  const withImages = parts.filter((p) => catalog[p.part_number]?.imageUrl);
+  if (withImages.length === 0) return null;
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(4, 1fr)",
+        gap: 8,
+      }}
+    >
+      {withImages.map((p, i) => {
+        const c = catalog[p.part_number];
+        return (
+          <div
+            key={i}
+            style={{
+              border: `1px dashed ${INK}`,
+              padding: 6,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              minHeight: 72,
+            }}
+          >
+            <div
+              style={{
+                fontFamily: FONT_HEADING,
+                fontWeight: 700,
+                fontSize: 22,
+                color: INK,
+                minWidth: 22,
+                textAlign: "center",
+              }}
+            >
+              {p.part_number}
+            </div>
+            <img
+              src={c!.imageUrl!}
+              alt={p.description ?? ""}
+              crossOrigin="anonymous"
+              style={{
+                maxWidth: "100%",
+                maxHeight: 60,
+                objectFit: "contain",
+                flex: 1,
+              }}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function WarningBlock({
+  severity,
+  title,
+  body,
+}: {
+  severity: "info" | "caution" | "danger";
+  title?: string;
+  body: string;
+}) {
+  const displayTitle = (title?.trim() || WARNING_DEFAULT_TITLES[severity]).toUpperCase();
+  const palette =
+    severity === "danger"
+      ? { bg: RED, titleColor: "#fff", bodyColor: "#fff", border: RED }
+      : severity === "caution"
+        ? { bg: "#FFF4CE", titleColor: "#8A6100", bodyColor: INK, border: "#E5BC3A" }
+        : { bg: "#DFF1FA", titleColor: "#0C5A8F", bodyColor: INK, border: "#7FB8DA" };
+  return (
+    <div
+      style={{
+        background: palette.bg,
+        border: `1px solid ${palette.border}`,
+        padding: "8px 14px",
+        textAlign: "center",
+        maxWidth: 380,
+        fontFamily: FONT_BODY,
+      }}
+    >
+      <div
+        style={{
+          fontFamily: FONT_HEADING,
+          fontWeight: 700,
+          fontSize: 15,
+          color: palette.titleColor,
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+          marginBottom: 2,
+        }}
+      >
+        {displayTitle}
+      </div>
+      <div style={{ fontSize: 11, color: palette.bodyColor, lineHeight: 1.35 }}>{body}</div>
+    </div>
   );
 }
