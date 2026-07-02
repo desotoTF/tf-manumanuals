@@ -547,42 +547,6 @@ function ProductEditorPage() {
               </CardContent>
             </Card>
           ) : (
-            <>
-            {primaryManual && (
-              <CoverImageCard
-                manualId={primaryManual.id}
-                imageUrl={content.hero_image_url ?? null}
-                editable={!!editable}
-                hasOdooLink={true}
-                onSet={async (url) => {
-                  setContent({ ...content, hero_image_url: url });
-                  // Persist immediately so the cover survives reloads.
-                  try {
-                    await saveDraft({
-                      data: {
-                        versionId: activeVersionId!,
-                        content: {
-                          ...(content as unknown as Record<string, unknown>),
-                          hero_image_url: url,
-                        },
-                        changeSummary: changeSummary || undefined,
-                      },
-                    });
-                    qc.invalidateQueries({
-                      queryKey: ["manual-version", activeVersionId],
-                    });
-                  } catch (e) {
-                    toast.error((e as Error).message);
-                  }
-                }}
-                uploadCover={(args) =>
-                  uploadCover({ data: { manualId: primaryManual.id, ...args } })
-                }
-                fetchFromOdoo={() =>
-                  fetchOdooCover({ data: { manualId: primaryManual.id } })
-                }
-              />
-            )}
             <ContentEditor
               content={content}
               setContent={setContent}
@@ -649,7 +613,6 @@ function ProductEditorPage() {
                   toast.info(`No BOM found in Odoo for ${searchSku}.`);
                   return;
                 }
-                // Pull the new snapshot into the editor.
                 const loaded = await loadBom({ data: { productId } });
                 setContent({
                   ...content,
@@ -662,9 +625,7 @@ function ProductEditorPage() {
                   `Loaded ${totalLoaded} BOM line${totalLoaded === 1 ? "" : "s"} from ${searchSku}`,
                 );
               }}
-
             />
-            </>
           )}
         </section>
 
@@ -685,6 +646,41 @@ function ProductEditorPage() {
                 </div>
               </CardContent>
             </Card>
+          )}
+
+          {activeVersion && primaryManual && (
+            <CoverImageCard
+              manualId={primaryManual.id}
+              imageUrl={content.hero_image_url ?? null}
+              editable={!!editable}
+              hasOdooLink={true}
+              onSet={async (url) => {
+                setContent({ ...content, hero_image_url: url });
+                try {
+                  await saveDraft({
+                    data: {
+                      versionId: activeVersionId!,
+                      content: {
+                        ...(content as unknown as Record<string, unknown>),
+                        hero_image_url: url,
+                      },
+                      changeSummary: changeSummary || undefined,
+                    },
+                  });
+                  qc.invalidateQueries({
+                    queryKey: ["manual-version", activeVersionId],
+                  });
+                } catch (e) {
+                  toast.error((e as Error).message);
+                }
+              }}
+              uploadCover={(args) =>
+                uploadCover({ data: { manualId: primaryManual.id, ...args } })
+              }
+              fetchFromOdoo={() =>
+                fetchOdooCover({ data: { manualId: primaryManual.id } })
+              }
+            />
           )}
 
           {activeVersion && (
@@ -795,45 +791,7 @@ function ProductEditorPage() {
             </Card>
           )}
 
-          {/* Latest BOM card (moved from left rail) */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Latest BOM</CardTitle>
-            </CardHeader>
-            <CardContent className="text-xs">
-              {ws.latestBom ? (
-                <>
-                  <div className="mb-2 text-muted-foreground">
-                    Captured{" "}
-                    {formatDistanceToNow(new Date(ws.latestBom.captured_at), {
-                      addSuffix: true,
-                    })}
-                    {ws.latestBom.erp_bom_revision && (
-                      <> · rev {ws.latestBom.erp_bom_revision}</>
-                    )}
-                  </div>
-                  <ul className="space-y-1">
-                    {((ws.latestBom.normalized_items as any[]) ?? [])
-                      .slice(0, 20)
-                      .map((it, i) => (
-                        <li key={i} className="flex justify-between gap-2">
-                          <span className="truncate font-mono">
-                            {it.part_number}
-                          </span>
-                          <span className="text-muted-foreground">
-                            ×{it.qty}
-                          </span>
-                        </li>
-                      ))}
-                  </ul>
-                </>
-              ) : (
-                <p className="text-muted-foreground">No BOM synced yet.</p>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Versions card (moved from left rail) */}
+          {/* Versions card */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">Versions</CardTitle>
@@ -866,6 +824,7 @@ function ProductEditorPage() {
     </div>
   );
 }
+
 
 // ---------- Structured content editor ----------
 
@@ -904,7 +863,7 @@ function ContentEditor({
 }) {
 
   const [tab, setTab] = useState<
-    "steps" | "tools" | "parts" | "warnings" | "torque" | "images"
+    "steps" | "images" | "parts" | "tools" | "warnings"
   >("steps");
 
   // Asset list (for image pickers + the Images tab). Figure numbering
@@ -927,114 +886,97 @@ function ContentEditor({
     value: ManualContent[K],
   ) => setContent({ ...content, [key]: value });
 
+  const TABS = [
+    { id: "steps", label: "Steps" },
+    { id: "images", label: "Images" },
+    { id: "parts", label: "Parts" },
+    { id: "tools", label: "Tools" },
+    { id: "warnings", label: "Warnings" },
+  ] as const;
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex flex-wrap gap-1">
-          {(
-            [
-              "steps",
-              "tools",
-              "parts",
-              "warnings",
-              "torque",
-              "images",
-            ] as const
-          ).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize ${
-                tab === t
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {tab === "steps" && (
-          <StepsEditor
-            steps={content.steps}
-            setSteps={(s) => update("steps", s)}
-            editable={editable}
-            images={figureSources}
-            figMap={figMap}
-            onInlineUpload={async (file) => {
-              const asset = (await onUploadAsset(file)) as
-                | { id?: string }
-                | null
-                | undefined;
-              return asset?.id ?? null;
-            }}
-          />
-        )}
+    <div className="space-y-3">
+      {/* Tab bar — pulled out of the step card */}
+      <div className="flex flex-wrap items-center gap-1 border-b border-border">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`-mb-px rounded-t-md border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+              tab === t.id
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-        {tab === "tools" && (
-          <ToolsListEditor
-            items={content.tools}
-            setItems={(items) => update("tools", items)}
-            editable={editable}
-            tools={tools}
-            onCreateTool={onCreateTool}
-            creating={creatingTool}
-          />
-        )}
-        {tab === "parts" && (
-          <PartsTabPanel
-            content={content}
-            update={update}
-            editable={editable}
-            productSku={productSku}
-            onLoadBom={onLoadBom}
-            onSearchBom={onSearchBom}
-          />
-        )}
-
-        {tab === "warnings" && (
-          <WarningsEditor
-            warnings={content.warnings}
-            setWarnings={(w) => update("warnings", w)}
-            editable={editable}
-            images={figureSources}
-            figMap={figMap}
-          />
-        )}
-
-        {tab === "torque" && (
-          <SimpleListEditor
-            items={content.torque_specs}
-            setItems={(items) => update("torque_specs", items)}
-            editable={editable}
-            columns={[
-              { key: "fastener", label: "Fastener", placeholder: "M8 bolt" },
-              { key: "value", label: "Value", placeholder: "25", numeric: true },
-              { key: "unit", label: "Unit", placeholder: "Nm" },
-              { key: "sequence", label: "Sequence" },
-            ]}
-            empty={(): ManualContent["torque_specs"][number] => ({ fastener: "", value: 0, unit: "Nm" })}
-          />
-        )}
-        {tab === "images" && (
-          <ImagesPanel
-            assets={assets}
-            editable={editable}
-            onAdd={onAddAsset}
-            onRemove={onRemoveAsset}
-            onUpload={onUploadAsset}
-            uploading={uploadingAsset}
-            figMap={figMap}
-          />
-        )}
-
-      </CardContent>
-    </Card>
+      <Card>
+        <CardContent className="space-y-3 pt-4">
+          {tab === "steps" && (
+            <StepsEditor
+              steps={content.steps}
+              setSteps={(s) => update("steps", s)}
+              editable={editable}
+              images={figureSources}
+              figMap={figMap}
+              onInlineUpload={async (file) => {
+                const asset = (await onUploadAsset(file)) as
+                  | { id?: string }
+                  | null
+                  | undefined;
+                return asset?.id ?? null;
+              }}
+            />
+          )}
+          {tab === "images" && (
+            <ImagesPanel
+              assets={assets}
+              editable={editable}
+              onAdd={onAddAsset}
+              onRemove={onRemoveAsset}
+              onUpload={onUploadAsset}
+              uploading={uploadingAsset}
+              figMap={figMap}
+            />
+          )}
+          {tab === "parts" && (
+            <PartsTabPanel
+              content={content}
+              update={update}
+              editable={editable}
+              productSku={productSku}
+              onLoadBom={onLoadBom}
+              onSearchBom={onSearchBom}
+            />
+          )}
+          {tab === "tools" && (
+            <ToolsListEditor
+              items={content.tools}
+              setItems={(items) => update("tools", items)}
+              editable={editable}
+              tools={tools}
+              onCreateTool={onCreateTool}
+              creating={creatingTool}
+            />
+          )}
+          {tab === "warnings" && (
+            <WarningsEditor
+              warnings={content.warnings}
+              setWarnings={(w) => update("warnings", w)}
+              editable={editable}
+              images={figureSources}
+              figMap={figMap}
+            />
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
+
 
 
 

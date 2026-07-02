@@ -304,11 +304,6 @@ export function MasterManualPreview({
             </div>
           )}
 
-          {/* Torque Specs (static reference) */}
-          <div style={{ marginTop: 20 }}>
-            <SectionHeader>TORQUE SPECS</SectionHeader>
-            <TorqueSpecsTables />
-          </div>
 
           {/* Warnings block */}
           {content.warnings.length > 0 && (
@@ -675,64 +670,3 @@ function WarningBlock({
   );
 }
 
-const TORQUE_STANDARD: [string, string, string][] = [
-  ["5/16\"", "15 ft/lbs", "20 ft/lbs"],
-  ["3/8\"", "30 ft/lbs", "35 ft/lbs"],
-  ["7/16\"", "45 ft/lbs", "60 ft/lbs"],
-  ["1/2\"", "65 ft/lbs", "90 ft/lbs"],
-  ["9/16\"", "95 ft/lbs", "130 ft/lbs"],
-  ["5/8\"", "135 ft/lbs", "175 ft/lbs"],
-  ["3/4\"", "185 ft/lbs", "280 ft/lbs"],
-];
-
-const TORQUE_METRIC: [string, string, string][] = [
-  ["6MM", "5 ft/lbs", "9 ft/lbs"],
-  ["8MM", "18 ft/lbs", "23 ft/lbs"],
-  ["10MM", "32 ft/lbs", "45 ft/lbs"],
-  ["12MM", "55 ft/lbs", "75 ft/lbs"],
-  ["14MM", "85 ft/lbs", "120 ft/lbs"],
-  ["16MM", "130 ft/lbs", "165 ft/lbs"],
-  ["18MM", "170 ft/lbs", "240 ft/lbs"],
-];
-
-function TorqueSpecsTables() {
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-      <TorqueTable sizeHeader="SIZE (STANDARD)" col1="GRADE 5" col2="GRADE 8" rows={TORQUE_STANDARD} />
-      <TorqueTable sizeHeader="SIZE (METRIC)" col1="CLASS 8.8" col2="CLASS 10.9" rows={TORQUE_METRIC} />
-    </div>
-  );
-}
-
-function TorqueTable({
-  sizeHeader,
-  col1,
-  col2,
-  rows,
-}: {
-  sizeHeader: string;
-  col1: string;
-  col2: string;
-  rows: [string, string, string][];
-}) {
-  return (
-    <table className="tf-tbl">
-      <thead>
-        <tr>
-          <th style={{ textAlign: "center" }}>{sizeHeader}</th>
-          <th style={{ textAlign: "center" }}>{col1}</th>
-          <th style={{ textAlign: "center" }}>{col2}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map(([size, a, b], i) => (
-          <tr key={i}>
-            <td style={{ textAlign: "center", fontWeight: 700 }}>{size}</td>
-            <td style={{ textAlign: "center" }}>{a}</td>
-            <td style={{ textAlign: "center" }}>{b}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}

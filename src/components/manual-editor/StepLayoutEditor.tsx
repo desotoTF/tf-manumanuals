@@ -120,26 +120,28 @@ export function StepLayoutEditor({
         <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
           Layout
         </span>
-        <div className="inline-flex rounded-md border border-border bg-card/40 p-0.5">
-          {allowed.map((l) => (
-            <button
-              key={l}
-              type="button"
-              disabled={disabled}
-              onClick={() => switchLayout(l)}
-              className={cn(
-                "flex items-center gap-1 rounded px-2 py-1 text-xs",
-                layout === l
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-muted",
-              )}
-              title={STEP_LAYOUT_LABEL[l]}
-            >
-              <LayoutIcon layout={l} className="h-3.5 w-3.5" />
-              {STEP_LAYOUT_LABEL[l]}
-            </button>
-          ))}
-        </div>
+        <Select
+          value={layout}
+          onValueChange={(v) => switchLayout(v as StepLayout)}
+          disabled={disabled}
+        >
+          <SelectTrigger className="h-8 w-[170px] text-xs">
+            <span className="flex items-center gap-2">
+              <LayoutIcon layout={layout} className="h-3.5 w-3.5" />
+              {STEP_LAYOUT_LABEL[layout]}
+            </span>
+          </SelectTrigger>
+          <SelectContent>
+            {allowed.map((l) => (
+              <SelectItem key={l} value={l} className="text-xs">
+                <span className="flex items-center gap-2">
+                  <LayoutIcon layout={l} className="h-3.5 w-3.5" />
+                  {STEP_LAYOUT_LABEL[l]}
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className={containerCls}>
         {slots.map((slot, i) => (
@@ -168,6 +170,7 @@ export function StepLayoutEditor({
     </div>
   );
 }
+
 
 function LayoutIcon({
   layout,
@@ -590,9 +593,9 @@ function RichTextField({
 
   return (
     <div className="space-y-2">
-      {!disabled && <Toolbar editor={editor} />}
       {!disabled && (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Toolbar editor={editor} />
           <Popover
             open={pickerOpen}
             onOpenChange={(o) => {
@@ -603,14 +606,14 @@ function RichTextField({
             <PopoverTrigger asChild>
               <Button
                 size="sm"
-                variant="ghost"
-                className="h-7 px-2 text-xs"
+                variant="outline"
+                className="h-7 border-border px-2 text-xs font-normal"
                 title="Insert Fig. reference (or type ##Fig.)"
               >
                 <Hash className="mr-1 h-3 w-3" /> Fig. ref
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-80 p-2" align="start">
+            <PopoverContent className="w-80 p-2" align="end">
               <p className="mb-2 text-xs text-muted-foreground">
                 Pick an image. Fig. numbers follow the order images appear in
                 steps.
@@ -673,6 +676,7 @@ function RichTextField({
   );
 }
 
+
 function stripHtml(s: string): string {
   return s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -702,8 +706,30 @@ function Toolbar({ editor }: { editor: Editor }) {
       {children}
     </button>
   );
+  const currentSize = editor.isActive("heading", { level: 3 })
+    ? "h3"
+    : editor.isActive("heading", { level: 4 })
+      ? "h4"
+      : "p";
+  const setSize = (v: string) => {
+    if (v === "p") editor.chain().focus().setParagraph().run();
+    else if (v === "h3")
+      editor.chain().focus().toggleHeading({ level: 3 }).run();
+    else if (v === "h4")
+      editor.chain().focus().toggleHeading({ level: 4 }).run();
+  };
   return (
-    <div className="flex flex-wrap gap-1">
+    <div className="flex flex-wrap items-center gap-1">
+      <Select value={currentSize} onValueChange={setSize}>
+        <SelectTrigger className="h-7 w-[110px] text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="p" className="text-xs">Normal</SelectItem>
+          <SelectItem value="h4" className="text-xs">Large</SelectItem>
+          <SelectItem value="h3" className="text-xs">Heading</SelectItem>
+        </SelectContent>
+      </Select>
       <TbBtn
         label="Bold"
         active={editor.isActive("bold")}
@@ -755,6 +781,7 @@ function Toolbar({ editor }: { editor: Editor }) {
     </div>
   );
 }
+
 
 // Re-export Plus icon to suppress unused-import noise if needed elsewhere.
 export { Plus };
