@@ -599,6 +599,11 @@ function ProductEditorPage() {
                 uploadAssetMut.mutateAsync({ file, caption })
               }
               uploadingAsset={uploadAssetMut.isPending}
+              onReplaceAsset={(assetId, blob) =>
+                replaceAssetMut.mutateAsync({ assetId, blob })
+              }
+              onRevertAsset={(assetId) => revertAssetMut.mutate(assetId)}
+              replacingAsset={replaceAssetMut.isPending}
               tools={toolsQuery.data ?? []}
               onCreateTool={async (name) => {
                 const created = await upsertToolMut.mutateAsync(name);
