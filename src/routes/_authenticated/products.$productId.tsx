@@ -1803,7 +1803,7 @@ function CoverImageCard({
                 }}
               >
                 <Download className="mr-2 h-4 w-4" />
-                {busy === "odoo" ? "Fetching…" : "Fetch from Odoo"}
+                {busy === "odoo" ? "Fetching…" : "Odoo fetch"}
               </Button>
             )}
             {imageUrl && (
