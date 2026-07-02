@@ -27,10 +27,7 @@ import {
 import { syncBomBySku } from "@/lib/erp.functions";
 
 import { listTools, upsertTool } from "@/lib/tools.functions";
-import {
-  PartsListEditor,
-  ToolsListEditor,
-} from "@/components/manual-editor/ManualListEditors";
+import { PartsListEditor, ToolsListEditor } from "@/components/manual-editor/ManualListEditors";
 
 import { listTemplates } from "@/lib/templates.functions";
 import { useActiveOrg } from "@/components/AppShell";
@@ -48,19 +45,12 @@ import { FigureRefField } from "@/components/manual-editor/FigureRefField";
 import { StepLayoutEditor, StepLayoutSwitcher } from "@/components/manual-editor/StepLayoutEditor";
 import { usePartCatalog } from "@/lib/use-part-catalog";
 
-
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -154,12 +144,10 @@ function ProductEditorPage() {
     queryFn: () => fetchTools({ data: { organizationId: orgId } }),
   });
   const upsertToolMut = useMutation({
-    mutationFn: (name: string) =>
-      createTool({ data: { organizationId: orgId, name } }),
+    mutationFn: (name: string) => createTool({ data: { organizationId: orgId, name } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tools", orgId] }),
     onError: (e: Error) => toast.error(e.message),
   });
-
 
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -186,10 +174,7 @@ function ProductEditorPage() {
 
   const versionQuery = useQuery({
     queryKey: ["manual-version", activeVersionId],
-    queryFn: () =>
-      activeVersionId
-        ? fetchVersion({ data: { versionId: activeVersionId } })
-        : Promise.resolve(null),
+    queryFn: () => (activeVersionId ? fetchVersion({ data: { versionId: activeVersionId } }) : Promise.resolve(null)),
     enabled: !!activeVersionId,
   });
 
@@ -223,12 +208,10 @@ function ProductEditorPage() {
 
   const activeVersion = versionQuery.data?.version;
   const assets = versionQuery.data?.assets ?? [];
-  const editable =
-    activeVersion?.state === "draft" || activeVersion?.state === "in_review";
+  const editable = activeVersion?.state === "draft" || activeVersion?.state === "in_review";
 
   const createMut = useMutation({
-    mutationFn: (input: { manualId?: string; templateId?: string }) =>
-      createDraft({ data: { productId, ...input } }),
+    mutationFn: (input: { manualId?: string; templateId?: string }) => createDraft({ data: { productId, ...input } }),
     onSuccess: ({ versionId }) => {
       setActiveVersionId(versionId);
       qc.invalidateQueries({ queryKey: ["product-workspace", productId] });
@@ -239,11 +222,8 @@ function ProductEditorPage() {
   });
 
   const importMut = useMutation({
-    mutationFn: (input: {
-      filename: string;
-      pdfBase64: string;
-      templateId?: string;
-    }) => importPdf({ data: { productId, ...input } }),
+    mutationFn: (input: { filename: string; pdfBase64: string; templateId?: string }) =>
+      importPdf({ data: { productId, ...input } }),
     onSuccess: ({ versionId }) => {
       setActiveVersionId(versionId);
       qc.invalidateQueries({ queryKey: ["product-workspace", productId] });
@@ -275,9 +255,7 @@ function ProductEditorPage() {
     mutationFn: (action: "submit" | "approve" | "publish" | "discard") =>
       transition({ data: { versionId: activeVersionId!, action } }),
     onSuccess: async (res, action) => {
-      toast.success(
-        action === "discard" ? "Draft discarded" : `Moved to ${res.state}`,
-      );
+      toast.success(action === "discard" ? "Draft discarded" : `Moved to ${res.state}`);
       if (action === "discard") setActiveVersionId(null);
       qc.invalidateQueries({ queryKey: ["product-workspace", productId] });
       qc.invalidateQueries({ queryKey: ["manual-version", activeVersionId] });
@@ -288,9 +266,7 @@ function ProductEditorPage() {
           setPublishingPdf(true);
           const node = document.getElementById("manual-pdf-source");
           if (!node) {
-            toast.warning(
-              "Open the Preview once so the PDF can be generated.",
-            );
+            toast.warning("Open the Preview once so the PDF can be generated.");
             return;
           }
           const { default: html2canvas } = await import("html2canvas");
@@ -326,9 +302,7 @@ function ProductEditorPage() {
           const bytes = new Uint8Array(buf);
           const chunk = 0x8000;
           for (let i = 0; i < bytes.length; i += chunk) {
-            binary += String.fromCharCode(
-              ...bytes.subarray(i, Math.min(i + chunk, bytes.length)),
-            );
+            binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunk, bytes.length)));
           }
           const dataBase64 = btoa(binary);
           await uploadPdf({
@@ -341,9 +315,7 @@ function ProductEditorPage() {
           toast.success("Public PDF updated");
         } catch (e) {
           console.error(e);
-          toast.error(
-            `Published, but PDF render failed: ${(e as Error).message}`,
-          );
+          toast.error(`Published, but PDF render failed: ${(e as Error).message}`);
         } finally {
           setPublishingPdf(false);
         }
@@ -380,9 +352,7 @@ function ProductEditorPage() {
       const bytes = new Uint8Array(buf);
       const chunk = 0x8000;
       for (let i = 0; i < bytes.length; i += chunk) {
-        binary += String.fromCharCode(
-          ...bytes.subarray(i, Math.min(i + chunk, bytes.length)),
-        );
+        binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunk, bytes.length)));
       }
       const dataBase64 = btoa(binary);
       return uploadAsset({
@@ -412,9 +382,7 @@ function ProductEditorPage() {
       const bytes = new Uint8Array(buf);
       const chunk = 0x8000;
       for (let i = 0; i < bytes.length; i += chunk) {
-        binary += String.fromCharCode(
-          ...bytes.subarray(i, Math.min(i + chunk, bytes.length)),
-        );
+        binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunk, bytes.length)));
       }
       return replaceAssetImage({
         data: {
@@ -441,14 +409,9 @@ function ProductEditorPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  if (workspaceQuery.isLoading)
-    return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (workspaceQuery.isLoading) return <p className="text-sm text-muted-foreground">Loading…</p>;
   if (workspaceQuery.error)
-    return (
-      <p className="text-sm text-destructive">
-        {(workspaceQuery.error as Error).message}
-      </p>
-    );
+    return <p className="text-sm text-destructive">{(workspaceQuery.error as Error).message}</p>;
 
   const ws = workspaceQuery.data!;
   const manuals = ws.manuals;
@@ -467,16 +430,9 @@ function ProductEditorPage() {
             ← Back to Manuals
           </button>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-            <span className="font-mono text-base text-muted-foreground">
-              {ws.product.sku}
-            </span>{" "}
-            · {ws.product.name}
+            <span className="font-mono text-base text-muted-foreground">{ws.product.sku}</span> · {ws.product.name}
           </h1>
-          {ws.product.description && (
-            <p className="text-sm text-muted-foreground">
-              {ws.product.description}
-            </p>
-          )}
+          {ws.product.description && <p className="text-sm text-muted-foreground">{ws.product.description}</p>}
         </div>
         <div className="flex gap-2">
           {primaryManual && (
@@ -494,16 +450,15 @@ function ProductEditorPage() {
               </Button>
             </>
           )}
-          {primaryManual &&
-            !ws.versions.some((v) => v.state === "draft") && (
-              <Button
-                variant="outline"
-                onClick={() => createMut.mutate({ manualId: primaryManual.id })}
-                disabled={createMut.isPending}
-              >
-                <Plus className="mr-2 h-4 w-4" /> New draft version
-              </Button>
-            )}
+          {primaryManual && !ws.versions.some((v) => v.state === "draft") && (
+            <Button
+              variant="outline"
+              onClick={() => createMut.mutate({ manualId: primaryManual.id })}
+              disabled={createMut.isPending}
+            >
+              <Plus className="mr-2 h-4 w-4" /> New draft version
+            </Button>
+          )}
         </div>
       </header>
 
@@ -562,7 +517,6 @@ function ProductEditorPage() {
         );
       })()}
 
-
       <CreateManualDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
@@ -577,7 +531,6 @@ function ProductEditorPage() {
         onSubmit={(payload) => importMut.mutate(payload)}
         submitting={importMut.isPending}
       />
-
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         {/* MAIN */}
@@ -598,13 +551,9 @@ function ProductEditorPage() {
               assets={assets}
               onAddAsset={(url, caption) => addAssetMut.mutate({ url, caption })}
               onRemoveAsset={(id) => removeAssetMut.mutate(id)}
-              onUploadAsset={(file, caption) =>
-                uploadAssetMut.mutateAsync({ file, caption })
-              }
+              onUploadAsset={(file, caption) => uploadAssetMut.mutateAsync({ file, caption })}
               uploadingAsset={uploadAssetMut.isPending}
-              onReplaceAsset={(assetId, blob) =>
-                replaceAssetMut.mutateAsync({ assetId, blob })
-              }
+              onReplaceAsset={(assetId, blob) => replaceAssetMut.mutateAsync({ assetId, blob })}
               onRevertAsset={(assetId) => revertAssetMut.mutate(assetId)}
               replacingAsset={replaceAssetMut.isPending}
               tools={toolsQuery.data ?? []}
@@ -615,8 +564,7 @@ function ProductEditorPage() {
               creatingTool={upsertToolMut.isPending}
               onLoadBom={async () => {
                 const result = await loadBom({ data: { productId } });
-                const hasExisting =
-                  content.parts.length > 0 || content.hardware_kit.length > 0;
+                const hasExisting = content.parts.length > 0 || content.hardware_kit.length > 0;
                 if (
                   hasExisting &&
                   !confirm(
@@ -631,17 +579,13 @@ function ProductEditorPage() {
                   hardware_kit: result.hardware_kit,
                 });
                 if (result.hardwareBomMissing && result.hardwareSku) {
-                  toast.warning(
-                    `Hardware Kit BOM for ${result.hardwareSku} hasn't been synced yet.`,
-                  );
+                  toast.warning(`Hardware Kit BOM for ${result.hardwareSku} hasn't been synced yet.`);
                 } else if (result.parts.length === 0 && result.hardware_kit.length === 0) {
                   toast.info("BOM is empty for this product.");
                 } else {
                   toast.success(
                     `Loaded ${result.parts.length} parts${
-                      result.hardware_kit.length
-                        ? ` + ${result.hardware_kit.length} hardware`
-                        : ""
+                      result.hardware_kit.length ? ` + ${result.hardware_kit.length} hardware` : ""
                     }${result.excluded.length ? ` (${result.excluded.length} excluded)` : ""}`,
                   );
                 }
@@ -668,11 +612,8 @@ function ProductEditorPage() {
                   parts: loaded.parts,
                   hardware_kit: loaded.hardware_kit,
                 });
-                const totalLoaded =
-                  loaded.parts.length + loaded.hardware_kit.length;
-                toast.success(
-                  `Loaded ${totalLoaded} BOM line${totalLoaded === 1 ? "" : "s"} from ${searchSku}`,
-                );
+                const totalLoaded = loaded.parts.length + loaded.hardware_kit.length;
+                toast.success(`Loaded ${totalLoaded} BOM line${totalLoaded === 1 ? "" : "s"} from ${searchSku}`);
               }}
             />
           )}
@@ -685,12 +626,9 @@ function ProductEditorPage() {
               <CardContent className="flex gap-2 py-3 text-xs">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-500" />
                 <div>
-                  <p className="font-medium text-rose-700 dark:text-rose-400">
-                    Out of sync
-                  </p>
+                  <p className="font-medium text-rose-700 dark:text-rose-400">Out of sync</p>
                   <p className="mt-1 text-muted-foreground">
-                    The latest BOM differs from the published manual. Create a
-                    new draft to bring it into sync.
+                    The latest BOM differs from the published manual. Create a new draft to bring it into sync.
                   </p>
                 </div>
               </CardContent>
@@ -723,12 +661,8 @@ function ProductEditorPage() {
                   toast.error((e as Error).message);
                 }
               }}
-              uploadCover={(args) =>
-                uploadCover({ data: { manualId: primaryManual.id, ...args } })
-              }
-              fetchFromOdoo={() =>
-                fetchOdooCover({ data: { manualId: primaryManual.id } })
-              }
+              uploadCover={(args) => uploadCover({ data: { manualId: primaryManual.id, ...args } })}
+              fetchFromOdoo={() => fetchOdooCover({ data: { manualId: primaryManual.id } })}
             />
           )}
 
@@ -737,19 +671,14 @@ function ProductEditorPage() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center justify-between">
                   Version {activeVersion.version_number}
-                  <Badge
-                    variant="secondary"
-                    className={STATE_VARIANT[activeVersion.state]}
-                  >
+                  <Badge variant="secondary" className={STATE_VARIANT[activeVersion.state]}>
                     {activeVersion.state}
                   </Badge>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 text-xs">
                 <div>
-                  <label className="mb-1 block font-medium">
-                    Change summary
-                  </label>
+                  <label className="mb-1 block font-medium">Change summary</label>
                   <Textarea
                     rows={3}
                     value={changeSummary}
@@ -768,11 +697,7 @@ function ProductEditorPage() {
                 <Separator />
 
                 <div className="grid grid-cols-1 gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => saveMut.mutate()}
-                    disabled={!editable || saveMut.isPending}
-                  >
+                  <Button size="sm" onClick={() => saveMut.mutate()} disabled={!editable || saveMut.isPending}>
                     <Save className="mr-2 h-4 w-4" /> Save draft
                   </Button>
                   {activeVersion.state === "draft" && (
@@ -809,18 +734,12 @@ function ProductEditorPage() {
                     activeVersion.state === "published") && (
                     <Button
                       size="sm"
-                      variant={
-                        activeVersion.state === "published"
-                          ? "outline"
-                          : "default"
-                      }
+                      variant={activeVersion.state === "published" ? "outline" : "default"}
                       onClick={() => transitionMut.mutate("publish")}
                       disabled={transitionMut.isPending || publishingPdf}
                     >
                       <Globe className="mr-2 h-4 w-4" />
-                      {activeVersion.state === "published"
-                        ? "Re-publish"
-                        : "Publish"}
+                      {activeVersion.state === "published" ? "Re-publish" : "Publish"}
                       {publishingPdf ? " (rendering PDF…)" : ""}
                     </Button>
                   )}
@@ -846,9 +765,7 @@ function ProductEditorPage() {
               <CardTitle className="text-sm">Versions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-1 text-xs">
-              {ws.versions.length === 0 && (
-                <p className="text-muted-foreground">No versions yet.</p>
-              )}
+              {ws.versions.length === 0 && <p className="text-muted-foreground">No versions yet.</p>}
               {ws.versions.map((v) => (
                 <button
                   key={v.id}
@@ -858,10 +775,7 @@ function ProductEditorPage() {
                   }`}
                 >
                   <span className="font-medium">v{v.version_number}</span>
-                  <Badge
-                    variant="secondary"
-                    className={STATE_VARIANT[v.state] ?? ""}
-                  >
+                  <Badge variant="secondary" className={STATE_VARIANT[v.state] ?? ""}>
                     {v.state}
                   </Badge>
                 </button>
@@ -873,7 +787,6 @@ function ProductEditorPage() {
     </div>
   );
 }
-
 
 // ---------- Structured content editor ----------
 
@@ -908,18 +821,13 @@ function ContentEditor({
   onRevertAsset: (assetId: string) => void;
   replacingAsset: boolean;
   tools: import("@/lib/tools.functions").ToolRow[];
-  onCreateTool: (
-    name: string,
-  ) => Promise<{ id: string; name: string; spec: string | null }>;
+  onCreateTool: (name: string) => Promise<{ id: string; name: string; spec: string | null }>;
   creatingTool: boolean;
   onLoadBom: () => Promise<void>;
   onSearchBom: (sku: string) => Promise<void>;
   productSku: string;
 }) {
-
-  const [tab, setTab] = useState<
-    "steps" | "images" | "parts" | "tools"
-  >("steps");
+  const [tab, setTab] = useState<"steps" | "images" | "parts" | "tools">("steps");
 
   // Asset list (for image pickers + the Images tab). Figure numbering
   // is now driven by placement inside steps, not by this list's order.
@@ -936,10 +844,8 @@ function ContentEditor({
   );
   const figMap = useStepFigureMap(content.steps);
 
-  const update = <K extends keyof ManualContent>(
-    key: K,
-    value: ManualContent[K],
-  ) => setContent({ ...content, [key]: value });
+  const update = <K extends keyof ManualContent>(key: K, value: ManualContent[K]) =>
+    setContent({ ...content, [key]: value });
 
   const TABS = [
     { id: "steps", label: "Steps" },
@@ -957,9 +863,7 @@ function ContentEditor({
             key={t.id}
             onClick={() => setTab(t.id)}
             className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-              tab === t.id
-                ? "text-foreground"
-                : "text-muted-foreground hover:text-foreground"
+              tab === t.id ? "text-foreground" : "text-muted-foreground hover:text-foreground"
             }`}
           >
             {t.label}
@@ -977,10 +881,7 @@ function ContentEditor({
               images={figureSources}
               figMap={figMap}
               onInlineUpload={async (file) => {
-                const asset = (await onUploadAsset(file)) as
-                  | { id?: string }
-                  | null
-                  | undefined;
+                const asset = (await onUploadAsset(file)) as { id?: string } | null | undefined;
                 return asset?.id ?? null;
               }}
             />
@@ -1026,10 +927,6 @@ function ContentEditor({
   );
 }
 
-
-
-
-
 function StepsEditor({
   steps,
   setSteps,
@@ -1060,9 +957,7 @@ function StepsEditor({
         return (
           <div key={s.id} className="rounded-md border border-border p-3">
             <div className="mb-2 flex items-center justify-between">
-              <span className="text-xs font-semibold text-muted-foreground">
-                Step {i + 1}
-              </span>
+              <span className="text-xs font-semibold text-muted-foreground">Step {i + 1}</span>
               {editable && (
                 <div className="flex gap-1">
                   <Button
@@ -1137,17 +1032,12 @@ function StepsEditor({
                 if (next.layout) setNextLayout(next.layout);
               }}
             />
-
           </div>
         );
       })}
       {editable && (
         <div className="pt-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setSteps([...steps, newStep(nextLayout)])}
-          >
+          <Button variant="outline" size="sm" onClick={() => setSteps([...steps, newStep(nextLayout)])}>
             <Plus className="mr-2 h-4 w-4" /> Add step
           </Button>
         </div>
@@ -1155,7 +1045,6 @@ function StepsEditor({
     </div>
   );
 }
-
 
 function SimpleListEditor<T extends Record<string, any>>({
   items,
@@ -1172,9 +1061,7 @@ function SimpleListEditor<T extends Record<string, any>>({
 }) {
   return (
     <div className="space-y-2">
-      {items.length === 0 && (
-        <p className="text-xs text-muted-foreground">None yet.</p>
-      )}
+      {items.length === 0 && <p className="text-xs text-muted-foreground">None yet.</p>}
       {items.map((row, i) => (
         <div key={i} className="flex flex-wrap items-center gap-2">
           {columns.map((c) => (
@@ -1205,11 +1092,7 @@ function SimpleListEditor<T extends Record<string, any>>({
         </div>
       ))}
       {editable && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setItems([...items, empty()])}
-        >
+        <Button variant="outline" size="sm" onClick={() => setItems([...items, empty()])}>
           <Plus className="mr-2 h-4 w-4" /> Add row
         </Button>
       )}
@@ -1279,11 +1162,7 @@ function WarningsEditor({
         </div>
       ))}
       {editable && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setWarnings([...warnings, { severity: "info", body: "" }])}
-        >
+        <Button variant="outline" size="sm" onClick={() => setWarnings([...warnings, { severity: "info", body: "" }])}>
           <Plus className="mr-2 h-4 w-4" /> Add warning
         </Button>
       )}
@@ -1359,12 +1238,7 @@ function ImagesPanel({
         // Skip macOS metadata noise
         if (relPath.startsWith("__MACOSX/") || relPath.includes("/.DS_Store")) return;
         const ext = relPath.match(/\.([^.]+)$/)?.[1].toLowerCase() ?? "png";
-        const mime =
-          ext === "jpg" || ext === "jpeg"
-            ? "image/jpeg"
-            : ext === "svg"
-              ? "image/svg+xml"
-              : `image/${ext}`;
+        const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "svg" ? "image/svg+xml" : `image/${ext}`;
         tasks.push(
           entry.async("blob").then((blob) => {
             entries.push({
@@ -1381,9 +1255,7 @@ function ImagesPanel({
         toast.warning("No images found in ZIP");
         return;
       }
-      const files = entries.map(
-        (e) => new File([e.blob], e.name, { type: e.type }),
-      );
+      const files = entries.map((e) => new File([e.blob], e.name, { type: e.type }));
       await handleFiles(files);
       toast.success(`Imported ${entries.length} images from ZIP`);
     } catch (e) {
@@ -1393,29 +1265,19 @@ function ImagesPanel({
 
   return (
     <div className="space-y-3">
-      {assets.length === 0 && (
-        <p className="text-xs text-muted-foreground">No images attached.</p>
-      )}
+      {assets.length === 0 && <p className="text-xs text-muted-foreground">No images attached.</p>}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         {assets.map((a) => {
           const figNum = figMap.get(a.id);
           return (
             <figure key={a.id} className="rounded-md border border-border p-2">
               {a.url && (
-                <img
-                  src={a.url}
-                  alt={a.metadata?.caption ?? ""}
-                  className="aspect-video w-full rounded object-cover"
-                />
+                <img src={a.url} alt={a.metadata?.caption ?? ""} className="aspect-video w-full rounded object-cover" />
               )}
               <figcaption className="mt-1 space-y-0.5 text-xs">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold text-foreground shrink-0">
-                    {figNum ? `Fig. ${figNum}` : "Unused"}
-                  </span>
-                  <span className="truncate text-muted-foreground">
-                    {a.metadata?.caption ?? ""}
-                  </span>
+                  <span className="font-semibold text-foreground shrink-0">{figNum ? `Fig. ${figNum}` : "Unused"}</span>
+                  <span className="truncate text-muted-foreground">{a.metadata?.caption ?? ""}</span>
                 </div>
                 {a.url && (
                   <a
@@ -1471,9 +1333,7 @@ function ImagesPanel({
       {editable && (
         <div className="space-y-3 rounded-md border border-dashed border-border p-3">
           <div className="space-y-2">
-            <p className="text-xs font-semibold text-muted-foreground">
-              Upload image files
-            </p>
+            <p className="text-xs font-semibold text-muted-foreground">Upload image files</p>
             <Input
               placeholder="Caption applies to single-file uploads only"
               value={caption}
@@ -1517,11 +1377,7 @@ function ImagesPanel({
               }}
             />
             <div className="flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                disabled={uploading || !!bulkProgress}
-                onClick={() => fileRef.current?.click()}
-              >
+              <Button size="sm" disabled={uploading || !!bulkProgress} onClick={() => fileRef.current?.click()}>
                 <Plus className="mr-2 h-4 w-4" />
                 {bulkProgress
                   ? `Uploading ${bulkProgress.done}/${bulkProgress.total}…`
@@ -1541,9 +1397,7 @@ function ImagesPanel({
           </div>
 
           <div className="space-y-2 border-t border-border pt-3">
-            <p className="text-xs font-semibold text-muted-foreground">
-              …or paste an image URL
-            </p>
+            <p className="text-xs font-semibold text-muted-foreground">…or paste an image URL</p>
             <div className="flex flex-wrap items-center gap-2">
               <Input
                 placeholder="https://image-url.jpg"
@@ -1602,17 +1456,12 @@ function TemplatePicker({
 }) {
   const hasDefault = templates.some((t) => t.is_default);
   return (
-    <Select
-      value={value ?? "__none__"}
-      onValueChange={(v) => onChange(v === "__none__" ? undefined : v)}
-    >
+    <Select value={value ?? "__none__"} onValueChange={(v) => onChange(v === "__none__" ? undefined : v)}>
       <SelectTrigger>
         <SelectValue placeholder="Pick a template" />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="__none__">
-          None — blank{!hasDefault ? " · default" : ""}
-        </SelectItem>
+        <SelectItem value="__none__">None — blank{!hasDefault ? " · default" : ""}</SelectItem>
         {templates.map((t) => (
           <SelectItem key={t.id} value={t.id}>
             {t.name}
@@ -1648,26 +1497,17 @@ function CreateManualDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Create manual</DialogTitle>
-          <DialogDescription>
-            Pick a template to pre-fill sections, or start blank.
-          </DialogDescription>
+          <DialogDescription>Pick a template to pre-fill sections, or start blank.</DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
           <Label>Template</Label>
-          <TemplatePicker
-            templates={templates}
-            value={templateId}
-            onChange={setTemplateId}
-          />
+          <TemplatePicker templates={templates} value={templateId} onChange={setTemplateId} />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            onClick={() => onSubmit(templateId)}
-            disabled={submitting}
-          >
+          <Button onClick={() => onSubmit(templateId)} disabled={submitting}>
             <Plus className="mr-2 h-4 w-4" />
             {submitting ? "Creating…" : "Create draft"}
           </Button>
@@ -1687,11 +1527,7 @@ function ImportPdfDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
   templates: TemplateOption[];
-  onSubmit: (input: {
-    filename: string;
-    pdfBase64: string;
-    templateId?: string;
-  }) => void;
+  onSubmit: (input: { filename: string; pdfBase64: string; templateId?: string }) => void;
   submitting: boolean;
 }) {
   const defaultId = templates.find((t) => t.is_default)?.id;
@@ -1724,9 +1560,7 @@ function ImportPdfDialog({
     const bytes = new Uint8Array(buf);
     const chunk = 0x8000;
     for (let i = 0; i < bytes.length; i += chunk) {
-      binary += String.fromCharCode(
-        ...bytes.subarray(i, Math.min(i + chunk, bytes.length)),
-      );
+      binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunk, bytes.length)));
     }
     const pdfBase64 = btoa(binary);
     onSubmit({ filename: file.name, pdfBase64, templateId });
@@ -1738,18 +1572,14 @@ function ImportPdfDialog({
         <DialogHeader>
           <DialogTitle>Import legacy manual from PDF</DialogTitle>
           <DialogDescription>
-            We'll upload the PDF, extract the steps / parts / warnings with
-            AI, and create a new draft for you to clean up.
+            We'll upload the PDF, extract the steps / parts / warnings with AI, and create a new draft for you to clean
+            up.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1">
             <Label>PDF file (max 20 MB)</Label>
-            <Input
-              type="file"
-              accept="application/pdf"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            />
+            <Input type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
             {file && (
               <p className="text-xs text-muted-foreground">
                 {file.name} · {(file.size / 1024 / 1024).toFixed(2)} MB
@@ -1758,11 +1588,7 @@ function ImportPdfDialog({
           </div>
           <div className="space-y-1">
             <Label>Template</Label>
-            <TemplatePicker
-              templates={templates}
-              value={templateId}
-              onChange={setTemplateId}
-            />
+            <TemplatePicker templates={templates} value={templateId} onChange={setTemplateId} />
           </div>
         </div>
         <DialogFooter>
@@ -1778,7 +1604,6 @@ function ImportPdfDialog({
     </Dialog>
   );
 }
-
 
 function ManualPreviewDialog({
   open,
@@ -1863,7 +1688,13 @@ function ManualPreviewDialog({
           </Button>
         </DialogHeader>
         <div className="overflow-y-auto flex-1 bg-muted/30 py-4" id="manual-print-area">
-          <MasterManualPreview branding={branding} meta={meta} content={content} assets={assets} partCatalog={partCatalog} />
+          <MasterManualPreview
+            branding={branding}
+            meta={meta}
+            content={content}
+            assets={assets}
+            partCatalog={partCatalog}
+          />
         </div>
       </DialogContent>
     </Dialog>
@@ -1884,11 +1715,7 @@ function CoverImageCard({
   editable: boolean;
   hasOdooLink: boolean;
   onSet: (url: string | null) => void | Promise<void>;
-  uploadCover: (args: {
-    filename: string;
-    contentType: string;
-    dataBase64: string;
-  }) => Promise<{ url: string }>;
+  uploadCover: (args: { filename: string; contentType: string; dataBase64: string }) => Promise<{ url: string }>;
   fetchFromOdoo: () => Promise<{ url: string }>;
 }) {
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -1902,9 +1729,7 @@ function CoverImageCard({
       const bytes = new Uint8Array(buf);
       const chunk = 0x8000;
       for (let i = 0; i < bytes.length; i += chunk) {
-        binary += String.fromCharCode(
-          ...bytes.subarray(i, Math.min(i + chunk, bytes.length)),
-        );
+        binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunk, bytes.length)));
       }
       const dataBase64 = btoa(binary);
       const res = await uploadCover({
@@ -1930,21 +1755,14 @@ function CoverImageCard({
       <CardContent className="flex items-center gap-4">
         <div className="flex h-32 w-32 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">
           {imageUrl ? (
-            <img
-              src={imageUrl}
-              alt="Cover"
-              className="h-full w-full object-contain"
-            />
+            <img src={imageUrl} alt="Cover" className="h-full w-full object-contain" />
           ) : (
-            <span className="px-2 text-center text-[11px] text-muted-foreground">
-              No cover image
-            </span>
+            <span className="px-2 text-center text-[11px] text-muted-foreground">No cover image</span>
           )}
         </div>
         <div className="flex flex-1 flex-col gap-2">
           <p className="text-xs text-muted-foreground">
-            Shown on page 1 between the SKU and the company footer. Use a
-            high-resolution product image.
+            Shown on page 1 between the SKU and the company footer. Use a high-resolution product image.
           </p>
           <div className="flex flex-wrap gap-2">
             <input
@@ -1964,7 +1782,7 @@ function CoverImageCard({
               onClick={() => fileRef.current?.click()}
             >
               <Upload className="mr-2 h-4 w-4" />
-              {busy === "upload" ? "Uploading…" : "Upload / replace"}
+              {busy === "upload" ? "Uploading…" : "Replace"}
             </Button>
             {hasOdooLink && (
               <Button
@@ -2048,8 +1866,7 @@ function PartsTabPanel({
   const [searchSku, setSearchSku] = useState("");
   const [searching, setSearching] = useState(false);
 
-  const noBom =
-    content.parts.length === 0 && content.hardware_kit.length === 0;
+  const noBom = content.parts.length === 0 && content.hardware_kit.length === 0;
 
   return (
     <div className="space-y-6">
@@ -2057,15 +1874,11 @@ function PartsTabPanel({
         <div className="flex items-start gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
           <div className="flex-1">
-            <p className="font-medium text-amber-900 dark:text-amber-300">
-              No BOM loaded yet
-            </p>
+            <p className="font-medium text-amber-900 dark:text-amber-300">No BOM loaded yet</p>
             <p className="mt-1 text-muted-foreground">
-              We couldn't find a BOM for{" "}
-              <span className="font-mono">{productSku}</span> or{" "}
-              <span className="font-mono">{productSku}.x</span>. Try
-              "Load from BOM" again, search by a different SKU below, or
-              add parts manually.
+              We couldn't find a BOM for <span className="font-mono">{productSku}</span> or{" "}
+              <span className="font-mono">{productSku}.x</span>. Try "Load from BOM" again, search by a different SKU
+              below, or add parts manually.
             </p>
           </div>
           <Button
@@ -2089,9 +1902,8 @@ function PartsTabPanel({
         <div>
           <h3 className="text-sm font-semibold">Parts</h3>
           <p className="text-xs text-muted-foreground">
-            From the BOM of{" "}
-            <span className="font-mono">{productSku}</span>. Hardware Kit
-            comes from <span className="font-mono">{productSku}.x</span>.
+            From the BOM of <span className="font-mono">{productSku}</span>. Hardware Kit comes from{" "}
+            <span className="font-mono">{productSku}.x</span>.
           </p>
         </div>
         {editable && (
@@ -2110,9 +1922,7 @@ function PartsTabPanel({
       {editable && (
         <div className="flex flex-wrap items-end gap-2 rounded-md border border-dashed p-3">
           <div className="flex-1 min-w-[180px]">
-            <label className="text-xs font-medium text-muted-foreground">
-              Search BOM by SKU
-            </label>
+            <label className="text-xs font-medium text-muted-foreground">Search BOM by SKU</label>
             <Input
               value={searchSku}
               onChange={(e) => setSearchSku(e.target.value)}
@@ -2154,8 +1964,7 @@ function PartsTabPanel({
       <div>
         <h3 className="text-sm font-semibold">Hardware Kit</h3>
         <p className="mb-2 text-xs text-muted-foreground">
-          Sourced from{" "}
-          <span className="font-mono">{productSku}.x</span> BOM lines.
+          Sourced from <span className="font-mono">{productSku}.x</span> BOM lines.
         </p>
       </div>
       <PartsListEditor
