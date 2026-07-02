@@ -1301,6 +1301,9 @@ function ImagesPanel({
   onRemove,
   onUpload,
   uploading,
+  onReplace,
+  onRevert,
+  replacing,
   figMap,
 }: {
   assets: { id: string; type: string; url: string | null; metadata: any }[];
@@ -1309,8 +1312,12 @@ function ImagesPanel({
   onRemove: (id: string) => void;
   onUpload: (file: File, caption?: string) => Promise<unknown>;
   uploading: boolean;
+  onReplace: (assetId: string, blob: Blob) => Promise<unknown>;
+  onRevert: (assetId: string) => void;
+  replacing: boolean;
   figMap: Map<string, number>;
 }) {
+  const [editingAsset, setEditingAsset] = useState<{ id: string; url: string } | null>(null);
   const [url, setUrl] = useState("");
   const [caption, setCaption] = useState("");
   const fileRef = useRef<HTMLInputElement | null>(null);
