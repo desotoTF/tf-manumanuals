@@ -896,15 +896,15 @@ function ContentEditor({
   return (
     <div className="space-y-3">
       {/* Tab bar — pulled out of the step card */}
-      <div className="flex flex-wrap items-center gap-1 border-b border-border">
+      <div className="flex flex-wrap items-center gap-1">
         {TABS.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`-mb-px rounded-t-md border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+            className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
               tab === t.id
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
+                ? "text-foreground"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             {t.label}
