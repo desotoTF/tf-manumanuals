@@ -1062,6 +1062,132 @@ export const removeManualAsset = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+// Replace an image asset's file with an edited version. The very first edit
+// stashes the current url + storage_path into metadata.original_* so revert
+// can restore them. Subsequent edits overwrite the "edited" file only and
+// leave the original untouched. Returns the updated asset row.
+export const replaceManualAssetImage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        assetId: uuid,
+        filename: z.string().min(1).max(200),
+        contentType: z.string().min(1).max(120),
+        dataBase64: z.string().min(1).max(16_000_000),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { data: asset, error: aErr } = await supabase
+      .from("manual_assets")
+      .select(
+        "id, url, storage_path, metadata, manual_version_id, manual_versions!inner(manual_id, manuals!inner(product_id, products!inner(organization_id)))",
+      )
+      .eq("id", data.assetId)
+      .maybeSingle();
+    if (aErr) throw aErr;
+    if (!asset) throw new Error("Asset not found");
+
+    const nested = asset as unknown as {
+      manual_version_id: string;
+      manual_versions: { manuals: { product_id: string; products: { organization_id: string } } };
+    };
+    const orgId = nested.manual_versions.manuals.products.organization_id;
+    const productId = nested.manual_versions.manuals.product_id;
+    const versionId = nested.manual_version_id;
+    const meta = (asset.metadata as Record<string, unknown> | null) ?? {};
+    const alreadyEdited = Boolean(meta.edited);
+    const currentPath = (asset.storage_path as string | null) ?? null;
+    const currentUrl = (asset.url as string | null) ?? null;
+
+    const { supabaseAdmin } = await import(
+      "@/integrations/supabase/client.server",
+    );
+
+    const safeName = data.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const path = `manual-images/${orgId}/${productId}/${versionId}/edited-${Date.now()}-${safeName}`;
+    const bytes = Buffer.from(data.dataBase64, "base64");
+    const { error: upErr } = await supabaseAdmin.storage
+      .from("manual-assets")
+      .upload(path, bytes, { contentType: data.contentType, upsert: false });
+    if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
+
+    const { data: signed, error: sErr } = await supabaseAdmin.storage
+      .from("manual-assets")
+      .createSignedUrl(path, 60 * 60 * 24 * 365 * 10);
+    if (sErr) throw new Error(`Signing URL failed: ${sErr.message}`);
+
+    // Delete the previous edited file (if any) so only one edited version
+    // exists at a time. The original is preserved via metadata.
+    if (alreadyEdited && currentPath) {
+      await supabaseAdmin.storage.from("manual-assets").remove([currentPath]);
+    }
+
+    const nextMeta: Record<string, unknown> = { ...meta, edited: true };
+    if (!alreadyEdited) {
+      nextMeta.original_url = currentUrl;
+      nextMeta.original_storage_path = currentPath;
+    }
+
+    const { data: updated, error: uErr } = await supabase
+      .from("manual_assets")
+      .update({ url: signed.signedUrl, storage_path: path, metadata: nextMeta })
+      .eq("id", data.assetId)
+      .select("id, type, url, metadata, created_at")
+      .single();
+    if (uErr) throw uErr;
+    return updated;
+  });
+
+// Revert an edited image back to its original. Deletes the edited file and
+// restores url + storage_path from metadata.original_*.
+export const revertManualAssetImage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ assetId: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { data: asset, error: aErr } = await supabase
+      .from("manual_assets")
+      .select("id, url, storage_path, metadata")
+      .eq("id", data.assetId)
+      .maybeSingle();
+    if (aErr) throw aErr;
+    if (!asset) throw new Error("Asset not found");
+    const meta = (asset.metadata as Record<string, unknown> | null) ?? {};
+    if (!meta.edited) return asset;
+
+    const editedPath = (asset.storage_path as string | null) ?? null;
+    const originalUrl = (meta.original_url as string | null) ?? null;
+    const originalPath = (meta.original_storage_path as string | null) ?? null;
+
+    const { supabaseAdmin } = await import(
+      "@/integrations/supabase/client.server",
+    );
+    if (editedPath && editedPath !== originalPath) {
+      await supabaseAdmin.storage.from("manual-assets").remove([editedPath]);
+    }
+
+    const nextMeta: Record<string, unknown> = { ...meta };
+    delete nextMeta.edited;
+    delete nextMeta.original_url;
+    delete nextMeta.original_storage_path;
+
+    const { data: updated, error: uErr } = await supabase
+      .from("manual_assets")
+      .update({
+        url: originalUrl,
+        storage_path: originalPath,
+        metadata: nextMeta,
+      })
+      .eq("id", data.assetId)
+      .select("id, type, url, metadata, created_at")
+      .single();
+    if (uErr) throw uErr;
+    return updated;
+  });
+
 // ---------- BOM autofill for the manual editor ----------
 // Loads the latest BOM snapshot for the product, applies the org's
 // exclusion list, and splits lines into:
