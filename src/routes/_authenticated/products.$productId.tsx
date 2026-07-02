@@ -863,7 +863,7 @@ function ContentEditor({
 }) {
 
   const [tab, setTab] = useState<
-    "steps" | "tools" | "parts" | "warnings" | "torque" | "images"
+    "steps" | "images" | "parts" | "tools" | "warnings"
   >("steps");
 
   // Asset list (for image pickers + the Images tab). Figure numbering
@@ -886,114 +886,97 @@ function ContentEditor({
     value: ManualContent[K],
   ) => setContent({ ...content, [key]: value });
 
+  const TABS = [
+    { id: "steps", label: "Steps" },
+    { id: "images", label: "Images" },
+    { id: "parts", label: "Parts" },
+    { id: "tools", label: "Tools" },
+    { id: "warnings", label: "Warnings" },
+  ] as const;
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex flex-wrap gap-1">
-          {(
-            [
-              "steps",
-              "tools",
-              "parts",
-              "warnings",
-              "torque",
-              "images",
-            ] as const
-          ).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize ${
-                tab === t
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {tab === "steps" && (
-          <StepsEditor
-            steps={content.steps}
-            setSteps={(s) => update("steps", s)}
-            editable={editable}
-            images={figureSources}
-            figMap={figMap}
-            onInlineUpload={async (file) => {
-              const asset = (await onUploadAsset(file)) as
-                | { id?: string }
-                | null
-                | undefined;
-              return asset?.id ?? null;
-            }}
-          />
-        )}
+    <div className="space-y-3">
+      {/* Tab bar — pulled out of the step card */}
+      <div className="flex flex-wrap items-center gap-1 border-b border-border">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`-mb-px rounded-t-md border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+              tab === t.id
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-        {tab === "tools" && (
-          <ToolsListEditor
-            items={content.tools}
-            setItems={(items) => update("tools", items)}
-            editable={editable}
-            tools={tools}
-            onCreateTool={onCreateTool}
-            creating={creatingTool}
-          />
-        )}
-        {tab === "parts" && (
-          <PartsTabPanel
-            content={content}
-            update={update}
-            editable={editable}
-            productSku={productSku}
-            onLoadBom={onLoadBom}
-            onSearchBom={onSearchBom}
-          />
-        )}
-
-        {tab === "warnings" && (
-          <WarningsEditor
-            warnings={content.warnings}
-            setWarnings={(w) => update("warnings", w)}
-            editable={editable}
-            images={figureSources}
-            figMap={figMap}
-          />
-        )}
-
-        {tab === "torque" && (
-          <SimpleListEditor
-            items={content.torque_specs}
-            setItems={(items) => update("torque_specs", items)}
-            editable={editable}
-            columns={[
-              { key: "fastener", label: "Fastener", placeholder: "M8 bolt" },
-              { key: "value", label: "Value", placeholder: "25", numeric: true },
-              { key: "unit", label: "Unit", placeholder: "Nm" },
-              { key: "sequence", label: "Sequence" },
-            ]}
-            empty={(): ManualContent["torque_specs"][number] => ({ fastener: "", value: 0, unit: "Nm" })}
-          />
-        )}
-        {tab === "images" && (
-          <ImagesPanel
-            assets={assets}
-            editable={editable}
-            onAdd={onAddAsset}
-            onRemove={onRemoveAsset}
-            onUpload={onUploadAsset}
-            uploading={uploadingAsset}
-            figMap={figMap}
-          />
-        )}
-
-      </CardContent>
-    </Card>
+      <Card>
+        <CardContent className="space-y-3 pt-4">
+          {tab === "steps" && (
+            <StepsEditor
+              steps={content.steps}
+              setSteps={(s) => update("steps", s)}
+              editable={editable}
+              images={figureSources}
+              figMap={figMap}
+              onInlineUpload={async (file) => {
+                const asset = (await onUploadAsset(file)) as
+                  | { id?: string }
+                  | null
+                  | undefined;
+                return asset?.id ?? null;
+              }}
+            />
+          )}
+          {tab === "images" && (
+            <ImagesPanel
+              assets={assets}
+              editable={editable}
+              onAdd={onAddAsset}
+              onRemove={onRemoveAsset}
+              onUpload={onUploadAsset}
+              uploading={uploadingAsset}
+              figMap={figMap}
+            />
+          )}
+          {tab === "parts" && (
+            <PartsTabPanel
+              content={content}
+              update={update}
+              editable={editable}
+              productSku={productSku}
+              onLoadBom={onLoadBom}
+              onSearchBom={onSearchBom}
+            />
+          )}
+          {tab === "tools" && (
+            <ToolsListEditor
+              items={content.tools}
+              setItems={(items) => update("tools", items)}
+              editable={editable}
+              tools={tools}
+              onCreateTool={onCreateTool}
+              creating={creatingTool}
+            />
+          )}
+          {tab === "warnings" && (
+            <WarningsEditor
+              warnings={content.warnings}
+              setWarnings={(w) => update("warnings", w)}
+              editable={editable}
+              images={figureSources}
+              figMap={figMap}
+            />
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
+
 
 
 
