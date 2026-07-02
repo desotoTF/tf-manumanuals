@@ -961,15 +961,7 @@ function ContentEditor({
               creating={creatingTool}
             />
           )}
-          {tab === "warnings" && (
-            <WarningsEditor
-              warnings={content.warnings}
-              setWarnings={(w) => update("warnings", w)}
-              editable={editable}
-              images={figureSources}
-              figMap={figMap}
-            />
-          )}
+          {null}
         </CardContent>
       </Card>
     </div>
