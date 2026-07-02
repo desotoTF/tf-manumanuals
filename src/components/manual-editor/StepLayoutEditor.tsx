@@ -706,8 +706,30 @@ function Toolbar({ editor }: { editor: Editor }) {
       {children}
     </button>
   );
+  const currentSize = editor.isActive("heading", { level: 3 })
+    ? "h3"
+    : editor.isActive("heading", { level: 4 })
+      ? "h4"
+      : "p";
+  const setSize = (v: string) => {
+    if (v === "p") editor.chain().focus().setParagraph().run();
+    else if (v === "h3")
+      editor.chain().focus().toggleHeading({ level: 3 }).run();
+    else if (v === "h4")
+      editor.chain().focus().toggleHeading({ level: 4 }).run();
+  };
   return (
-    <div className="flex flex-wrap gap-1">
+    <div className="flex flex-wrap items-center gap-1">
+      <Select value={currentSize} onValueChange={setSize}>
+        <SelectTrigger className="h-7 w-[110px] text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="p" className="text-xs">Normal</SelectItem>
+          <SelectItem value="h4" className="text-xs">Large</SelectItem>
+          <SelectItem value="h3" className="text-xs">Heading</SelectItem>
+        </SelectContent>
+      </Select>
       <TbBtn
         label="Bold"
         active={editor.isActive("bold")}
@@ -759,6 +781,7 @@ function Toolbar({ editor }: { editor: Editor }) {
     </div>
   );
 }
+
 
 // Re-export Plus icon to suppress unused-import noise if needed elsewhere.
 export { Plus };
