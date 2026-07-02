@@ -547,42 +547,6 @@ function ProductEditorPage() {
               </CardContent>
             </Card>
           ) : (
-            <>
-            {primaryManual && (
-              <CoverImageCard
-                manualId={primaryManual.id}
-                imageUrl={content.hero_image_url ?? null}
-                editable={!!editable}
-                hasOdooLink={true}
-                onSet={async (url) => {
-                  setContent({ ...content, hero_image_url: url });
-                  // Persist immediately so the cover survives reloads.
-                  try {
-                    await saveDraft({
-                      data: {
-                        versionId: activeVersionId!,
-                        content: {
-                          ...(content as unknown as Record<string, unknown>),
-                          hero_image_url: url,
-                        },
-                        changeSummary: changeSummary || undefined,
-                      },
-                    });
-                    qc.invalidateQueries({
-                      queryKey: ["manual-version", activeVersionId],
-                    });
-                  } catch (e) {
-                    toast.error((e as Error).message);
-                  }
-                }}
-                uploadCover={(args) =>
-                  uploadCover({ data: { manualId: primaryManual.id, ...args } })
-                }
-                fetchFromOdoo={() =>
-                  fetchOdooCover({ data: { manualId: primaryManual.id } })
-                }
-              />
-            )}
             <ContentEditor
               content={content}
               setContent={setContent}
@@ -649,7 +613,6 @@ function ProductEditorPage() {
                   toast.info(`No BOM found in Odoo for ${searchSku}.`);
                   return;
                 }
-                // Pull the new snapshot into the editor.
                 const loaded = await loadBom({ data: { productId } });
                 setContent({
                   ...content,
@@ -662,9 +625,7 @@ function ProductEditorPage() {
                   `Loaded ${totalLoaded} BOM line${totalLoaded === 1 ? "" : "s"} from ${searchSku}`,
                 );
               }}
-
             />
-            </>
           )}
         </section>
 
@@ -685,6 +646,41 @@ function ProductEditorPage() {
                 </div>
               </CardContent>
             </Card>
+          )}
+
+          {activeVersion && primaryManual && (
+            <CoverImageCard
+              manualId={primaryManual.id}
+              imageUrl={content.hero_image_url ?? null}
+              editable={!!editable}
+              hasOdooLink={true}
+              onSet={async (url) => {
+                setContent({ ...content, hero_image_url: url });
+                try {
+                  await saveDraft({
+                    data: {
+                      versionId: activeVersionId!,
+                      content: {
+                        ...(content as unknown as Record<string, unknown>),
+                        hero_image_url: url,
+                      },
+                      changeSummary: changeSummary || undefined,
+                    },
+                  });
+                  qc.invalidateQueries({
+                    queryKey: ["manual-version", activeVersionId],
+                  });
+                } catch (e) {
+                  toast.error((e as Error).message);
+                }
+              }}
+              uploadCover={(args) =>
+                uploadCover({ data: { manualId: primaryManual.id, ...args } })
+              }
+              fetchFromOdoo={() =>
+                fetchOdooCover({ data: { manualId: primaryManual.id } })
+              }
+            />
           )}
 
           {activeVersion && (
@@ -795,45 +791,7 @@ function ProductEditorPage() {
             </Card>
           )}
 
-          {/* Latest BOM card (moved from left rail) */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Latest BOM</CardTitle>
-            </CardHeader>
-            <CardContent className="text-xs">
-              {ws.latestBom ? (
-                <>
-                  <div className="mb-2 text-muted-foreground">
-                    Captured{" "}
-                    {formatDistanceToNow(new Date(ws.latestBom.captured_at), {
-                      addSuffix: true,
-                    })}
-                    {ws.latestBom.erp_bom_revision && (
-                      <> · rev {ws.latestBom.erp_bom_revision}</>
-                    )}
-                  </div>
-                  <ul className="space-y-1">
-                    {((ws.latestBom.normalized_items as any[]) ?? [])
-                      .slice(0, 20)
-                      .map((it, i) => (
-                        <li key={i} className="flex justify-between gap-2">
-                          <span className="truncate font-mono">
-                            {it.part_number}
-                          </span>
-                          <span className="text-muted-foreground">
-                            ×{it.qty}
-                          </span>
-                        </li>
-                      ))}
-                  </ul>
-                </>
-              ) : (
-                <p className="text-muted-foreground">No BOM synced yet.</p>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Versions card (moved from left rail) */}
+          {/* Versions card */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">Versions</CardTitle>
@@ -866,6 +824,7 @@ function ProductEditorPage() {
     </div>
   );
 }
+
 
 // ---------- Structured content editor ----------
 
