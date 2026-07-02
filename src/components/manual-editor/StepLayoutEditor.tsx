@@ -120,26 +120,28 @@ export function StepLayoutEditor({
         <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
           Layout
         </span>
-        <div className="inline-flex rounded-md border border-border bg-card/40 p-0.5">
-          {allowed.map((l) => (
-            <button
-              key={l}
-              type="button"
-              disabled={disabled}
-              onClick={() => switchLayout(l)}
-              className={cn(
-                "flex items-center gap-1 rounded px-2 py-1 text-xs",
-                layout === l
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-muted",
-              )}
-              title={STEP_LAYOUT_LABEL[l]}
-            >
-              <LayoutIcon layout={l} className="h-3.5 w-3.5" />
-              {STEP_LAYOUT_LABEL[l]}
-            </button>
-          ))}
-        </div>
+        <Select
+          value={layout}
+          onValueChange={(v) => switchLayout(v as StepLayout)}
+          disabled={disabled}
+        >
+          <SelectTrigger className="h-8 w-[170px] text-xs">
+            <span className="flex items-center gap-2">
+              <LayoutIcon layout={layout} className="h-3.5 w-3.5" />
+              {STEP_LAYOUT_LABEL[layout]}
+            </span>
+          </SelectTrigger>
+          <SelectContent>
+            {allowed.map((l) => (
+              <SelectItem key={l} value={l} className="text-xs">
+                <span className="flex items-center gap-2">
+                  <LayoutIcon layout={l} className="h-3.5 w-3.5" />
+                  {STEP_LAYOUT_LABEL[l]}
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className={containerCls}>
         {slots.map((slot, i) => (
@@ -168,6 +170,7 @@ export function StepLayoutEditor({
     </div>
   );
 }
+
 
 function LayoutIcon({
   layout,
