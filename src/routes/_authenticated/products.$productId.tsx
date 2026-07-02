@@ -990,6 +990,9 @@ function ContentEditor({
               onRemove={onRemoveAsset}
               onUpload={onUploadAsset}
               uploading={uploadingAsset}
+              onReplace={onReplaceAsset}
+              onRevert={onRevertAsset}
+              replacing={replacingAsset}
               figMap={figMap}
             />
           )}
