@@ -1567,6 +1567,17 @@ function ImagesPanel({
           </div>
         </div>
       )}
+      <ImageEditorDialog
+        open={!!editingAsset}
+        onOpenChange={(v) => !v && setEditingAsset(null)}
+        imageUrl={editingAsset?.url ?? null}
+        saving={replacing}
+        onSave={async (blob) => {
+          if (!editingAsset) return;
+          await onReplace(editingAsset.id, blob);
+          setEditingAsset(null);
+        }}
+      />
     </div>
   );
 }
