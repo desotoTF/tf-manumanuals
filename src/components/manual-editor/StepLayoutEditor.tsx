@@ -593,9 +593,9 @@ function RichTextField({
 
   return (
     <div className="space-y-2">
-      {!disabled && <Toolbar editor={editor} />}
       {!disabled && (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Toolbar editor={editor} />
           <Popover
             open={pickerOpen}
             onOpenChange={(o) => {
@@ -606,14 +606,14 @@ function RichTextField({
             <PopoverTrigger asChild>
               <Button
                 size="sm"
-                variant="ghost"
-                className="h-7 px-2 text-xs"
+                variant="outline"
+                className="h-7 border-border px-2 text-xs font-normal"
                 title="Insert Fig. reference (or type ##Fig.)"
               >
                 <Hash className="mr-1 h-3 w-3" /> Fig. ref
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-80 p-2" align="start">
+            <PopoverContent className="w-80 p-2" align="end">
               <p className="mb-2 text-xs text-muted-foreground">
                 Pick an image. Fig. numbers follow the order images appear in
                 steps.
@@ -675,6 +675,7 @@ function RichTextField({
     </div>
   );
 }
+
 
 function stripHtml(s: string): string {
   return s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
