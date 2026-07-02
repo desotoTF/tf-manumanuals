@@ -16,6 +16,8 @@ import {
   addManualAsset,
   removeManualAsset,
   uploadManualAssetFile,
+  replaceManualAssetImage,
+  revertManualAssetImage,
   uploadPublishedPdf,
   uploadManualCoverImage,
   fetchOdooCoverImage,
