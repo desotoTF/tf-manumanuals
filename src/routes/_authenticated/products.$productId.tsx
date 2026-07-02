@@ -43,7 +43,7 @@ import {
 } from "@/lib/types";
 import { useStepFigureMap } from "@/lib/figure-refs";
 import { FigureRefField } from "@/components/manual-editor/FigureRefField";
-import { StepLayoutEditor } from "@/components/manual-editor/StepLayoutEditor";
+import { StepLayoutEditor, StepLayoutSwitcher } from "@/components/manual-editor/StepLayoutEditor";
 import { usePartCatalog } from "@/lib/use-part-catalog";
 
 
@@ -863,7 +863,7 @@ function ContentEditor({
 }) {
 
   const [tab, setTab] = useState<
-    "steps" | "images" | "parts" | "tools" | "warnings"
+    "steps" | "images" | "parts" | "tools"
   >("steps");
 
   // Asset list (for image pickers + the Images tab). Figure numbering
@@ -891,21 +891,20 @@ function ContentEditor({
     { id: "images", label: "Images" },
     { id: "parts", label: "Parts" },
     { id: "tools", label: "Tools" },
-    { id: "warnings", label: "Warnings" },
   ] as const;
 
   return (
     <div className="space-y-3">
       {/* Tab bar — pulled out of the step card */}
-      <div className="flex flex-wrap items-center gap-1 border-b border-border">
+      <div className="flex flex-wrap items-center gap-1">
         {TABS.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`-mb-px rounded-t-md border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+            className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
               tab === t.id
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
+                ? "text-foreground"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             {t.label}
@@ -962,15 +961,7 @@ function ContentEditor({
               creating={creatingTool}
             />
           )}
-          {tab === "warnings" && (
-            <WarningsEditor
-              warnings={content.warnings}
-              setWarnings={(w) => update("warnings", w)}
-              editable={editable}
-              images={figureSources}
-              figMap={figMap}
-            />
-          )}
+          {null}
         </CardContent>
       </Card>
     </div>
@@ -1051,23 +1042,36 @@ function StepsEditor({
                 </div>
               )}
             </div>
-            <Input
-              value={s.title}
-              onChange={(e) => {
-                const next = [...steps];
-                next[i] = { ...s, title: e.target.value };
-                setSteps(next);
-              }}
-              disabled={!editable}
-              placeholder="Step title"
-              className="mb-2"
-            />
+            <div className="mb-2 flex items-center gap-2">
+              <Input
+                value={s.title}
+                onChange={(e) => {
+                  const next = [...steps];
+                  next[i] = { ...s, title: e.target.value };
+                  setSteps(next);
+                }}
+                disabled={!editable}
+                placeholder="Step title"
+                className="flex-1"
+              />
+              <StepLayoutSwitcher
+                step={normalized}
+                disabled={!editable}
+                onChange={(next: ManualStep) => {
+                  const arr = [...steps];
+                  arr[i] = next;
+                  setSteps(arr);
+                  if (next.layout) setNextLayout(next.layout);
+                }}
+              />
+            </div>
             <StepLayoutEditor
               step={normalized}
               disabled={!editable}
               images={images}
               figMap={figMap}
               onInlineUpload={onInlineUpload}
+              hideLayoutSwitcher
               onChange={(next: ManualStep) => {
                 const arr = [...steps];
                 arr[i] = next;
@@ -1075,6 +1079,7 @@ function StepsEditor({
                 if (next.layout) setNextLayout(next.layout);
               }}
             />
+
           </div>
         );
       })}

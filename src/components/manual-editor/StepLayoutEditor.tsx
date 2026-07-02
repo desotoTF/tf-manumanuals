@@ -65,24 +65,30 @@ interface Props {
   /** Optional inline upload — when provided, the image picker shows a
    *  "Choose image" tile that uploads on click and auto-selects. */
   onInlineUpload?: (file: File) => Promise<string | null>;
+  /** Hide the built-in layout switcher (parent renders its own). */
+  hideLayoutSwitcher?: boolean;
 }
 
-export function StepLayoutEditor({
+/** Standalone layout switcher — usable inline in a step header row. */
+export function StepLayoutSwitcher({
   step,
   onChange,
   disabled,
-  images,
-  figMap,
   allowedLayouts,
-  onInlineUpload,
-}: Props) {
-  const normalized = useMemo(() => normalizeStep(step), [step]);
+  className,
+}: {
+  step: ManualStep;
+  onChange: (next: ManualStep) => void;
+  disabled?: boolean;
+  allowedLayouts?: StepLayout[];
+  className?: string;
+}) {
+  const normalized = normalizeStep(step);
   const layout = normalized.layout ?? "two_col";
   const slots = normalized.slots ?? [];
   const allowed = (allowedLayouts && allowedLayouts.length > 0
     ? allowedLayouts
     : ALL_STEP_LAYOUTS) as StepLayout[];
-
   const switchLayout = (next: StepLayout) => {
     if (next === layout) return;
     const dropping =
@@ -100,6 +106,50 @@ export function StepLayoutEditor({
     }
     onChange(changeStepLayout(normalized, next));
   };
+  return (
+    <div className={cn("flex items-center gap-2", className)}>
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        Layout
+      </span>
+      <Select
+        value={layout}
+        onValueChange={(v) => switchLayout(v as StepLayout)}
+        disabled={disabled}
+      >
+        <SelectTrigger className="h-8 w-[170px] text-xs">
+          <div className="flex min-w-0 items-center gap-2">
+            <LayoutIcon layout={layout} className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{STEP_LAYOUT_LABEL[layout]}</span>
+          </div>
+        </SelectTrigger>
+        <SelectContent>
+          {allowed.map((l) => (
+            <SelectItem key={l} value={l} className="text-xs">
+              <span className="flex items-center gap-2">
+                <LayoutIcon layout={l} className="h-3.5 w-3.5" />
+                {STEP_LAYOUT_LABEL[l]}
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+export function StepLayoutEditor({
+  step,
+  onChange,
+  disabled,
+  images,
+  figMap,
+  allowedLayouts,
+  onInlineUpload,
+  hideLayoutSwitcher,
+}: Props) {
+  const normalized = useMemo(() => normalizeStep(step), [step]);
+  const layout = normalized.layout ?? "two_col";
+  const slots = normalized.slots ?? [];
 
   const updateSlot = (i: number, slot: StepSlot) => {
     const next = slots.slice();
@@ -116,33 +166,14 @@ export function StepLayoutEditor({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Layout
-        </span>
-        <Select
-          value={layout}
-          onValueChange={(v) => switchLayout(v as StepLayout)}
+      {!hideLayoutSwitcher && (
+        <StepLayoutSwitcher
+          step={normalized}
+          onChange={onChange}
           disabled={disabled}
-        >
-          <SelectTrigger className="h-8 w-[170px] text-xs">
-            <span className="flex items-center gap-2">
-              <LayoutIcon layout={layout} className="h-3.5 w-3.5" />
-              {STEP_LAYOUT_LABEL[layout]}
-            </span>
-          </SelectTrigger>
-          <SelectContent>
-            {allowed.map((l) => (
-              <SelectItem key={l} value={l} className="text-xs">
-                <span className="flex items-center gap-2">
-                  <LayoutIcon layout={l} className="h-3.5 w-3.5" />
-                  {STEP_LAYOUT_LABEL[l]}
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+          allowedLayouts={allowedLayouts}
+        />
+      )}
       <div className={containerCls}>
         {slots.map((slot, i) => (
           <SlotEditor
