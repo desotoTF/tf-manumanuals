@@ -43,7 +43,7 @@ import {
 } from "@/lib/types";
 import { useStepFigureMap } from "@/lib/figure-refs";
 import { FigureRefField } from "@/components/manual-editor/FigureRefField";
-import { StepLayoutEditor } from "@/components/manual-editor/StepLayoutEditor";
+import { StepLayoutEditor, StepLayoutSwitcher } from "@/components/manual-editor/StepLayoutEditor";
 import { usePartCatalog } from "@/lib/use-part-catalog";
 
 
