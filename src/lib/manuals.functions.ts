@@ -1133,7 +1133,7 @@ export const replaceManualAssetImage = createServerFn({ method: "POST" })
 
     const { data: updated, error: uErr } = await supabase
       .from("manual_assets")
-      .update({ url: signed.signedUrl, storage_path: path, metadata: nextMeta })
+      .update({ url: signed.signedUrl, storage_path: path, metadata: nextMeta as never })
       .eq("id", data.assetId)
       .select("id, type, url, metadata, created_at")
       .single();
@@ -1179,7 +1179,7 @@ export const revertManualAssetImage = createServerFn({ method: "POST" })
       .update({
         url: originalUrl,
         storage_path: originalPath,
-        metadata: nextMeta,
+        metadata: nextMeta as never,
       })
       .eq("id", data.assetId)
       .select("id, type, url, metadata, created_at")
