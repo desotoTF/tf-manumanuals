@@ -1125,7 +1125,7 @@ export const replaceManualAssetImage = createServerFn({ method: "POST" })
       await supabaseAdmin.storage.from("manual-assets").remove([currentPath]);
     }
 
-    const nextMeta: Record<string, unknown> = { ...meta, edited: true };
+    const nextMeta: Record<string, any> = { ...meta, edited: true };
     if (!alreadyEdited) {
       nextMeta.original_url = currentUrl;
       nextMeta.original_storage_path = currentPath;
@@ -1169,7 +1169,7 @@ export const revertManualAssetImage = createServerFn({ method: "POST" })
       await supabaseAdmin.storage.from("manual-assets").remove([editedPath]);
     }
 
-    const nextMeta: Record<string, unknown> = { ...meta };
+    const nextMeta: Record<string, any> = { ...meta };
     delete nextMeta.edited;
     delete nextMeta.original_url;
     delete nextMeta.original_storage_path;
