@@ -304,11 +304,6 @@ export function MasterManualPreview({
             </div>
           )}
 
-          {/* Torque Specs (static reference) */}
-          <div style={{ marginTop: 20 }}>
-            <SectionHeader>TORQUE SPECS</SectionHeader>
-            <TorqueSpecsTables />
-          </div>
 
           {/* Warnings block */}
           {content.warnings.length > 0 && (
