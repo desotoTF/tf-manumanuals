@@ -951,65 +951,81 @@ function StepsEditor({
   });
 
   return (
-    <div className="space-y-3">
+    <div>
       {steps.map((s, i) => {
         const normalized = normalizeStep(s);
         return (
-          <div key={s.id} className="rounded-md border border-border p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-xs font-semibold text-muted-foreground">Step {i + 1}</span>
-              {editable && (
-                <div className="flex gap-1">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={i === 0}
-                    onClick={() => {
-                      const next = [...steps];
-                      [next[i - 1], next[i]] = [next[i], next[i - 1]];
-                      setSteps(next);
-                    }}
-                  >
-                    ↑
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={i === steps.length - 1}
-                    onClick={() => {
-                      const next = [...steps];
-                      [next[i + 1], next[i]] = [next[i], next[i + 1]];
-                      setSteps(next);
-                    }}
-                  >
-                    ↓
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setSteps(steps.filter((_, j) => j !== i))}
-                    className="text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
-            </div>
-            <div className="mb-2 flex items-center gap-2">
-              <Input
-                value={s.title}
-                onChange={(e) => {
-                  const next = [...steps];
-                  next[i] = { ...s, title: e.target.value };
-                  setSteps(next);
-                }}
-                disabled={!editable}
-                placeholder="Step title"
-                className="flex-1"
-              />
-              <StepLayoutSwitcher
+          <div key={s.id}>
+            <div className="py-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-semibold text-muted-foreground">Step {i + 1}</span>
+                {editable && (
+                  <div className="flex gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={i === 0}
+                      onClick={() => {
+                        const next = [...steps];
+                        [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                        setSteps(next);
+                      }}
+                    >
+                      ↑
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={i === steps.length - 1}
+                      onClick={() => {
+                        const next = [...steps];
+                        [next[i + 1], next[i]] = [next[i], next[i + 1]];
+                        setSteps(next);
+                      }}
+                    >
+                      ↓
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setSteps(steps.filter((_, j) => j !== i))}
+                      className="text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+              <div className="mb-2 flex items-center gap-2">
+                <Input
+                  value={s.title}
+                  onChange={(e) => {
+                    const next = [...steps];
+                    next[i] = { ...s, title: e.target.value };
+                    setSteps(next);
+                  }}
+                  disabled={!editable}
+                  placeholder="Step title"
+                  className="flex-1"
+                />
+                <StepLayoutSwitcher
+                  step={normalized}
+                  disabled={!editable}
+                  onChange={(next: ManualStep) => {
+                    const arr = [...steps];
+                    arr[i] = next;
+                    setSteps(arr);
+                    if (next.layout) setNextLayout(next.layout);
+                  }}
+                />
+              </div>
+              <StepLayoutEditor
                 step={normalized}
                 disabled={!editable}
+                images={images}
+                figMap={figMap}
+                onInlineUpload={onInlineUpload}
+                hideLayoutSwitcher
                 onChange={(next: ManualStep) => {
                   const arr = [...steps];
                   arr[i] = next;
@@ -1018,20 +1034,7 @@ function StepsEditor({
                 }}
               />
             </div>
-            <StepLayoutEditor
-              step={normalized}
-              disabled={!editable}
-              images={images}
-              figMap={figMap}
-              onInlineUpload={onInlineUpload}
-              hideLayoutSwitcher
-              onChange={(next: ManualStep) => {
-                const arr = [...steps];
-                arr[i] = next;
-                setSteps(arr);
-                if (next.layout) setNextLayout(next.layout);
-              }}
-            />
+            {i < steps.length - 1 && <hr className="border-border" />}
           </div>
         );
       })}
