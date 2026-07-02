@@ -1042,23 +1042,36 @@ function StepsEditor({
                 </div>
               )}
             </div>
-            <Input
-              value={s.title}
-              onChange={(e) => {
-                const next = [...steps];
-                next[i] = { ...s, title: e.target.value };
-                setSteps(next);
-              }}
-              disabled={!editable}
-              placeholder="Step title"
-              className="mb-2"
-            />
+            <div className="mb-2 flex items-center gap-2">
+              <Input
+                value={s.title}
+                onChange={(e) => {
+                  const next = [...steps];
+                  next[i] = { ...s, title: e.target.value };
+                  setSteps(next);
+                }}
+                disabled={!editable}
+                placeholder="Step title"
+                className="flex-1"
+              />
+              <StepLayoutSwitcher
+                step={normalized}
+                disabled={!editable}
+                onChange={(next: ManualStep) => {
+                  const arr = [...steps];
+                  arr[i] = next;
+                  setSteps(arr);
+                  if (next.layout) setNextLayout(next.layout);
+                }}
+              />
+            </div>
             <StepLayoutEditor
               step={normalized}
               disabled={!editable}
               images={images}
               figMap={figMap}
               onInlineUpload={onInlineUpload}
+              hideLayoutSwitcher
               onChange={(next: ManualStep) => {
                 const arr = [...steps];
                 arr[i] = next;
@@ -1066,6 +1079,7 @@ function StepsEditor({
                 if (next.layout) setNextLayout(next.layout);
               }}
             />
+
           </div>
         );
       })}
