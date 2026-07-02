@@ -863,7 +863,7 @@ function ContentEditor({
 }) {
 
   const [tab, setTab] = useState<
-    "steps" | "images" | "parts" | "tools" | "warnings"
+    "steps" | "images" | "parts" | "tools"
   >("steps");
 
   // Asset list (for image pickers + the Images tab). Figure numbering
@@ -891,7 +891,6 @@ function ContentEditor({
     { id: "images", label: "Images" },
     { id: "parts", label: "Parts" },
     { id: "tools", label: "Tools" },
-    { id: "warnings", label: "Warnings" },
   ] as const;
 
   return (
