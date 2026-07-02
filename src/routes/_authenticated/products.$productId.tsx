@@ -1427,14 +1427,38 @@ function ImagesPanel({
                 )}
               </figcaption>
               {editable && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => onRemove(a.id)}
-                  className="mt-1 h-7 w-full text-destructive"
-                >
-                  <Trash2 className="mr-1 h-3 w-3" /> Remove
-                </Button>
+                <div className="mt-1 flex gap-1">
+                  {a.url && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setEditingAsset({ id: a.id, url: a.url! })}
+                      className="h-7 flex-1 text-xs"
+                    >
+                      <Pencil className="mr-1 h-3 w-3" /> Edit
+                    </Button>
+                  )}
+                  {a.metadata?.edited && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onRevert(a.id)}
+                      className="h-7 flex-1 text-xs"
+                      title="Restore original image"
+                    >
+                      <RotateCcw className="mr-1 h-3 w-3" /> Revert
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => onRemove(a.id)}
+                    className="h-7 text-destructive"
+                    aria-label="Remove image"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
               )}
             </figure>
           );
