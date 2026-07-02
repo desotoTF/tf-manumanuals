@@ -446,11 +446,6 @@ export function ToolsListEditor({
 
   return (
     <div className="space-y-2">
-      {items.length === 0 && (
-        <p className="text-xs text-muted-foreground">
-          No tools yet. Click "Add tool" to start picking from your library.
-        </p>
-      )}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -509,13 +504,26 @@ export function ToolsListEditor({
         </SortableContext>
       </DndContext>
       {editable && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setItems([...items, { name: "" }])}
-        >
-          <Plus className="mr-2 h-4 w-4" /> Add tool
-        </Button>
+        // Persistent add-a-tool row: no need to click "Add tool" each time.
+        // Picking / creating from this row appends and clears itself.
+        <div className="flex items-start gap-2 pl-7">
+          <ToolCombobox
+            value=""
+            onChange={(name, spec) => {
+              if (!name) return;
+              setItems([...items, { name, spec: spec ?? undefined }]);
+            }}
+            tools={tools}
+            onCreate={onCreateTool}
+            creating={creating}
+            disabled={false}
+          />
+          <Input
+            placeholder="Spec (optional) — pick a tool first"
+            disabled
+            className="h-8 flex-1 text-sm"
+          />
+        </div>
       )}
     </div>
   );

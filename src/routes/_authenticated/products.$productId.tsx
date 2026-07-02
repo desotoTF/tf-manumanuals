@@ -16,6 +16,8 @@ import {
   addManualAsset,
   removeManualAsset,
   uploadManualAssetFile,
+  replaceManualAssetImage,
+  revertManualAssetImage,
   uploadPublishedPdf,
   uploadManualCoverImage,
   fetchOdooCoverImage,
@@ -79,7 +81,10 @@ import {
   Upload,
   Eye,
   Download,
+  Pencil,
+  RotateCcw,
 } from "lucide-react";
+import { ImageEditorDialog } from "@/components/manual-editor/ImageEditorDialog";
 import { getMasterTemplate } from "@/lib/templates.functions";
 import { MasterManualPreview } from "@/components/manual/MasterManualPreview";
 
@@ -397,6 +402,45 @@ function ProductEditorPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const replaceAssetImage = useServerFn(replaceManualAssetImage);
+  const revertAssetImage = useServerFn(revertManualAssetImage);
+
+  const replaceAssetMut = useMutation({
+    mutationFn: async (input: { assetId: string; blob: Blob }) => {
+      const buf = await input.blob.arrayBuffer();
+      let binary = "";
+      const bytes = new Uint8Array(buf);
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode(
+          ...bytes.subarray(i, Math.min(i + chunk, bytes.length)),
+        );
+      }
+      return replaceAssetImage({
+        data: {
+          assetId: input.assetId,
+          filename: `edited-${Date.now()}.png`,
+          contentType: "image/png",
+          dataBase64: btoa(binary),
+        },
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["manual-version", activeVersionId] });
+      toast.success("Edited image saved");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const revertAssetMut = useMutation({
+    mutationFn: (assetId: string) => revertAssetImage({ data: { assetId } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["manual-version", activeVersionId] });
+      toast.success("Reverted to original");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   if (workspaceQuery.isLoading)
     return <p className="text-sm text-muted-foreground">Loading…</p>;
   if (workspaceQuery.error)
@@ -558,6 +602,11 @@ function ProductEditorPage() {
                 uploadAssetMut.mutateAsync({ file, caption })
               }
               uploadingAsset={uploadAssetMut.isPending}
+              onReplaceAsset={(assetId, blob) =>
+                replaceAssetMut.mutateAsync({ assetId, blob })
+              }
+              onRevertAsset={(assetId) => revertAssetMut.mutate(assetId)}
+              replacingAsset={replaceAssetMut.isPending}
               tools={toolsQuery.data ?? []}
               onCreateTool={async (name) => {
                 const created = await upsertToolMut.mutateAsync(name);
@@ -837,6 +886,9 @@ function ContentEditor({
   onRemoveAsset,
   onUploadAsset,
   uploadingAsset,
+  onReplaceAsset,
+  onRevertAsset,
+  replacingAsset,
   tools,
   onCreateTool,
   creatingTool,
@@ -852,6 +904,9 @@ function ContentEditor({
   onRemoveAsset: (id: string) => void;
   onUploadAsset: (file: File, caption?: string) => Promise<unknown>;
   uploadingAsset: boolean;
+  onReplaceAsset: (assetId: string, blob: Blob) => Promise<unknown>;
+  onRevertAsset: (assetId: string) => void;
+  replacingAsset: boolean;
   tools: import("@/lib/tools.functions").ToolRow[];
   onCreateTool: (
     name: string,
@@ -938,6 +993,9 @@ function ContentEditor({
               onRemove={onRemoveAsset}
               onUpload={onUploadAsset}
               uploading={uploadingAsset}
+              onReplace={onReplaceAsset}
+              onRevert={onRevertAsset}
+              replacing={replacingAsset}
               figMap={figMap}
             />
           )}
@@ -1246,6 +1304,9 @@ function ImagesPanel({
   onRemove,
   onUpload,
   uploading,
+  onReplace,
+  onRevert,
+  replacing,
   figMap,
 }: {
   assets: { id: string; type: string; url: string | null; metadata: any }[];
@@ -1254,8 +1315,12 @@ function ImagesPanel({
   onRemove: (id: string) => void;
   onUpload: (file: File, caption?: string) => Promise<unknown>;
   uploading: boolean;
+  onReplace: (assetId: string, blob: Blob) => Promise<unknown>;
+  onRevert: (assetId: string) => void;
+  replacing: boolean;
   figMap: Map<string, number>;
 }) {
+  const [editingAsset, setEditingAsset] = useState<{ id: string; url: string } | null>(null);
   const [url, setUrl] = useState("");
   const [caption, setCaption] = useState("");
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -1365,14 +1430,38 @@ function ImagesPanel({
                 )}
               </figcaption>
               {editable && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => onRemove(a.id)}
-                  className="mt-1 h-7 w-full text-destructive"
-                >
-                  <Trash2 className="mr-1 h-3 w-3" /> Remove
-                </Button>
+                <div className="mt-1 flex gap-1">
+                  {a.url && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setEditingAsset({ id: a.id, url: a.url! })}
+                      className="h-7 flex-1 text-xs"
+                    >
+                      <Pencil className="mr-1 h-3 w-3" /> Edit
+                    </Button>
+                  )}
+                  {a.metadata?.edited && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onRevert(a.id)}
+                      className="h-7 flex-1 text-xs"
+                      title="Restore original image"
+                    >
+                      <RotateCcw className="mr-1 h-3 w-3" /> Revert
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => onRemove(a.id)}
+                    className="h-7 text-destructive"
+                    aria-label="Remove image"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
               )}
             </figure>
           );
@@ -1478,6 +1567,17 @@ function ImagesPanel({
           </div>
         </div>
       )}
+      <ImageEditorDialog
+        open={!!editingAsset}
+        onOpenChange={(v) => !v && setEditingAsset(null)}
+        imageUrl={editingAsset?.url ?? null}
+        saving={replacing}
+        onSave={async (blob) => {
+          if (!editingAsset) return;
+          await onReplace(editingAsset.id, blob);
+          setEditingAsset(null);
+        }}
+      />
     </div>
   );
 }
