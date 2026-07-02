@@ -399,6 +399,45 @@ function ProductEditorPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const replaceAssetImage = useServerFn(replaceManualAssetImage);
+  const revertAssetImage = useServerFn(revertManualAssetImage);
+
+  const replaceAssetMut = useMutation({
+    mutationFn: async (input: { assetId: string; blob: Blob }) => {
+      const buf = await input.blob.arrayBuffer();
+      let binary = "";
+      const bytes = new Uint8Array(buf);
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode(
+          ...bytes.subarray(i, Math.min(i + chunk, bytes.length)),
+        );
+      }
+      return replaceAssetImage({
+        data: {
+          assetId: input.assetId,
+          filename: `edited-${Date.now()}.png`,
+          contentType: "image/png",
+          dataBase64: btoa(binary),
+        },
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["manual-version", activeVersionId] });
+      toast.success("Edited image saved");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const revertAssetMut = useMutation({
+    mutationFn: (assetId: string) => revertAssetImage({ data: { assetId } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["manual-version", activeVersionId] });
+      toast.success("Reverted to original");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   if (workspaceQuery.isLoading)
     return <p className="text-sm text-muted-foreground">Loading…</p>;
   if (workspaceQuery.error)
