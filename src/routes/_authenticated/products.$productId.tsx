@@ -81,7 +81,10 @@ import {
   Upload,
   Eye,
   Download,
+  Pencil,
+  RotateCcw,
 } from "lucide-react";
+import { ImageEditorDialog } from "@/components/manual-editor/ImageEditorDialog";
 import { getMasterTemplate } from "@/lib/templates.functions";
 import { MasterManualPreview } from "@/components/manual/MasterManualPreview";
 
