@@ -40,6 +40,8 @@ export function ImageEditorDialog({
   const [stroke, setStroke] = useState("#000000");
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [shadow, setShadow] = useState(0);
+  const [noFill, setNoFill] = useState(true);
+  const effectiveFill = () => (noFill ? "transparent" : fill);
 
   // Mount canvas + load background image when dialog opens.
   useEffect(() => {
