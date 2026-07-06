@@ -168,14 +168,14 @@ export function ImageEditorDialog({
     if (!canvas) return;
     const active = canvas.getActiveObject?.();
     if (!active) return;
-    active.set({ fill, stroke, strokeWidth });
+    active.set({ fill: effectiveFill(), stroke, strokeWidth });
     (async () => {
       const s = await shadowObj();
       active.set({ shadow: s ?? null });
       canvas.requestRenderAll();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fill, stroke, strokeWidth, shadow]);
+  }, [fill, noFill, stroke, strokeWidth, shadow]);
 
   const handleSave = async () => {
     const canvas = fabricRef.current;
