@@ -40,6 +40,8 @@ export function ImageEditorDialog({
   const [stroke, setStroke] = useState("#000000");
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [shadow, setShadow] = useState(0);
+  const [noFill, setNoFill] = useState(true);
+  const effectiveFill = () => (noFill ? "transparent" : fill);
 
   // Mount canvas + load background image when dialog opens.
   useEffect(() => {
@@ -52,6 +54,7 @@ export function ImageEditorDialog({
       const canvas = new fabric.Canvas(canvasElRef.current, {
         selection: true,
         preserveObjectStacking: true,
+        enableRetinaScaling: false,
       });
       fabricRef.current = canvas;
 
@@ -96,7 +99,7 @@ export function ImageEditorDialog({
     const s = await shadowObj();
     const rect = new fabric.Rect({
       left: 40, top: 40, width: 160, height: 100,
-      fill: "transparent", stroke, strokeWidth,
+      fill: effectiveFill(), stroke, strokeWidth,
       shadow: s ?? undefined,
     });
     canvas.add(rect); canvas.setActiveObject(rect); canvas.requestRenderAll();
@@ -108,7 +111,7 @@ export function ImageEditorDialog({
     const s = await shadowObj();
     const c = new fabric.Circle({
       left: 60, top: 60, radius: 55,
-      fill: "transparent", stroke, strokeWidth,
+      fill: effectiveFill(), stroke, strokeWidth,
       shadow: s ?? undefined,
     });
     canvas.add(c); canvas.setActiveObject(c); canvas.requestRenderAll();
@@ -165,14 +168,14 @@ export function ImageEditorDialog({
     if (!canvas) return;
     const active = canvas.getActiveObject?.();
     if (!active) return;
-    active.set({ fill, stroke, strokeWidth });
+    active.set({ fill: effectiveFill(), stroke, strokeWidth });
     (async () => {
       const s = await shadowObj();
       active.set({ shadow: s ?? null });
       canvas.requestRenderAll();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fill, stroke, strokeWidth, shadow]);
+  }, [fill, noFill, stroke, strokeWidth, shadow]);
 
   const handleSave = async () => {
     const canvas = fabricRef.current;
@@ -214,7 +217,24 @@ export function ImageEditorDialog({
           <div className="flex items-end gap-3 ml-auto">
             <div className="space-y-1">
               <Label className="text-xs">Fill</Label>
-              <Input type="color" value={fill} onChange={(e) => setFill(e.target.value)} className="h-8 w-12 p-0" />
+              <div className="flex items-center gap-2">
+                <Input
+                  type="color"
+                  value={fill}
+                  onChange={(e) => { setFill(e.target.value); setNoFill(false); }}
+                  disabled={noFill}
+                  className="h-8 w-12 p-0"
+                />
+                <label className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={noFill}
+                    onChange={(e) => setNoFill(e.target.checked)}
+                    className="h-3.5 w-3.5"
+                  />
+                  None
+                </label>
+              </div>
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Stroke</Label>
