@@ -52,6 +52,7 @@ export function ImageEditorDialog({
       const canvas = new fabric.Canvas(canvasElRef.current, {
         selection: true,
         preserveObjectStacking: true,
+        enableRetinaScaling: false,
       });
       fabricRef.current = canvas;
 
