@@ -99,7 +99,7 @@ export function ImageEditorDialog({
     const s = await shadowObj();
     const rect = new fabric.Rect({
       left: 40, top: 40, width: 160, height: 100,
-      fill: "transparent", stroke, strokeWidth,
+      fill: effectiveFill(), stroke, strokeWidth,
       shadow: s ?? undefined,
     });
     canvas.add(rect); canvas.setActiveObject(rect); canvas.requestRenderAll();
@@ -111,7 +111,7 @@ export function ImageEditorDialog({
     const s = await shadowObj();
     const c = new fabric.Circle({
       left: 60, top: 60, radius: 55,
-      fill: "transparent", stroke, strokeWidth,
+      fill: effectiveFill(), stroke, strokeWidth,
       shadow: s ?? undefined,
     });
     canvas.add(c); canvas.setActiveObject(c); canvas.requestRenderAll();
