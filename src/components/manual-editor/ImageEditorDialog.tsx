@@ -50,6 +50,10 @@ export function ImageEditorDialog({
     setReady(false);
     (async () => {
       const fabric = await import("fabric");
+      // Force fabric to ignore the device pixel ratio globally for this session.
+      // enableRetinaScaling:false on the canvas alone was not enough on hi-DPI
+      // displays — the image ended up occupying only 1/4 of the backing store.
+      try { (fabric as any).config?.configure?.({ devicePixelRatio: 1 }); } catch {}
       if (cancelled || !canvasElRef.current) return;
       const canvas = new fabric.Canvas(canvasElRef.current, {
         selection: true,
@@ -68,8 +72,9 @@ export function ImageEditorDialog({
       const cw = Math.round(iw * scale);
       const ch = Math.round(ih * scale);
       canvas.setDimensions({ width: cw, height: ch });
-      img.set({ selectable: false, evented: false, scaleX: scale, scaleY: scale, left: 0, top: 0 });
-      canvas.backgroundImage = img;
+      img.set({ selectable: false, evented: false, hasControls: false, hasBorders: false, scaleX: scale, scaleY: scale, left: 0, top: 0 });
+      canvas.add(img);
+      canvas.sendObjectToBack(img);
       canvas.renderAll();
       setReady(true);
     })();
