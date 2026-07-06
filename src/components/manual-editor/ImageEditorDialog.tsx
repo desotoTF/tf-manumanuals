@@ -20,6 +20,17 @@ import { Square, Circle, ArrowRight, Type, Trash2 } from "lucide-react";
 const MAX_W = 900;
 const MAX_H = 560;
 
+function loadImageElement(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.decoding = "async";
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Could not load image for editing"));
+    img.src = src;
+  });
+}
+
 export function ImageEditorDialog({
   open,
   onOpenChange,
@@ -35,6 +46,8 @@ export function ImageEditorDialog({
 }) {
   const canvasElRef = useRef<HTMLCanvasElement | null>(null);
   const fabricRef = useRef<any>(null);
+  const originalImageRef = useRef<HTMLImageElement | null>(null);
+  const [canvasSize, setCanvasSize] = useState<{ width: number; height: number } | null>(null);
   const [ready, setReady] = useState(false);
   const [fill, setFill] = useState("#ff2d55");
   const [stroke, setStroke] = useState("#000000");
@@ -48,33 +61,47 @@ export function ImageEditorDialog({
     if (!open || !imageUrl) return;
     let cancelled = false;
     setReady(false);
+    setCanvasSize(null);
+    originalImageRef.current = null;
     (async () => {
+      const sourceImage = await loadImageElement(imageUrl);
+      if (cancelled || !canvasElRef.current) return;
+      const iw = sourceImage.naturalWidth || sourceImage.width || MAX_W;
+      const ih = sourceImage.naturalHeight || sourceImage.height || MAX_H;
+      const scale = Math.min(MAX_W / iw, MAX_H / ih, 1);
+      const cw = Math.round(iw * scale);
+      const ch = Math.round(ih * scale);
+
+      originalImageRef.current = sourceImage;
+      setCanvasSize({ width: cw, height: ch });
+
+      const canvasEl = canvasElRef.current;
+      canvasEl.width = cw;
+      canvasEl.height = ch;
+      canvasEl.style.width = `${cw}px`;
+      canvasEl.style.height = `${ch}px`;
+
       const fabric = await import("fabric");
       // Force fabric to ignore the device pixel ratio globally for this session.
       // enableRetinaScaling:false on the canvas alone was not enough on hi-DPI
       // displays — the image ended up occupying only 1/4 of the backing store.
       try { (fabric as any).config?.configure?.({ devicePixelRatio: 1 }); } catch {}
-      if (cancelled || !canvasElRef.current) return;
-      const canvas = new fabric.Canvas(canvasElRef.current, {
+      if (cancelled) return;
+      const canvas = new fabric.Canvas(canvasEl, {
         selection: true,
         preserveObjectStacking: true,
         enableRetinaScaling: false,
       });
       fabricRef.current = canvas;
-
-      const img = await fabric.FabricImage.fromURL(imageUrl, {
-        crossOrigin: "anonymous",
-      });
-      if (cancelled) return;
-      const iw = img.width ?? MAX_W;
-      const ih = img.height ?? MAX_H;
-      const scale = Math.min(MAX_W / iw, MAX_H / ih, 1);
-      const cw = Math.round(iw * scale);
-      const ch = Math.round(ih * scale);
       canvas.setDimensions({ width: cw, height: ch });
-      img.set({ selectable: false, evented: false, hasControls: false, hasBorders: false, scaleX: scale, scaleY: scale, left: 0, top: 0 });
-      canvas.add(img);
-      canvas.sendObjectToBack(img);
+      if (canvas.wrapperEl) {
+        Object.assign(canvas.wrapperEl.style, {
+          position: "absolute",
+          inset: "0",
+          width: `${cw}px`,
+          height: `${ch}px`,
+        });
+      }
       canvas.renderAll();
       setReady(true);
     })();
@@ -184,12 +211,32 @@ export function ImageEditorDialog({
 
   const handleSave = async () => {
     const canvas = fabricRef.current;
-    if (!canvas) return;
+    const sourceImage = originalImageRef.current;
+    if (!canvas || !sourceImage) return;
     canvas.discardActiveObject();
     canvas.requestRenderAll();
-    const dataUrl: string = canvas.toDataURL({ format: "png", multiplier: 2 });
-    const resp = await fetch(dataUrl);
-    const blob = await resp.blob();
+    const sourceWidth = sourceImage.naturalWidth || sourceImage.width;
+    const sourceHeight = sourceImage.naturalHeight || sourceImage.height;
+    const displayWidth = canvasSize?.width || canvas.getWidth();
+    const exportScale = sourceWidth / displayWidth;
+
+    const output = document.createElement("canvas");
+    output.width = sourceWidth;
+    output.height = sourceHeight;
+    const ctx = output.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(sourceImage, 0, 0, sourceWidth, sourceHeight);
+
+    const overlayDataUrl: string = canvas.toDataURL({
+      format: "png",
+      multiplier: exportScale,
+      enableRetinaScaling: false,
+    });
+    const overlay = await loadImageElement(overlayDataUrl);
+    ctx.drawImage(overlay, 0, 0, sourceWidth, sourceHeight);
+
+    const blob = await new Promise<Blob | null>((resolve) => output.toBlob(resolve, "image/png"));
+    if (!blob) return;
     await onSave(blob);
   };
 
@@ -256,8 +303,24 @@ export function ImageEditorDialog({
           </div>
         </div>
 
-        <div className="flex justify-center rounded-md border border-border bg-[#f7f7f7] p-2 overflow-auto">
-          <canvas ref={canvasElRef} />
+        <div className="flex justify-center rounded-md border border-border bg-muted p-2 overflow-auto">
+          <div
+            className="relative shrink-0"
+            style={{ width: canvasSize?.width ?? MAX_W, height: canvasSize?.height ?? MAX_H }}
+          >
+            <img
+              src={imageUrl ?? ""}
+              alt="Original image preview"
+              draggable={false}
+              className="block select-none"
+              style={{
+                width: canvasSize?.width ?? MAX_W,
+                height: canvasSize?.height ?? MAX_H,
+                opacity: canvasSize ? 1 : 0,
+              }}
+            />
+            <canvas ref={canvasElRef} />
+          </div>
         </div>
 
         <DialogFooter>
