@@ -217,7 +217,24 @@ export function ImageEditorDialog({
           <div className="flex items-end gap-3 ml-auto">
             <div className="space-y-1">
               <Label className="text-xs">Fill</Label>
-              <Input type="color" value={fill} onChange={(e) => setFill(e.target.value)} className="h-8 w-12 p-0" />
+              <div className="flex items-center gap-2">
+                <Input
+                  type="color"
+                  value={fill}
+                  onChange={(e) => { setFill(e.target.value); setNoFill(false); }}
+                  disabled={noFill}
+                  className="h-8 w-12 p-0"
+                />
+                <label className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={noFill}
+                    onChange={(e) => setNoFill(e.target.checked)}
+                    className="h-3.5 w-3.5"
+                  />
+                  None
+                </label>
+              </div>
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Stroke</Label>
