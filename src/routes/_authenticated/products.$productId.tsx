@@ -262,8 +262,10 @@ function ProductEditorPage() {
     if (!versionQuery.data) return;
     if (!versionQuery.data.version) {
       if (activeVersionId) {
+        const deletedVersionId = activeVersionId;
         setActiveVersionId(null);
         loadedVersionRef.current = null;
+        qc.removeQueries({ queryKey: ["manual-version", deletedVersionId] });
         qc.invalidateQueries({ queryKey: ["product-workspace", productId] });
       }
       return;
@@ -328,9 +330,17 @@ function ProductEditorPage() {
       transition({ data: { versionId: activeVersionId!, action } }),
     onSuccess: async (res, action) => {
       toast.success(action === "discard" ? "Draft discarded" : `Moved to ${res.state}`);
-      if (action === "discard") setActiveVersionId(null);
+      const transitionedVersionId = activeVersionId;
+      if (action === "discard") {
+        setActiveVersionId(null);
+        if (transitionedVersionId) {
+          qc.removeQueries({ queryKey: ["manual-version", transitionedVersionId] });
+        }
+      }
       qc.invalidateQueries({ queryKey: ["product-workspace", productId] });
-      qc.invalidateQueries({ queryKey: ["manual-version", activeVersionId] });
+      if (action !== "discard") {
+        qc.invalidateQueries({ queryKey: ["manual-version", activeVersionId] });
+      }
       // When publishing, render the same preview to PDF client-side and
       // upload it so the public /manuals/:slug URL streams a real PDF.
       if (action === "publish" && activeVersionId) {
