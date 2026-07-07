@@ -179,11 +179,19 @@ async function rpcCall(
   method: string,
   params: XmlValue[],
 ): Promise<XmlValue> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 18_000);
   const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "text/xml; charset=utf-8" },
     body: buildEnvelope(method, params),
-  });
+    signal: controller.signal,
+  }).catch((error) => {
+    if ((error as Error).name === "AbortError") {
+      throw new Error("Odoo request timed out. Please try again.");
+    }
+    throw error;
+  }).finally(() => clearTimeout(timeout));
   if (!res.ok) {
     throw new Error(`Odoo HTTP ${res.status} ${res.statusText}`);
   }

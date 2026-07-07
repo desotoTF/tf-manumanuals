@@ -421,6 +421,7 @@ export const syncBoms = createServerFn({ method: "POST" })
           }
         }
 
+        const { normalizeBomLines, sha256Hex } = await import("./erp-utils");
         const normalized = normalizeBomLines(lines, variantToTemplateSku);
         const hash = await sha256Hex(JSON.stringify(normalized));
 
@@ -780,5 +781,8 @@ export const syncBomBySku = createServerFn({ method: "POST" })
       })
       .parse(d),
   )
-  .handler(async ({ data, context }) => syncBomBySkuImpl(context.supabase, data));
+  .handler(async ({ data, context }) => {
+    const { syncBomBySkuImpl } = await import("./erp-sync.server");
+    return syncBomBySkuImpl(context.supabase, data);
+  });
 
