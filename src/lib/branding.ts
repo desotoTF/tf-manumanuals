@@ -106,9 +106,12 @@ const DEFAULT_LOGO_SVG_MARKUP = `
   <text x="182" y="45" font-family="Arial Black,Arial,sans-serif" font-size="34" font-weight="900" fill="#ed1c24">FAB</text>
 </svg>`;
 
-function shouldUseBuiltInSvg(url: string | undefined, defaultUrl: string, filename: string): boolean {
-  const trimmed = url?.trim();
-  return !trimmed || trimmed === defaultUrl || trimmed.endsWith(`/${filename}`);
+function shouldUseBuiltInSvg(url: string | undefined): boolean {
+  // Only fall back to hand-drawn inline SVG when there is literally no URL
+  // configured. When a real asset URL exists (default template or user
+  // upload), we always fetch and inline that SVG so the PDF matches the
+  // provided artwork.
+  return !url?.trim();
 }
 
 export function mergeBranding(b: unknown): BrandingTokens {
