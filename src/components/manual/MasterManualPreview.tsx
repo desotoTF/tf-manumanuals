@@ -601,13 +601,18 @@ function ToolsList({ tools }: { tools: { name: string; spec?: string }[] }) {
 
 function BomImagesGrid({
   parts,
+  hardwareKit,
   catalog,
 }: {
   parts: { part_number: string; description?: string }[];
+  hardwareKit: { part_number: string; description?: string }[];
   catalog: PartCatalogLookup;
 }) {
-  const withImages = parts.filter((p) => catalog[p.part_number]?.imageUrl);
-  if (withImages.length === 0) return null;
+  const items: { ref: string; part: { part_number: string; description?: string } }[] = [
+    ...parts.map((p, i) => ({ ref: String(i + 1), part: p })),
+    ...hardwareKit.map((p, i) => ({ ref: alphaRef(i), part: p })),
+  ].filter(({ part }) => catalog[part.part_number]?.imageUrl);
+  if (items.length === 0) return null;
   return (
     <div
       style={{
@@ -616,7 +621,7 @@ function BomImagesGrid({
         gap: 8,
       }}
     >
-      {withImages.map((p, i) => {
+      {items.map(({ ref, part: p }, i) => {
         const c = catalog[p.part_number];
         return (
           <div
@@ -640,7 +645,7 @@ function BomImagesGrid({
                 textAlign: "center",
               }}
             >
-              {p.part_number}
+              {ref}
             </div>
             <img
               src={c!.imageUrl!}
