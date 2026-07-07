@@ -142,9 +142,9 @@ export function MasterManualPreview({
   const pageStyle: React.CSSProperties = {
     width: PAGE_W * scale,
     height: PAGE_H * scale,
-    margin: "0 auto 24px",
+    margin: pdfSafe ? "0" : "0 auto 24px",
     background: "#fff",
-    boxShadow: "0 4px 24px rgba(0,0,0,0.08)",
+    boxShadow: pdfSafe ? "none" : "0 4px 24px rgba(0,0,0,0.08)",
     boxSizing: "border-box",
     position: "relative",
     color: INK,
@@ -175,7 +175,7 @@ export function MasterManualPreview({
       `}</style>
 
       {/* ---------- PAGE 1 · COVER ---------- */}
-      <div style={pageStyle}>
+      <div data-manual-page="true" style={pageStyle}>
         <div style={{ padding: PAGE_PAD * scale, height: "100%", display: "flex", flexDirection: "column" }}>
           {/* SVG header band — inlined so it renders reliably and is captured by html2canvas */}
           <div
@@ -305,7 +305,7 @@ export function MasterManualPreview({
       </div>
 
       {/* ---------- PAGE 2 · PARTS / TOOLS / BOM IMAGES ---------- */}
-      <div style={pageStyle}>
+      <div data-manual-page="true" style={pageStyle}>
         <InteriorFrame meta={meta} logoSvgMarkup={interiorLogoMarkup} pageNum={2} totalPages={totalPages} scale={scale}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             {/* Left column: Parts + Hardware Kit as one continuous table */}
@@ -352,7 +352,7 @@ export function MasterManualPreview({
         const s = normalizeStep(raw);
         const pageNum = 3 + idx;
         return (
-          <div key={s.id ?? idx} style={pageStyle}>
+          <div key={s.id ?? idx} data-manual-page="true" style={pageStyle}>
             <InteriorFrame meta={meta} logoSvgMarkup={interiorLogoMarkup} pageNum={pageNum} totalPages={totalPages} scale={scale}>
               {idx === 0 && (
                 <div
