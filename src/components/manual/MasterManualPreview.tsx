@@ -13,7 +13,9 @@ import { useEffect, useMemo, useState } from "react";
 import {
   type BrandingTokens,
   mergeBranding,
+  resolveHeaderSvgMarkup,
   resolveHeaderSvgUrl,
+  resolveLogoSvgMarkup,
   resolveLogoSvgUrl,
 } from "@/lib/branding";
 import type { ManualContent } from "@/lib/types";
@@ -103,6 +105,7 @@ export function MasterManualPreview({
   assets,
   partCatalog,
   scale = 1,
+  pdfSafe = false,
 }: {
   branding: unknown;
   meta: ManualPreviewMeta;
@@ -110,12 +113,17 @@ export function MasterManualPreview({
   assets?: PreviewAssetMap;
   partCatalog?: PartCatalogLookup;
   scale?: number;
+  pdfSafe?: boolean;
 }) {
   const b = useMemo(() => mergeBranding(brandingInput), [brandingInput]);
-  const headerSvgUrl = resolveHeaderSvgUrl(b);
-  const logoSvgUrl = resolveLogoSvgUrl(b);
+  const headerSvgFallback = resolveHeaderSvgMarkup(b);
+  const logoSvgFallback = resolveLogoSvgMarkup(b);
+  const headerSvgUrl = headerSvgFallback ? undefined : resolveHeaderSvgUrl(b);
+  const logoSvgUrl = logoSvgFallback ? undefined : resolveLogoSvgUrl(b);
   const headerSvgMarkup = useInlineSvg(headerSvgUrl);
   const logoSvgMarkup = useInlineSvg(logoSvgUrl);
+  const coverHeaderMarkup = headerSvgMarkup || headerSvgFallback;
+  const interiorLogoMarkup = logoSvgMarkup || logoSvgFallback;
   const assetMap = assets ?? {};
   const catalogMap = partCatalog ?? {};
   const figMap = useMemo(
@@ -147,7 +155,7 @@ export function MasterManualPreview({
   };
 
   return (
-    <div className="mm-preview" style={{ color: INK }}>
+      <div className="mm-preview" data-manual-preview="true" style={{ color: INK }}>
       <style>{`
         .mm-preview table { border-collapse: collapse; }
         .mm-preview .tf-tbl { width: 100%; font-family: ${FONT_BODY}; font-size: 11px; }
@@ -173,8 +181,31 @@ export function MasterManualPreview({
           <div
             aria-label={b.footer.companyName}
             style={{ width: "100%", marginBottom: 20 * scale }}
-            dangerouslySetInnerHTML={{ __html: headerSvgMarkup }}
+            dangerouslySetInnerHTML={{
+              __html: coverHeaderMarkup.replace(
+                /<svg\b([^>]*)>/i,
+                `<svg$1 style="width:100%;height:auto;display:block" preserveAspectRatio="xMidYMid meet">`,
+              ),
+            }}
           />
+
+          {b.cover.tagline.trim() ? (
+            <div
+              style={{
+                fontFamily: FONT_HEADING,
+                fontWeight: 500,
+                fontSize: 17,
+                lineHeight: 1.05,
+                color: INK,
+                textTransform: "uppercase",
+                marginTop: -10 * scale,
+                marginBottom: 16 * scale,
+                letterSpacing: "0.02em",
+              }}
+            >
+              {b.cover.tagline}
+            </div>
+          ) : null}
 
 
           {/* Title block */}
@@ -275,7 +306,7 @@ export function MasterManualPreview({
 
       {/* ---------- PAGE 2 · PARTS / TOOLS / BOM IMAGES ---------- */}
       <div style={pageStyle}>
-        <InteriorFrame meta={meta} logoSvgMarkup={logoSvgMarkup} pageNum={2} totalPages={totalPages} scale={scale}>
+        <InteriorFrame meta={meta} logoSvgMarkup={interiorLogoMarkup} pageNum={2} totalPages={totalPages} scale={scale}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             {/* Left column: Parts + Hardware Kit as one continuous table */}
             <div>
@@ -322,7 +353,7 @@ export function MasterManualPreview({
         const pageNum = 3 + idx;
         return (
           <div key={s.id ?? idx} style={pageStyle}>
-            <InteriorFrame meta={meta} logoSvgMarkup={logoSvgMarkup} pageNum={pageNum} totalPages={totalPages} scale={scale}>
+            <InteriorFrame meta={meta} logoSvgMarkup={interiorLogoMarkup} pageNum={pageNum} totalPages={totalPages} scale={scale}>
               {idx === 0 && (
                 <div
                   style={{
@@ -352,7 +383,7 @@ export function MasterManualPreview({
                   Step {idx + 1}. {s.title || "Untitled step"}
                 </div>
                 <div style={{ color: INK, fontSize: 12, lineHeight: 1.4 }}>
-                  <StepLayoutView step={s} assets={assetMap} figMap={figMap} />
+                  <StepLayoutView step={s} assets={assetMap} figMap={figMap} pdfSafe={pdfSafe} />
                 </div>
               </div>
             </InteriorFrame>
