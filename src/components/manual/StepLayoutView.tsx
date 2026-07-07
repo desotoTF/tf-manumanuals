@@ -18,9 +18,10 @@ interface Props {
   step: ManualStep;
   assets: AssetMap;
   figMap: Map<string, number>;
+  pdfSafe?: boolean;
 }
 
-export function StepLayoutView({ step, assets, figMap }: Props) {
+export function StepLayoutView({ step, assets, figMap, pdfSafe = false }: Props) {
   const s = normalizeStep(step);
   const layout = s.layout ?? "two_col";
   const slots = s.slots ?? [];
@@ -43,6 +44,29 @@ export function StepLayoutView({ step, assets, figMap }: Props) {
       ? "grid grid-cols-1 gap-4 md:grid-cols-2"
       : "grid grid-cols-1 gap-4";
 
+  if (pdfSafe) {
+    return (
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: layout === "two_col" ? "1fr 1fr" : "1fr",
+          gap: 16,
+        }}
+      >
+        {slots.map((slot) => (
+          <SlotView
+            key={slot.id}
+            slot={slot}
+            assets={assets}
+            figMap={figMap}
+            stepImageNumber={stepImageNumber}
+            pdfSafe
+          />
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className={containerCls}>
       {slots.map((slot) => (
@@ -52,6 +76,7 @@ export function StepLayoutView({ step, assets, figMap }: Props) {
           assets={assets}
           figMap={figMap}
           stepImageNumber={stepImageNumber}
+          pdfSafe={pdfSafe}
         />
       ))}
     </div>
@@ -63,13 +88,73 @@ function SlotView({
   assets,
   figMap,
   stepImageNumber,
+  pdfSafe,
 }: {
   slot: StepSlot;
   assets: AssetMap;
   figMap: Map<string, number>;
   stepImageNumber: number | null;
+  pdfSafe?: boolean;
 }) {
   const asset = slot.asset_id ? assets[slot.asset_id] : null;
+  if (pdfSafe) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {asset?.url && (
+          <figure
+            style={{
+              margin: 0,
+              overflow: "hidden",
+              border: "1px solid #D9DDE5",
+              borderRadius: 6,
+            }}
+          >
+            <img
+              src={asset.url}
+              alt={slot.caption ?? asset.caption ?? ""}
+              style={{ display: "block", height: "auto", width: "100%" }}
+              crossOrigin="anonymous"
+            />
+            {(slot.caption || asset.caption) && (
+              <figcaption
+                style={{
+                  borderTop: "1px solid #D9DDE5",
+                  background: "#F6F7F9",
+                  color: "#5F6B7A",
+                  padding: "8px 12px",
+                  fontSize: 11,
+                }}
+              >
+                {slot.caption || asset.caption}
+              </figcaption>
+            )}
+          </figure>
+        )}
+        {slot.text_html && (
+          <div
+            style={{ color: "#000000", fontSize: 12, lineHeight: 1.45 }}
+            // eslint-disable-next-line react/no-danger
+            dangerouslySetInnerHTML={{
+              __html: resolveFigureTokensInHtml(
+                slot.text_html,
+                figMap,
+                stepImageNumber,
+              ),
+            }}
+          />
+        )}
+        {slot.callout && (
+          <CalloutView
+            callout={slot.callout}
+            figMap={figMap}
+            stepImageNumber={stepImageNumber}
+            pdfSafe
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       {asset?.url && (
@@ -105,6 +190,7 @@ function SlotView({
           callout={slot.callout}
           figMap={figMap}
           stepImageNumber={stepImageNumber}
+          pdfSafe={pdfSafe}
         />
       )}
     </div>
@@ -115,11 +201,45 @@ function CalloutView({
   callout,
   figMap,
   stepImageNumber,
+  pdfSafe,
 }: {
   callout: StepCallout;
   figMap: Map<string, number>;
   stepImageNumber: number | null;
+  pdfSafe?: boolean;
 }) {
+  if (pdfSafe) {
+    const palette = {
+      info: { border: "#60A5FA", bg: "#EFF6FF", color: "#1D4ED8" },
+      caution: { border: "#F59E0B", bg: "#FFFBEB", color: "#B45309" },
+      danger: { border: "#F43F5E", bg: "#FFF1F2", color: "#BE123C" },
+    }[callout.severity];
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 10,
+          border: `1px solid ${palette.border}`,
+          background: palette.bg,
+          color: palette.color,
+          borderRadius: 6,
+          padding: 12,
+          fontSize: 12,
+        }}
+      >
+        <span aria-hidden style={{ fontWeight: 700 }}>!</span>
+        <p style={{ margin: 0 }}>
+          <FigureRefs
+            text={callout.body}
+            figMap={figMap}
+            stepImageNumber={stepImageNumber}
+          />
+        </p>
+      </div>
+    );
+  }
+
   const map = {
     info: {
       icon: Info,

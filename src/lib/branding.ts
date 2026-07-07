@@ -91,6 +91,26 @@ export const FONT_CHOICES = [
   "Arial",
 ];
 
+const DEFAULT_HEADER_SVG_MARKUP = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 96" role="img" aria-label="Thumper Fab">
+  <rect x="0" y="0" width="720" height="96" fill="#000000"/>
+  <path d="M0 0h560l-38 96H0z" fill="#111111"/>
+  <path d="M540 0h180v96H502z" fill="#ed1c24"/>
+  <text x="34" y="44" font-family="Arial Black,Arial,sans-serif" font-size="34" font-weight="900" fill="#ffffff" letter-spacing="1">THUMPER<tspan fill="#ed1c24">FAB</tspan></text>
+  <text x="36" y="70" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="700" fill="#ffffff" letter-spacing="1.4">INSTALLATION MANUAL</text>
+</svg>`;
+
+const DEFAULT_LOGO_SVG_MARKUP = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 70" role="img" aria-label="Thumper Fab">
+  <text x="0" y="45" font-family="Arial Black,Arial,sans-serif" font-size="34" font-weight="900" fill="#5b5b5f">THUMPER</text>
+  <text x="182" y="45" font-family="Arial Black,Arial,sans-serif" font-size="34" font-weight="900" fill="#ed1c24">FAB</text>
+</svg>`;
+
+function shouldUseBuiltInSvg(url: string | undefined, defaultUrl: string, filename: string): boolean {
+  const trimmed = url?.trim();
+  return !trimmed || trimmed === defaultUrl || trimmed.endsWith(`/${filename}`);
+}
+
 export function mergeBranding(b: unknown): BrandingTokens {
   const incoming = (b && typeof b === "object" ? b : {}) as Partial<BrandingTokens>;
   return {
@@ -115,4 +135,16 @@ export function resolveHeaderSvgUrl(b: BrandingTokens): string {
 
 export function resolveLogoSvgUrl(b: BrandingTokens): string {
   return b.logo_svg_url?.trim() ? b.logo_svg_url : tfPdfLogo.url;
+}
+
+export function resolveHeaderSvgMarkup(b: BrandingTokens): string {
+  return shouldUseBuiltInSvg(b.header_svg_url, tfPdfHeader.url, "tf-pdf-header.svg")
+    ? DEFAULT_HEADER_SVG_MARKUP
+    : "";
+}
+
+export function resolveLogoSvgMarkup(b: BrandingTokens): string {
+  return shouldUseBuiltInSvg(b.logo_svg_url, tfPdfLogo.url, "tf-pdf-logo.svg")
+    ? DEFAULT_LOGO_SVG_MARKUP
+    : "";
 }

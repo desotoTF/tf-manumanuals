@@ -97,6 +97,78 @@ const baseTfSku = (sku: string): string => {
   return match ? match[1].toUpperCase() : sku;
 };
 
+async function renderManualPagesPdf(source: HTMLElement): Promise<Blob> {
+  const { default: html2canvas } = await import("html2canvas");
+  const { default: jsPDF } = await import("jspdf");
+  const pages = Array.from(source.querySelectorAll<HTMLElement>("[data-manual-page='true']"));
+  if (pages.length === 0) throw new Error("No manual pages found to export");
+
+  const pdf = new jsPDF({ unit: "pt", format: "letter", orientation: "portrait" });
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+
+  for (const [index, page] of pages.entries()) {
+    const canvas = await html2canvas(page, {
+      scale: 2,
+      backgroundColor: "#ffffff",
+      useCORS: true,
+      allowTaint: false,
+      logging: false,
+      windowWidth: 900,
+      windowHeight: 1200,
+      onclone: (doc) => {
+        const safeColors: Record<string, string> = {
+          "--background": "#ffffff",
+          "--foreground": "#111827",
+          "--card": "#ffffff",
+          "--card-foreground": "#111827",
+          "--popover": "#ffffff",
+          "--popover-foreground": "#111827",
+          "--primary": "#111827",
+          "--primary-foreground": "#ffffff",
+          "--secondary": "#f3f4f6",
+          "--secondary-foreground": "#111827",
+          "--muted": "#f3f4f6",
+          "--muted-foreground": "#6b7280",
+          "--accent": "#f3f4f6",
+          "--accent-foreground": "#111827",
+          "--destructive": "#dc2626",
+          "--destructive-foreground": "#ffffff",
+          "--border": "#d9dde5",
+          "--input": "#d9dde5",
+          "--ring": "#94a3b8",
+          "--color-background": "#ffffff",
+          "--color-foreground": "#111827",
+          "--color-border": "#d9dde5",
+          "--color-muted": "#f3f4f6",
+          "--color-muted-foreground": "#6b7280",
+        };
+        for (const [key, value] of Object.entries(safeColors)) {
+          doc.documentElement.style.setProperty(key, value);
+          doc.body.style.setProperty(key, value);
+        }
+        doc.body.style.background = "#ffffff";
+        doc.body.style.color = "#111827";
+      },
+    });
+    if (index > 0) pdf.addPage();
+    pdf.addImage(canvas.toDataURL("image/jpeg", 0.94), "JPEG", 0, 0, pageW, pageH);
+  }
+
+  return pdf.output("blob");
+}
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  const buf = await blob.arrayBuffer();
+  let binary = "";
+  const bytes = new Uint8Array(buf);
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunk, bytes.length)));
+  }
+  return btoa(binary);
+}
+
 function ProductEditorPage() {
   const { productId } = Route.useParams();
   const navigate = useNavigate();
@@ -269,42 +341,8 @@ function ProductEditorPage() {
             toast.warning("Open the Preview once so the PDF can be generated.");
             return;
           }
-          const { default: html2canvas } = await import("html2canvas");
-          const { default: jsPDF } = await import("jspdf");
-          const canvas = await html2canvas(node, {
-            scale: 2,
-            backgroundColor: "#ffffff",
-            useCORS: true,
-          });
-          const imgData = canvas.toDataURL("image/jpeg", 0.92);
-          const pdf = new jsPDF({
-            unit: "pt",
-            format: "letter",
-            orientation: "portrait",
-          });
-          const pageW = pdf.internal.pageSize.getWidth();
-          const pageH = pdf.internal.pageSize.getHeight();
-          const imgW = pageW;
-          const imgH = (canvas.height * imgW) / canvas.width;
-          let heightLeft = imgH;
-          let y = 0;
-          pdf.addImage(imgData, "JPEG", 0, y, imgW, imgH);
-          heightLeft -= pageH;
-          while (heightLeft > 0) {
-            y = heightLeft - imgH;
-            pdf.addPage();
-            pdf.addImage(imgData, "JPEG", 0, y, imgW, imgH);
-            heightLeft -= pageH;
-          }
-          const blob = pdf.output("blob");
-          const buf = await blob.arrayBuffer();
-          let binary = "";
-          const bytes = new Uint8Array(buf);
-          const chunk = 0x8000;
-          for (let i = 0; i < bytes.length; i += chunk) {
-            binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunk, bytes.length)));
-          }
-          const dataBase64 = btoa(binary);
+          const blob = await renderManualPagesPdf(node);
+          const dataBase64 = await blobToBase64(blob);
           await uploadPdf({
             data: {
               versionId: activeVersionId,
@@ -509,6 +547,7 @@ function ProductEditorPage() {
                     content={content}
                     assets={assetMap}
                     partCatalog={partCatalogLookup}
+                    pdfSafe
                   />
                 </div>
               </div>
@@ -1631,35 +1670,10 @@ function ManualPreviewDialog({
     if (!node) return;
     setSavingPdf(true);
     try {
-      const { default: html2canvas } = await import("html2canvas");
-      const { default: jsPDF } = await import("jspdf");
-      const canvas = await html2canvas(node, {
-        scale: 2,
-        backgroundColor: "#ffffff",
-        useCORS: true,
-        allowTaint: false,
-        logging: false,
-      });
-      const imgData = canvas.toDataURL("image/jpeg", 0.92);
-      const pdf = new jsPDF({ unit: "pt", format: "letter", orientation: "portrait" });
-      const pageW = pdf.internal.pageSize.getWidth();
-      const pageH = pdf.internal.pageSize.getHeight();
-      const imgW = pageW;
-      const imgH = (canvas.height * imgW) / canvas.width;
-      let heightLeft = imgH;
-      let y = 0;
-      pdf.addImage(imgData, "JPEG", 0, y, imgW, imgH);
-      heightLeft -= pageH;
-      while (heightLeft > 0) {
-        y = heightLeft - imgH;
-        pdf.addPage();
-        pdf.addImage(imgData, "JPEG", 0, y, imgW, imgH);
-        heightLeft -= pageH;
-      }
+      const blob = await renderManualPagesPdf(node);
       const filename = `${meta.sku}-${meta.versionLabel ? `v${meta.versionLabel}` : "manual"}.pdf`;
       // Use a blob + anchor click so the browser reliably prompts a download
       // (jsPDF.save() can be swallowed by some popup/download blockers).
-      const blob = pdf.output("blob");
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -1697,6 +1711,7 @@ function ManualPreviewDialog({
             content={content}
             assets={assets}
             partCatalog={partCatalog}
+            pdfSafe
           />
         </div>
       </DialogContent>
