@@ -141,13 +141,9 @@ export function resolveLogoSvgUrl(b: BrandingTokens): string {
 }
 
 export function resolveHeaderSvgMarkup(b: BrandingTokens): string {
-  return shouldUseBuiltInSvg(b.header_svg_url, tfPdfHeader.url, "tf-pdf-header.svg")
-    ? DEFAULT_HEADER_SVG_MARKUP
-    : "";
+  return shouldUseBuiltInSvg(b.header_svg_url) ? DEFAULT_HEADER_SVG_MARKUP : "";
 }
 
 export function resolveLogoSvgMarkup(b: BrandingTokens): string {
-  return shouldUseBuiltInSvg(b.logo_svg_url, tfPdfLogo.url, "tf-pdf-logo.svg")
-    ? DEFAULT_LOGO_SVG_MARKUP
-    : "";
+  return shouldUseBuiltInSvg(b.logo_svg_url) ? DEFAULT_LOGO_SVG_MARKUP : "";
 }
