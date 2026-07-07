@@ -83,6 +83,17 @@ export type PartCatalogLookup = Record<
   { alias?: string | null; imageUrl?: string | null }
 >;
 
+// A, B, ..., Z, AA, AB, ... for hardware-kit REF labels.
+function alphaRef(index: number): string {
+  let n = index;
+  let s = "";
+  do {
+    s = String.fromCharCode(65 + (n % 26)) + s;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return s;
+}
+
 const PAGE_W = 816;
 const PAGE_H = 1056;
 const PAGE_PAD = 48;
