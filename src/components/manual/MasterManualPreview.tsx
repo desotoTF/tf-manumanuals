@@ -551,7 +551,7 @@ function PartsTable({
       <tbody>
         {parts.map((p, i) => (
           <tr key={`p-${i}`}>
-            <td style={{ textAlign: "center", fontWeight: 700 }}>{p.part_number}</td>
+            <td style={{ textAlign: "center", fontWeight: 700 }}>{i + 1}</td>
             <td style={{ textAlign: "center" }}>{p.qty}</td>
             <td>{nameFor(p)}</td>
           </tr>
@@ -563,7 +563,7 @@ function PartsTable({
         )}
         {hardwareKit.map((p, i) => (
           <tr key={`h-${i}`}>
-            <td style={{ textAlign: "center", fontWeight: 700 }}>{p.part_number}</td>
+            <td style={{ textAlign: "center", fontWeight: 700 }}>{alphaRef(i)}</td>
             <td style={{ textAlign: "center" }}>{p.qty}</td>
             <td>{nameFor(p)}</td>
           </tr>
