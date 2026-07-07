@@ -106,14 +106,6 @@ const DEFAULT_LOGO_SVG_MARKUP = `
   <text x="182" y="45" font-family="Arial Black,Arial,sans-serif" font-size="34" font-weight="900" fill="#ed1c24">FAB</text>
 </svg>`;
 
-function shouldUseBuiltInSvg(url: string | undefined): boolean {
-  // Only fall back to hand-drawn inline SVG when there is literally no URL
-  // configured. When a real asset URL exists (default template or user
-  // upload), we always fetch and inline that SVG so the PDF matches the
-  // provided artwork.
-  return !url?.trim();
-}
-
 export function mergeBranding(b: unknown): BrandingTokens {
   const incoming = (b && typeof b === "object" ? b : {}) as Partial<BrandingTokens>;
   return {
@@ -140,10 +132,13 @@ export function resolveLogoSvgUrl(b: BrandingTokens): string {
   return b.logo_svg_url?.trim() ? b.logo_svg_url : tfPdfLogo.url;
 }
 
-export function resolveHeaderSvgMarkup(b: BrandingTokens): string {
-  return shouldUseBuiltInSvg(b.header_svg_url) ? DEFAULT_HEADER_SVG_MARKUP : "";
+// Inline SVG fallback used only if the remote fetch of the header/logo asset
+// fails (offline, CORS regression, deleted asset). Guarantees the PDF never
+// renders with a blank header band.
+export function resolveHeaderSvgMarkup(_b: BrandingTokens): string {
+  return DEFAULT_HEADER_SVG_MARKUP;
 }
 
-export function resolveLogoSvgMarkup(b: BrandingTokens): string {
-  return shouldUseBuiltInSvg(b.logo_svg_url) ? DEFAULT_LOGO_SVG_MARKUP : "";
+export function resolveLogoSvgMarkup(_b: BrandingTokens): string {
+  return DEFAULT_LOGO_SVG_MARKUP;
 }
