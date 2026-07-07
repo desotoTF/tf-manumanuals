@@ -116,6 +116,40 @@ async function renderManualPagesPdf(source: HTMLElement): Promise<Blob> {
       logging: false,
       windowWidth: 900,
       windowHeight: 1200,
+      onclone: (doc) => {
+        const safeColors: Record<string, string> = {
+          "--background": "#ffffff",
+          "--foreground": "#111827",
+          "--card": "#ffffff",
+          "--card-foreground": "#111827",
+          "--popover": "#ffffff",
+          "--popover-foreground": "#111827",
+          "--primary": "#111827",
+          "--primary-foreground": "#ffffff",
+          "--secondary": "#f3f4f6",
+          "--secondary-foreground": "#111827",
+          "--muted": "#f3f4f6",
+          "--muted-foreground": "#6b7280",
+          "--accent": "#f3f4f6",
+          "--accent-foreground": "#111827",
+          "--destructive": "#dc2626",
+          "--destructive-foreground": "#ffffff",
+          "--border": "#d9dde5",
+          "--input": "#d9dde5",
+          "--ring": "#94a3b8",
+          "--color-background": "#ffffff",
+          "--color-foreground": "#111827",
+          "--color-border": "#d9dde5",
+          "--color-muted": "#f3f4f6",
+          "--color-muted-foreground": "#6b7280",
+        };
+        for (const [key, value] of Object.entries(safeColors)) {
+          doc.documentElement.style.setProperty(key, value);
+          doc.body.style.setProperty(key, value);
+        }
+        doc.body.style.background = "#ffffff";
+        doc.body.style.color = "#111827";
+      },
     });
     if (index > 0) pdf.addPage();
     pdf.addImage(canvas.toDataURL("image/jpeg", 0.94), "JPEG", 0, 0, pageW, pageH);
