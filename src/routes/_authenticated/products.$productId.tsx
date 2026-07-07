@@ -97,6 +97,44 @@ const baseTfSku = (sku: string): string => {
   return match ? match[1].toUpperCase() : sku;
 };
 
+async function renderManualPagesPdf(source: HTMLElement): Promise<Blob> {
+  const { default: html2canvas } = await import("html2canvas");
+  const { default: jsPDF } = await import("jspdf");
+  const pages = Array.from(source.querySelectorAll<HTMLElement>("[data-manual-page='true']"));
+  if (pages.length === 0) throw new Error("No manual pages found to export");
+
+  const pdf = new jsPDF({ unit: "pt", format: "letter", orientation: "portrait" });
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+
+  for (const [index, page] of pages.entries()) {
+    const canvas = await html2canvas(page, {
+      scale: 2,
+      backgroundColor: "#ffffff",
+      useCORS: true,
+      allowTaint: false,
+      logging: false,
+      windowWidth: 900,
+      windowHeight: 1200,
+    });
+    if (index > 0) pdf.addPage();
+    pdf.addImage(canvas.toDataURL("image/jpeg", 0.94), "JPEG", 0, 0, pageW, pageH);
+  }
+
+  return pdf.output("blob");
+}
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  const buf = await blob.arrayBuffer();
+  let binary = "";
+  const bytes = new Uint8Array(buf);
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunk, bytes.length)));
+  }
+  return btoa(binary);
+}
+
 function ProductEditorPage() {
   const { productId } = Route.useParams();
   const navigate = useNavigate();
