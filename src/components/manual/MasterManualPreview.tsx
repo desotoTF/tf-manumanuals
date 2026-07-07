@@ -332,7 +332,8 @@ export function MasterManualPreview({
           {(content.parts.length > 0 || content.hardware_kit.length > 0) && (
             <div style={{ marginTop: 20 }}>
               <BomImagesGrid
-                parts={[...content.parts, ...content.hardware_kit]}
+                parts={content.parts}
+                hardwareKit={content.hardware_kit}
                 catalog={catalogMap}
               />
             </div>
