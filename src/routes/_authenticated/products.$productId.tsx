@@ -307,42 +307,8 @@ function ProductEditorPage() {
             toast.warning("Open the Preview once so the PDF can be generated.");
             return;
           }
-          const { default: html2canvas } = await import("html2canvas");
-          const { default: jsPDF } = await import("jspdf");
-          const canvas = await html2canvas(node, {
-            scale: 2,
-            backgroundColor: "#ffffff",
-            useCORS: true,
-          });
-          const imgData = canvas.toDataURL("image/jpeg", 0.92);
-          const pdf = new jsPDF({
-            unit: "pt",
-            format: "letter",
-            orientation: "portrait",
-          });
-          const pageW = pdf.internal.pageSize.getWidth();
-          const pageH = pdf.internal.pageSize.getHeight();
-          const imgW = pageW;
-          const imgH = (canvas.height * imgW) / canvas.width;
-          let heightLeft = imgH;
-          let y = 0;
-          pdf.addImage(imgData, "JPEG", 0, y, imgW, imgH);
-          heightLeft -= pageH;
-          while (heightLeft > 0) {
-            y = heightLeft - imgH;
-            pdf.addPage();
-            pdf.addImage(imgData, "JPEG", 0, y, imgW, imgH);
-            heightLeft -= pageH;
-          }
-          const blob = pdf.output("blob");
-          const buf = await blob.arrayBuffer();
-          let binary = "";
-          const bytes = new Uint8Array(buf);
-          const chunk = 0x8000;
-          for (let i = 0; i < bytes.length; i += chunk) {
-            binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunk, bytes.length)));
-          }
-          const dataBase64 = btoa(binary);
+          const blob = await renderManualPagesPdf(node);
+          const dataBase64 = await blobToBase64(blob);
           await uploadPdf({
             data: {
               versionId: activeVersionId,
@@ -547,6 +513,7 @@ function ProductEditorPage() {
                     content={content}
                     assets={assetMap}
                     partCatalog={partCatalogLookup}
+                    pdfSafe
                   />
                 </div>
               </div>
@@ -1669,35 +1636,10 @@ function ManualPreviewDialog({
     if (!node) return;
     setSavingPdf(true);
     try {
-      const { default: html2canvas } = await import("html2canvas");
-      const { default: jsPDF } = await import("jspdf");
-      const canvas = await html2canvas(node, {
-        scale: 2,
-        backgroundColor: "#ffffff",
-        useCORS: true,
-        allowTaint: false,
-        logging: false,
-      });
-      const imgData = canvas.toDataURL("image/jpeg", 0.92);
-      const pdf = new jsPDF({ unit: "pt", format: "letter", orientation: "portrait" });
-      const pageW = pdf.internal.pageSize.getWidth();
-      const pageH = pdf.internal.pageSize.getHeight();
-      const imgW = pageW;
-      const imgH = (canvas.height * imgW) / canvas.width;
-      let heightLeft = imgH;
-      let y = 0;
-      pdf.addImage(imgData, "JPEG", 0, y, imgW, imgH);
-      heightLeft -= pageH;
-      while (heightLeft > 0) {
-        y = heightLeft - imgH;
-        pdf.addPage();
-        pdf.addImage(imgData, "JPEG", 0, y, imgW, imgH);
-        heightLeft -= pageH;
-      }
+      const blob = await renderManualPagesPdf(node);
       const filename = `${meta.sku}-${meta.versionLabel ? `v${meta.versionLabel}` : "manual"}.pdf`;
       // Use a blob + anchor click so the browser reliably prompts a download
       // (jsPDF.save() can be swallowed by some popup/download blockers).
-      const blob = pdf.output("blob");
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -1735,6 +1677,7 @@ function ManualPreviewDialog({
             content={content}
             assets={assets}
             partCatalog={partCatalog}
+            pdfSafe
           />
         </div>
       </DialogContent>
