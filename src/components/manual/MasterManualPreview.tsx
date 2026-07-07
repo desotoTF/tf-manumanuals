@@ -83,6 +83,17 @@ export type PartCatalogLookup = Record<
   { alias?: string | null; imageUrl?: string | null }
 >;
 
+// A, B, ..., Z, AA, AB, ... for hardware-kit REF labels.
+function alphaRef(index: number): string {
+  let n = index;
+  let s = "";
+  do {
+    s = String.fromCharCode(65 + (n % 26)) + s;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return s;
+}
+
 const PAGE_W = 816;
 const PAGE_H = 1056;
 const PAGE_PAD = 48;
@@ -118,10 +129,13 @@ export function MasterManualPreview({
   const b = useMemo(() => mergeBranding(brandingInput), [brandingInput]);
   const headerSvgFallback = resolveHeaderSvgMarkup(b);
   const logoSvgFallback = resolveLogoSvgMarkup(b);
-  const headerSvgUrl = headerSvgFallback ? undefined : resolveHeaderSvgUrl(b);
-  const logoSvgUrl = logoSvgFallback ? undefined : resolveLogoSvgUrl(b);
+  const headerSvgUrl = resolveHeaderSvgUrl(b);
+  const logoSvgUrl = resolveLogoSvgUrl(b);
   const headerSvgMarkup = useInlineSvg(headerSvgUrl);
   const logoSvgMarkup = useInlineSvg(logoSvgUrl);
+  // Prefer the fetched asset (user-uploaded or default template SVG). Only
+  // fall back to the inline built-in markup if the fetch failed / returned
+  // empty, so the header never renders blank.
   const coverHeaderMarkup = headerSvgMarkup || headerSvgFallback;
   const interiorLogoMarkup = logoSvgMarkup || logoSvgFallback;
   const assetMap = assets ?? {};
@@ -329,7 +343,8 @@ export function MasterManualPreview({
           {(content.parts.length > 0 || content.hardware_kit.length > 0) && (
             <div style={{ marginTop: 20 }}>
               <BomImagesGrid
-                parts={[...content.parts, ...content.hardware_kit]}
+                parts={content.parts}
+                hardwareKit={content.hardware_kit}
                 catalog={catalogMap}
               />
             </div>
@@ -548,7 +563,7 @@ function PartsTable({
       <tbody>
         {parts.map((p, i) => (
           <tr key={`p-${i}`}>
-            <td style={{ textAlign: "center", fontWeight: 700 }}>{p.part_number}</td>
+            <td style={{ textAlign: "center", fontWeight: 700 }}>{i + 1}</td>
             <td style={{ textAlign: "center" }}>{p.qty}</td>
             <td>{nameFor(p)}</td>
           </tr>
@@ -560,7 +575,7 @@ function PartsTable({
         )}
         {hardwareKit.map((p, i) => (
           <tr key={`h-${i}`}>
-            <td style={{ textAlign: "center", fontWeight: 700 }}>{p.part_number}</td>
+            <td style={{ textAlign: "center", fontWeight: 700 }}>{alphaRef(i)}</td>
             <td style={{ textAlign: "center" }}>{p.qty}</td>
             <td>{nameFor(p)}</td>
           </tr>
@@ -597,13 +612,18 @@ function ToolsList({ tools }: { tools: { name: string; spec?: string }[] }) {
 
 function BomImagesGrid({
   parts,
+  hardwareKit,
   catalog,
 }: {
   parts: { part_number: string; description?: string }[];
+  hardwareKit: { part_number: string; description?: string }[];
   catalog: PartCatalogLookup;
 }) {
-  const withImages = parts.filter((p) => catalog[p.part_number]?.imageUrl);
-  if (withImages.length === 0) return null;
+  const items: { ref: string; part: { part_number: string; description?: string } }[] = [
+    ...parts.map((p, i) => ({ ref: String(i + 1), part: p })),
+    ...hardwareKit.map((p, i) => ({ ref: alphaRef(i), part: p })),
+  ].filter(({ part }) => catalog[part.part_number]?.imageUrl);
+  if (items.length === 0) return null;
   return (
     <div
       style={{
@@ -612,7 +632,7 @@ function BomImagesGrid({
         gap: 8,
       }}
     >
-      {withImages.map((p, i) => {
+      {items.map(({ ref, part: p }, i) => {
         const c = catalog[p.part_number];
         return (
           <div
@@ -636,7 +656,7 @@ function BomImagesGrid({
                 textAlign: "center",
               }}
             >
-              {p.part_number}
+              {ref}
             </div>
             <img
               src={c!.imageUrl!}
