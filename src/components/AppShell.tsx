@@ -1,5 +1,5 @@
 import { useNavigate, useRouter } from "@tanstack/react-router";
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -38,10 +38,10 @@ export function useActiveOrgId() {
   }, []);
   return {
     orgId,
-    setOrgId: (id: string) => {
+    setOrgId: useCallback((id: string) => {
       localStorage.setItem(ACTIVE_ORG_KEY, id);
       setOrgId(id);
-    },
+    }, []),
   };
 }
 
@@ -60,7 +60,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isSuperAdmin = !!orgsQuery.data?.isSuperAdmin;
 
   useEffect(() => {
-    if (!orgId && orgs.length > 0) {
+    if (orgs.length === 0) return;
+    if (!orgId || !orgs.some((org) => org.id === orgId)) {
       setOrgId(orgs[0].id);
     }
   }, [orgId, orgs, setOrgId]);
@@ -78,6 +79,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   // For super admins with no org membership, still show the shell so they can
   // reach /admin/* routes.
   const hasShellAccess = orgs.length > 0 || isSuperAdmin;
+  const waitingForActiveOrg = orgs.length > 0 && !activeOrg;
 
   return (
     <SidebarProvider>
@@ -106,7 +108,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Button>
           </header>
           <main className="flex-1 px-6 py-8">
-            {orgsQuery.isLoading ? (
+            {orgsQuery.isLoading || waitingForActiveOrg ? (
               <p className="text-sm text-muted-foreground">Loading…</p>
             ) : !hasShellAccess ? (
               <div className="rounded-md border border-border bg-card p-6">

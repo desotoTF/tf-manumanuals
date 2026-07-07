@@ -7,19 +7,9 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { emptyManualContent, type ManualContent } from "@/lib/types";
+import { bomBaseSku, extractTfBaseSku, normalizeManualSku } from "@/lib/tf-sku";
 
 const uuid = z.string().uuid();
-
-const extractTfBaseSku = (value?: string | null): string | null => {
-  const match = String(value ?? "").trim().match(/\b(TF\d{6})\b/i);
-  return match ? match[1].toUpperCase() : null;
-};
-
-const normalizeManualSku = (value: string): string =>
-  extractTfBaseSku(value) ?? value.trim().toUpperCase();
-
-const bomBaseSku = (sku: string, templateSku?: string | null): string =>
-  extractTfBaseSku(templateSku) ?? extractTfBaseSku(sku) ?? sku.trim().toUpperCase();
 
 export interface ManualListRow {
   manual_id: string;
@@ -440,27 +430,6 @@ export const createManualFromSku = createServerFn({ method: "POST" })
       .single();
     if (mErr) throw mErr;
 
-    // Best-effort: pull the main BOM and the `.x` hardware BOM live from
-    // Odoo so a freshly-created manual has parts populated immediately.
-    if (data.erpConnectionId) {
-      try {
-        const { syncBomBySkuImpl } = await import("./erp.functions");
-        await syncBomBySkuImpl(supabase, {
-          organizationId: data.organizationId,
-          sku,
-          connectionId: data.erpConnectionId,
-        });
-        await syncBomBySkuImpl(supabase, {
-          organizationId: data.organizationId,
-          sku: `${sku}.x`,
-          connectionId: data.erpConnectionId,
-        });
-      } catch {
-        // non-fatal — user can retry via the editor's BOM controls.
-      }
-    }
-
-
     const { data: latestBom } = await supabase
       .from("bom_snapshots")
       .select("id, normalized_items")
@@ -479,67 +448,6 @@ export const createManualFromSku = createServerFn({ method: "POST" })
         notes: it.notes as string | undefined,
       }));
     }
-
-    // Best-effort: pull the product image from Odoo and stash it as the
-    // cover image. Failures are non-fatal — the editor exposes a manual
-    // "Fetch from Odoo" / upload affordance.
-    if (data.odooProductId && data.erpConnectionId) {
-      try {
-        const { data: cred } = await supabase.rpc("erp_read_credentials", {
-          _connection_id: data.erpConnectionId,
-        });
-        const apiKey = (cred as { api_key?: string } | null)?.api_key;
-        const { data: connRow } = await supabase
-          .from("erp_connections")
-          .select("base_url, database, username")
-          .eq("id", data.erpConnectionId)
-          .maybeSingle();
-        if (apiKey && connRow) {
-          const { odooAuthenticate, odooExecuteKw } = await import(
-            "./odoo-xmlrpc.server"
-          );
-          const creds = {
-            baseUrl: connRow.base_url,
-            database: connRow.database ?? "",
-            username: connRow.username,
-            apiKey,
-          };
-          const uid = await odooAuthenticate(creds);
-          const rows = await odooExecuteKw<
-            Array<{ id: number; image_1920?: string | false }>
-          >(creds, uid, "product.template", "read", [
-            [Number(data.odooProductId)],
-          ], { fields: ["image_1920"] });
-          const raw = rows?.[0]?.image_1920;
-          if (raw && typeof raw === "string") {
-            const { supabaseAdmin } = await import(
-              "@/integrations/supabase/client.server"
-            );
-            const bytes = Buffer.from(raw, "base64");
-            const path = `cover-images/${data.organizationId}/${productId}/${Date.now()}-odoo.png`;
-            const { error: upErr } = await supabaseAdmin.storage
-              .from("manual-assets")
-              .upload(path, bytes, {
-                contentType: "image/png",
-                upsert: false,
-              });
-            if (!upErr) {
-              const { data: signed } = await supabaseAdmin.storage
-                .from("manual-assets")
-                .createSignedUrl(path, 60 * 60 * 24 * 365 * 10);
-              if (signed?.signedUrl) {
-                seedContent.hero_image_url = signed.signedUrl;
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.error("[createManual] Odoo cover-image fetch failed:", err);
-        // ignore — manual creation must not fail because the image lookup did.
-      }
-
-    }
-
 
     const { data: nextNum } = await supabase.rpc(
       "next_manual_version_number",
@@ -1248,7 +1156,7 @@ export const loadBomForManual = createServerFn({ method: "GET" })
     // live Odoo fetch keyed off the base/template SKU before giving up.
     if (!bom) {
       try {
-        const { syncBomBySkuImpl } = await import("./erp.functions");
+        const { syncBomBySkuImpl } = await import("./erp-sync.server");
         const res = await syncBomBySkuImpl(supabase, {
           organizationId: product.organization_id,
           sku: bomSku,
@@ -1335,7 +1243,7 @@ export const loadBomForManual = createServerFn({ method: "GET" })
       // Live Odoo fetch if we don't yet have the hardware BOM locally.
       if (!childProductId) {
         try {
-          const { syncBomBySkuImpl } = await import("./erp.functions");
+          const { syncBomBySkuImpl } = await import("./erp-sync.server");
           const res = await syncBomBySkuImpl(supabase, {
             organizationId: product.organization_id,
             sku: hardwareLookupSku,
@@ -1356,7 +1264,7 @@ export const loadBomForManual = createServerFn({ method: "GET" })
           .maybeSingle();
         if (!childBom) {
           try {
-            const { syncBomBySkuImpl } = await import("./erp.functions");
+            const { syncBomBySkuImpl } = await import("./erp-sync.server");
             const res = await syncBomBySkuImpl(supabase, {
               organizationId: product.organization_id,
               sku: hardwareLookupSku,

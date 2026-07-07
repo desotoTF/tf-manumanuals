@@ -2,51 +2,12 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
-
-const extractTfBaseSku = (value: string): string | null => {
-  const match = value.trim().match(/\b(TF\d{6})\b/i);
-  return match ? match[1].toUpperCase() : null;
-};
-
-const normalizeLookupSku = (value: string): string =>
-  extractTfBaseSku(value) ?? value.trim().toUpperCase();
-
-const isMainTfSku = (value: string | false | null | undefined): value is string =>
-  typeof value === "string" && /^TF\d{6}$/i.test(value.trim());
-
-const extractLeadingMainTfSku = (value: string | false | null | undefined): string | null => {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  const bracketed = trimmed.match(/^\[(TF\d{6})\]\s+/i);
-  if (bracketed) return bracketed[1].toUpperCase();
-  const plain = trimmed.match(/^(TF\d{6})\s*(?:\||$)/i);
-  return plain ? plain[1].toUpperCase() : null;
-};
-
-const deriveMainTfSkuForQuery = ({
-  query,
-  templateCode,
-  variantCode,
-  labels,
-}: {
-  query: string;
-  templateCode?: string | null;
-  variantCode?: string | null;
-  labels: Array<string | false | null | undefined>;
-}): string | null => {
-  const prefix = query.toUpperCase();
-  if (templateCode && isMainTfSku(templateCode) && templateCode.toUpperCase().startsWith(prefix)) {
-    return templateCode.toUpperCase();
-  }
-  if (variantCode && isMainTfSku(variantCode) && variantCode.toUpperCase().startsWith(prefix)) {
-    return variantCode.toUpperCase();
-  }
-  for (const label of labels) {
-    const leading = extractLeadingMainTfSku(label);
-    if (leading && leading.startsWith(prefix)) return leading;
-  }
-  return null;
-};
+import {
+  deriveMainTfSkuForQuery,
+  extractTfBaseSku,
+  isMainTfSku,
+  normalizeLookupSku,
+} from "@/lib/tf-sku";
 
 export const listProductsWithStatus = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -201,7 +162,7 @@ export const lookupProductBySku = createServerFn({ method: "POST" })
           Array<{ id: number; default_code: string | false; name: string }>
         >(creds, uid, "product.template", "search_read", [
           [["default_code", "=ilike", sku]],
-        ], { fields: ["id", "default_code", "name"], limit: 1 });
+        ], { fields: ["id", "default_code", "name"], limit: 1, context: { active_test: false } });
 
         if (tmplHits && tmplHits.length > 0) {
           const tmpl = tmplHits[0];
@@ -223,7 +184,7 @@ export const lookupProductBySku = createServerFn({ method: "POST" })
           Array<{ id: number; default_code: string | false; name: string; product_tmpl_id: [number, string] | false }>
         >(creds, uid, "product.product", "search_read", [
           [["default_code", "=ilike", sku]],
-        ], { fields: ["id", "default_code", "name", "product_tmpl_id"], limit: 1 });
+        ], { fields: ["id", "default_code", "name", "product_tmpl_id"], limit: 1, context: { active_test: false } });
 
         if (variantExact && variantExact.length > 0 && variantExact[0].product_tmpl_id) {
           const v = variantExact[0];
@@ -232,6 +193,7 @@ export const lookupProductBySku = createServerFn({ method: "POST" })
             Array<{ id: number; default_code: string | false; name: string }>
           >(creds, uid, "product.template", "read", [[tmplId]], {
             fields: ["id", "default_code", "name"],
+            context: { active_test: false },
           });
           const tmpl = tmplRows?.[0];
           const templateCode = tmpl?.default_code ? String(tmpl.default_code).toUpperCase() : null;
@@ -260,7 +222,7 @@ export const lookupProductBySku = createServerFn({ method: "POST" })
             Array<{ id: number; default_code: string | false; name: string }>
           >(creds, uid, "product.template", "search_read", [
             [["default_code", "=ilike", `${sku}%`]],
-          ], { fields: ["id", "default_code", "name"], limit: 20 });
+          ], { fields: ["id", "default_code", "name"], limit: 20, context: { active_test: false } });
 
           const productHits = (tmplPrefixHits ?? [])
             .filter((tmpl) =>
@@ -333,7 +295,7 @@ export const lookupProductBySku = createServerFn({ method: "POST" })
             Array<{ id: number; default_code: string | false; name: string; product_tmpl_id: [number, string] | false }>
           >(creds, uid, "product.product", "search_read", [
             [["default_code", "=ilike", `${sku}%`]],
-          ], { fields: ["id", "default_code", "name", "product_tmpl_id"], limit: 40 });
+          ], { fields: ["id", "default_code", "name", "product_tmpl_id"], limit: 40, context: { active_test: false } });
 
           if (variantPrefixHits && variantPrefixHits.length > 0) {
             const tmplIds = Array.from(
@@ -348,6 +310,7 @@ export const lookupProductBySku = createServerFn({ method: "POST" })
                   Array<{ id: number; default_code: string | false; name: string }>
                 >(creds, uid, "product.template", "read", [tmplIds], {
                   fields: ["id", "default_code", "name"],
+                  context: { active_test: false },
                 })
               : [];
             const tmplById = new Map(tmplRows.map((t) => [t.id, t]));
@@ -406,6 +369,40 @@ export const lookupProductBySku = createServerFn({ method: "POST" })
                 variants: productHits,
                 variantTemplateSkus: Object.fromEntries(
                   productHits.map((p) => [p.odooProductId, p.sku]),
+                ),
+              };
+            }
+
+            const variantTitleChoices = variantPrefixHits.slice(0, 6).reduce<Array<{
+              odooProductId: string;
+              sku: string;
+              name: string;
+            }>>((choices, variant) => {
+              if (!variant.product_tmpl_id) return choices;
+              const tid = (variant.product_tmpl_id as [number, string])[0];
+              const tmpl = tmplById.get(tid);
+              const variantCode = variant.default_code ? String(variant.default_code).toUpperCase() : "";
+              const fallbackSku = extractTfBaseSku(variantCode) ?? variantCode ?? sku;
+              if (!fallbackSku) return choices;
+              if (choices.some((choice) => choice.odooProductId === String(tid))) return choices;
+              choices.push({
+                odooProductId: String(tid),
+                sku: fallbackSku,
+                name: tmpl?.name ?? variant.name ?? (variant.product_tmpl_id as [number, string])[1],
+              });
+              return choices;
+            }, []);
+            if (variantTitleChoices.length > 0) {
+              return {
+                source: "odoo_variants",
+                sku,
+                name: variantTitleChoices[0].name,
+                odooTemplateId: variantTitleChoices[0].odooProductId,
+                templateSku: variantTitleChoices[0].sku,
+                erpConnectionId: conn.id,
+                variants: variantTitleChoices,
+                variantTemplateSkus: Object.fromEntries(
+                  variantTitleChoices.map((p) => [p.odooProductId, p.sku]),
                 ),
               };
             }
