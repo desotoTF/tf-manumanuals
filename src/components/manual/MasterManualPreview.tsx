@@ -118,10 +118,13 @@ export function MasterManualPreview({
   const b = useMemo(() => mergeBranding(brandingInput), [brandingInput]);
   const headerSvgFallback = resolveHeaderSvgMarkup(b);
   const logoSvgFallback = resolveLogoSvgMarkup(b);
-  const headerSvgUrl = headerSvgFallback ? undefined : resolveHeaderSvgUrl(b);
-  const logoSvgUrl = logoSvgFallback ? undefined : resolveLogoSvgUrl(b);
+  const headerSvgUrl = resolveHeaderSvgUrl(b);
+  const logoSvgUrl = resolveLogoSvgUrl(b);
   const headerSvgMarkup = useInlineSvg(headerSvgUrl);
   const logoSvgMarkup = useInlineSvg(logoSvgUrl);
+  // Prefer the fetched asset (user-uploaded or default template SVG). Only
+  // fall back to the inline built-in markup if the fetch failed / returned
+  // empty, so the header never renders blank.
   const coverHeaderMarkup = headerSvgMarkup || headerSvgFallback;
   const interiorLogoMarkup = logoSvgMarkup || logoSvgFallback;
   const assetMap = assets ?? {};
