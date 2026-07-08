@@ -718,6 +718,14 @@ function ProductEditorPage() {
           )}
 
           {activeVersion && (
+            <PartsPageCard
+              content={content}
+              editable={!!editable}
+              onChange={(next) => setContent(next)}
+            />
+          )}
+
+          {activeVersion && (
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center justify-between">
