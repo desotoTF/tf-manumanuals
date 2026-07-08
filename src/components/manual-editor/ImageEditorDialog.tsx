@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
-import { Square, Circle, ArrowRight, Type, Trash2 } from "lucide-react";
+import { Square, Circle, ArrowRight, Type, Trash2, Crop, Check, X } from "lucide-react";
 
 const MAX_W = 900;
 const MAX_H = 560;
