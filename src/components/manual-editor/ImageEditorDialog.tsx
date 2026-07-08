@@ -379,10 +379,24 @@ export function ImageEditorDialog({
             <Button size="sm" variant="outline" onClick={addArrow} disabled={!ready}>
               <ArrowRight className="mr-1 h-4 w-4" /> Arrow
             </Button>
-            <Button size="sm" variant="outline" onClick={addText} disabled={!ready}>
+            <Button size="sm" variant="outline" onClick={addText} disabled={!ready || cropping}>
               <Type className="mr-1 h-4 w-4" /> Text
             </Button>
-            <Button size="sm" variant="ghost" className="text-destructive" onClick={removeSelected} disabled={!ready}>
+            {!cropping ? (
+              <Button size="sm" variant="outline" onClick={startCrop} disabled={!ready}>
+                <Crop className="mr-1 h-4 w-4" /> Crop
+              </Button>
+            ) : (
+              <>
+                <Button size="sm" onClick={applyCrop} disabled={!ready}>
+                  <Check className="mr-1 h-4 w-4" /> Apply crop
+                </Button>
+                <Button size="sm" variant="ghost" onClick={cancelCrop}>
+                  <X className="mr-1 h-4 w-4" /> Cancel
+                </Button>
+              </>
+            )}
+            <Button size="sm" variant="ghost" className="text-destructive" onClick={removeSelected} disabled={!ready || cropping}>
               <Trash2 className="mr-1 h-4 w-4" /> Delete
             </Button>
           </div>
