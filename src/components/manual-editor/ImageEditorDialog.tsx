@@ -47,6 +47,7 @@ export function ImageEditorDialog({
   const canvasElRef = useRef<HTMLCanvasElement | null>(null);
   const fabricRef = useRef<any>(null);
   const originalImageRef = useRef<HTMLImageElement | null>(null);
+  const cropRectRef = useRef<any>(null);
   const [canvasSize, setCanvasSize] = useState<{ width: number; height: number } | null>(null);
   const [ready, setReady] = useState(false);
   const [fill, setFill] = useState("#ff2d55");
@@ -54,6 +55,7 @@ export function ImageEditorDialog({
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [shadow, setShadow] = useState(0);
   const [noFill, setNoFill] = useState(true);
+  const [cropping, setCropping] = useState(false);
   const effectiveFill = () => (noFill ? "transparent" : fill);
 
   // Mount canvas + load background image when dialog opens.
