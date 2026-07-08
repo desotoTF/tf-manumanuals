@@ -30,13 +30,14 @@ function AuthPage() {
   const navigate = useNavigate();
   const accept = useServerFn(acceptInvitation);
 
-  const [mode, setMode] = useState<"signin" | "accept">(
+  const [mode, setMode] = useState<"signin" | "accept" | "forgot">(
     invite_token ? "accept" : "signin",
   );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
   // Redirect away if already signed in
   useEffect(() => {
