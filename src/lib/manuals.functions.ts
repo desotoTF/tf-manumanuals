@@ -1524,6 +1524,11 @@ export const cloneManual = createServerFn({ method: "POST" })
               .createSignedUrl(copyPath, 60 * 60 * 24 * 365 * 10);
             nextStoragePath = copyPath;
             nextUrl = signed?.signedUrl ?? nextUrl;
+          } else {
+            // Keep rendering via the existing signed URL, but do not point the
+            // cloned asset row at the source storage object; deleting the clone
+            // must never delete the original manual's file.
+            nextStoragePath = null;
           }
         }
 
