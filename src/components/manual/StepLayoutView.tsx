@@ -115,7 +115,7 @@ function SlotView({
               style={{ display: "block", height: "auto", width: "100%" }}
               crossOrigin="anonymous"
             />
-            {(slot.caption || asset.caption) && (
+            {slot.caption && (
               <figcaption
                 style={{
                   borderTop: "1px solid #D9DDE5",
@@ -125,7 +125,7 @@ function SlotView({
                   fontSize: 11,
                 }}
               >
-                {slot.caption || asset.caption}
+                {slot.caption}
               </figcaption>
             )}
           </figure>
@@ -165,9 +165,9 @@ function SlotView({
             className="block h-auto w-full"
             loading="lazy"
           />
-          {(slot.caption || asset.caption) && (
+          {slot.caption && (
             <figcaption className="border-t border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-              {slot.caption || asset.caption}
+              {slot.caption}
             </figcaption>
           )}
         </figure>

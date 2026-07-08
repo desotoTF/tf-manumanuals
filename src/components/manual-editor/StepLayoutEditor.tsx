@@ -67,6 +67,8 @@ interface Props {
   onInlineUpload?: (file: File) => Promise<string | null>;
   /** Hide the built-in layout switcher (parent renders its own). */
   hideLayoutSwitcher?: boolean;
+  /** Hide the "Add callout" affordance on each slot. */
+  hideCallout?: boolean;
 }
 
 /** Standalone layout switcher — usable inline in a step header row. */
@@ -146,6 +148,7 @@ export function StepLayoutEditor({
   allowedLayouts,
   onInlineUpload,
   hideLayoutSwitcher,
+  hideCallout,
 }: Props) {
   const normalized = useMemo(() => normalizeStep(step), [step]);
   const layout = normalized.layout ?? "two_col";
@@ -195,6 +198,7 @@ export function StepLayoutEditor({
             figMap={figMap}
             onChange={(s) => updateSlot(i, s)}
             onInlineUpload={onInlineUpload}
+            hideCallout={hideCallout}
           />
         ))}
       </div>
@@ -225,6 +229,7 @@ function SlotEditor({
   figMap,
   onChange,
   onInlineUpload,
+  hideCallout,
 }: {
   slot: StepSlot;
   label: string;
@@ -233,6 +238,7 @@ function SlotEditor({
   figMap: Map<string, number>;
   onChange: (s: StepSlot) => void;
   onInlineUpload?: (file: File) => Promise<string | null>;
+  hideCallout?: boolean;
 }) {
   const selectedImage = useMemo(
     () => images.find((i) => i.asset_id === slot.asset_id) ?? null,
@@ -312,31 +318,33 @@ function SlotEditor({
       </div>
 
       {/* Callout */}
-      <div className="mt-3">
-        {slot.callout ? (
-          <CalloutEditor
-            callout={slot.callout}
-            disabled={disabled}
-            onChange={(c) => onChange({ ...slot, callout: c })}
-            onRemove={() => onChange({ ...slot, callout: null })}
-          />
-        ) : (
-          !disabled && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() =>
-                onChange({
-                  ...slot,
-                  callout: { severity: "info", body: "" },
-                })
-              }
-            >
-              <AlertTriangle className="mr-2 h-4 w-4" /> Add callout
-            </Button>
-          )
-        )}
-      </div>
+      {!hideCallout && (
+        <div className="mt-3">
+          {slot.callout ? (
+            <CalloutEditor
+              callout={slot.callout}
+              disabled={disabled}
+              onChange={(c) => onChange({ ...slot, callout: c })}
+              onRemove={() => onChange({ ...slot, callout: null })}
+            />
+          ) : (
+            !disabled && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  onChange({
+                    ...slot,
+                    callout: { severity: "info", body: "" },
+                  })
+                }
+              >
+                <AlertTriangle className="mr-2 h-4 w-4" /> Add callout
+              </Button>
+            )
+          )}
+        </div>
+      )}
     </div>
   );
 }
