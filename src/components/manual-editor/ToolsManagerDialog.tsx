@@ -24,8 +24,8 @@ import {
   deleteTool,
   upsertTool,
   countToolUsage,
+  type ToolRow,
 } from "@/lib/tools.functions";
-import type { Tool } from "@/lib/types";
 
 export function ToolsManagerDialog({
   open,
