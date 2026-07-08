@@ -104,6 +104,12 @@ function ManualsPage() {
     manualId: string;
     label: string;
   } | null>(null);
+  const [toClone, setToClone] = useState<{
+    manualId: string;
+    defaultTitle: string;
+  } | null>(null);
+  const [cloneTitle, setCloneTitle] = useState("");
+
 
   const manualsQuery = useQuery({
     queryKey: ["manuals", orgId],
