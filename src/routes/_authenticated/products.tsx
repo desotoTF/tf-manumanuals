@@ -104,6 +104,12 @@ function ManualsPage() {
     manualId: string;
     label: string;
   } | null>(null);
+  const [toClone, setToClone] = useState<{
+    manualId: string;
+    defaultTitle: string;
+  } | null>(null);
+  const [cloneTitle, setCloneTitle] = useState("");
+
 
   const manualsQuery = useQuery({
     queryKey: ["manuals", orgId],
@@ -122,10 +128,12 @@ function ManualsPage() {
   });
 
   const cloneMut = useMutation({
-    mutationFn: (manualId: string) => cloneManualFn({ data: { manualId } }),
+    mutationFn: (vars: { manualId: string; title?: string }) =>
+      cloneManualFn({ data: vars }),
     onSuccess: (res) => {
       toast.success("Manual cloned as a new draft");
       qc.invalidateQueries({ queryKey: ["manuals", orgId] });
+      setToClone(null);
       navigate({
         to: "/products/$productId",
         params: { productId: res.productId },
@@ -133,6 +141,7 @@ function ManualsPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
 
   const rows = useMemo(() => {
     const data = manualsQuery.data ?? [];
@@ -218,8 +227,9 @@ function ManualsPage() {
                   }
                 >
                   <TableCell className="font-mono text-sm">
-                    {formatManualLabel(r.sku, r.product_name)}
+                    {r.product_name}
                   </TableCell>
+
                   <TableCell>
                     <Badge className={variant.className} variant="secondary">
                       {variant.label}
@@ -252,34 +262,46 @@ function ManualsPage() {
                       : "—"}
                   </TableCell>
                   <TableCell
-                    className="text-right"
+                    className="text-left"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Clone manual"
-                      className="text-muted-foreground hover:text-foreground"
-                      disabled={cloneMut.isPending}
-                      onClick={() => cloneMut.mutate(r.manual_id)}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Delete manual"
-                      className="text-muted-foreground hover:text-destructive"
-                      onClick={() =>
-                        setToDelete({
-                          manualId: r.manual_id,
-                          label: formatManualLabel(r.sku, r.product_name),
-                        })
-                      }
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Clone manual"
+                        title="Clone manual"
+                        className="text-muted-foreground hover:text-foreground"
+                        disabled={cloneMut.isPending}
+                        onClick={() => {
+                          const defaultTitle = `${r.product_name} (copy)`;
+                          setCloneTitle(defaultTitle);
+                          setToClone({
+                            manualId: r.manual_id,
+                            defaultTitle,
+                          });
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Delete manual"
+                        title="Delete manual"
+                        className="text-muted-foreground hover:text-destructive"
+                        onClick={() =>
+                          setToDelete({
+                            manualId: r.manual_id,
+                            label: r.product_name,
+                          })
+                        }
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </TableCell>
+
                 </TableRow>
               );
             })}
@@ -323,6 +345,60 @@ function ManualsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog
+        open={!!toClone}
+        onOpenChange={(o) => !o && !cloneMut.isPending && setToClone(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Duplicate manual</DialogTitle>
+            <DialogDescription>
+              A new draft will be created with the name below. You can edit it
+              before or after cloning.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="clone-title">New manual name</Label>
+            <Input
+              id="clone-title"
+              value={cloneTitle}
+              onChange={(e) => setCloneTitle(e.target.value)}
+              disabled={cloneMut.isPending}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setToClone(null)}
+              disabled={cloneMut.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={cloneMut.isPending || !cloneTitle.trim()}
+              onClick={() => {
+                if (!toClone) return;
+                cloneMut.mutate({
+                  manualId: toClone.manualId,
+                  title: cloneTitle.trim(),
+                });
+              }}
+            >
+              {cloneMut.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Duplicating…
+                </>
+              ) : (
+                "Duplicate"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }

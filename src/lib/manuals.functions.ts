@@ -1425,9 +1425,11 @@ export const cloneManual = createServerFn({ method: "POST" })
       .object({
         manualId: uuid,
         versionId: uuid.optional(),
+        title: z.string().trim().min(1).max(300).optional(),
       })
       .parse(d),
   )
+
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
@@ -1466,7 +1468,7 @@ export const cloneManual = createServerFn({ method: "POST" })
       .from("manuals")
       .insert({
         product_id: sourceManual.product_id,
-        title: `Copy of ${sourceManual.title}`,
+        title: data.title?.trim() || `${sourceManual.title} (copy)`,
         created_by: userId,
         template_id: sourceManual.template_id,
         source: sourceManual.source ?? "authored",
