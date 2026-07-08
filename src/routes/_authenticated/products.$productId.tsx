@@ -75,6 +75,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { ImageEditorDialog } from "@/components/manual-editor/ImageEditorDialog";
+import { ToolsManagerDialog } from "@/components/manual-editor/ToolsManagerDialog";
 import { getMasterTemplate } from "@/lib/templates.functions";
 import { MasterManualPreview } from "@/components/manual/MasterManualPreview";
 

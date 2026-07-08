@@ -13,6 +13,7 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ManualsSlugRouteImport } from './routes/manuals.$slug'
+import { Route as AuthResetRouteImport } from './routes/auth.reset'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedProductsRouteImport } from './routes/_authenticated/products'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
@@ -47,6 +48,11 @@ const ManualsSlugRoute = ManualsSlugRouteImport.update({
   id: '/manuals/$slug',
   path: '/manuals/$slug',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthResetRoute = AuthResetRouteImport.update({
+  id: '/reset',
+  path: '/reset',
+  getParentRoute: () => AuthRoute,
 } as any)
 const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   id: '/settings',
@@ -134,11 +140,12 @@ const AuthenticatedSuperadminAdminOrgsOrgIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/auth': typeof AuthRoute
+  '/auth': typeof AuthRouteWithChildren
   '/account': typeof AuthenticatedAccountRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/products': typeof AuthenticatedProductsRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
+  '/auth/reset': typeof AuthResetRoute
   '/manuals/$slug': typeof ManualsSlugRoute
   '/products/$productId': typeof AuthenticatedProductsProductIdRoute
   '/settings/bom-exclusions': typeof AuthenticatedSettingsBomExclusionsRoute
@@ -153,11 +160,12 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/auth': typeof AuthRoute
+  '/auth': typeof AuthRouteWithChildren
   '/account': typeof AuthenticatedAccountRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/products': typeof AuthenticatedProductsRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
+  '/auth/reset': typeof AuthResetRoute
   '/manuals/$slug': typeof ManualsSlugRoute
   '/products/$productId': typeof AuthenticatedProductsProductIdRoute
   '/settings/bom-exclusions': typeof AuthenticatedSettingsBomExclusionsRoute
@@ -174,12 +182,13 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
-  '/auth': typeof AuthRoute
+  '/auth': typeof AuthRouteWithChildren
   '/_authenticated/_superadmin': typeof AuthenticatedSuperadminRouteWithChildren
   '/_authenticated/account': typeof AuthenticatedAccountRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/products': typeof AuthenticatedProductsRouteWithChildren
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteWithChildren
+  '/auth/reset': typeof AuthResetRoute
   '/manuals/$slug': typeof ManualsSlugRoute
   '/_authenticated/products/$productId': typeof AuthenticatedProductsProductIdRoute
   '/_authenticated/settings/bom-exclusions': typeof AuthenticatedSettingsBomExclusionsRoute
@@ -201,6 +210,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/products'
     | '/settings'
+    | '/auth/reset'
     | '/manuals/$slug'
     | '/products/$productId'
     | '/settings/bom-exclusions'
@@ -220,6 +230,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/products'
     | '/settings'
+    | '/auth/reset'
     | '/manuals/$slug'
     | '/products/$productId'
     | '/settings/bom-exclusions'
@@ -241,6 +252,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/products'
     | '/_authenticated/settings'
+    | '/auth/reset'
     | '/manuals/$slug'
     | '/_authenticated/products/$productId'
     | '/_authenticated/settings/bom-exclusions'
@@ -257,7 +269,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
-  AuthRoute: typeof AuthRoute
+  AuthRoute: typeof AuthRouteWithChildren
   ManualsSlugRoute: typeof ManualsSlugRoute
   ApiPublicBootstrapRoute: typeof ApiPublicBootstrapRoute
 }
@@ -291,6 +303,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/manuals/$slug'
       preLoaderRoute: typeof ManualsSlugRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/auth/reset': {
+      id: '/auth/reset'
+      path: '/reset'
+      fullPath: '/auth/reset'
+      preLoaderRoute: typeof AuthResetRouteImport
+      parentRoute: typeof AuthRoute
     }
     '/_authenticated/settings': {
       id: '/_authenticated/settings'
@@ -488,10 +507,20 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
 const AuthenticatedRouteRouteWithChildren =
   AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
+interface AuthRouteChildren {
+  AuthResetRoute: typeof AuthResetRoute
+}
+
+const AuthRouteChildren: AuthRouteChildren = {
+  AuthResetRoute: AuthResetRoute,
+}
+
+const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
-  AuthRoute: AuthRoute,
+  AuthRoute: AuthRouteWithChildren,
   ManualsSlugRoute: ManualsSlugRoute,
   ApiPublicBootstrapRoute: ApiPublicBootstrapRoute,
 }
