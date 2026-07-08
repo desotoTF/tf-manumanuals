@@ -229,6 +229,7 @@ function SlotEditor({
   figMap,
   onChange,
   onInlineUpload,
+  hideCallout,
 }: {
   slot: StepSlot;
   label: string;
@@ -237,6 +238,7 @@ function SlotEditor({
   figMap: Map<string, number>;
   onChange: (s: StepSlot) => void;
   onInlineUpload?: (file: File) => Promise<string | null>;
+  hideCallout?: boolean;
 }) {
   const selectedImage = useMemo(
     () => images.find((i) => i.asset_id === slot.asset_id) ?? null,
