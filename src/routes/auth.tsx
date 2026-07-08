@@ -30,13 +30,14 @@ function AuthPage() {
   const navigate = useNavigate();
   const accept = useServerFn(acceptInvitation);
 
-  const [mode, setMode] = useState<"signin" | "accept">(
+  const [mode, setMode] = useState<"signin" | "accept" | "forgot">(
     invite_token ? "accept" : "signin",
   );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
   // Redirect away if already signed in
   useEffect(() => {
@@ -81,6 +82,23 @@ function AuthPage() {
       setLoading(false);
     }
   };
+  const handleForgot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    const redirectTo =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/auth/reset`
+        : undefined;
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo,
+    });
+    setLoading(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    setResetSent(true);
+  };
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -90,12 +108,18 @@ function AuthPage() {
             <Factory className="h-6 w-6 text-primary" />
           </div>
           <CardTitle className="text-2xl">
-            {mode === "accept" ? "Accept invitation" : "Sign in to ManuManuals"}
+            {mode === "accept"
+              ? "Accept invitation"
+              : mode === "forgot"
+                ? "Reset your password"
+                : "Sign in to ManuManuals"}
           </CardTitle>
           <p className="text-sm text-muted-foreground">
             {mode === "accept"
               ? "Set a password to activate your account."
-              : "Manufacturing InstallOps platform."}
+              : mode === "forgot"
+                ? "We'll email you a link to set a new password."
+                : "Manufacturing InstallOps platform."}
           </p>
         </CardHeader>
         <CardContent>
@@ -125,6 +149,39 @@ function AuthPage() {
                 {loading ? "Activating…" : "Activate account"}
               </Button>
             </form>
+          ) : mode === "forgot" ? (
+            <form className="space-y-4" onSubmit={handleForgot}>
+              <div className="space-y-1.5">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
+              {resetSent ? (
+                <p className="rounded-md bg-primary/5 p-3 text-center text-sm">
+                  Check your inbox for a password reset link.
+                </p>
+              ) : (
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? "Sending…" : "Send reset link"}
+                </Button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("signin");
+                  setResetSent(false);
+                }}
+                className="block w-full text-center text-xs text-muted-foreground hover:text-foreground"
+              >
+                Back to sign in
+              </button>
+            </form>
           ) : (
             <form className="space-y-4" onSubmit={handleSignIn}>
               <div className="space-y-1.5">
@@ -139,7 +196,16 @@ function AuthPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="password">Password</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="password">Password</Label>
+                  <button
+                    type="button"
+                    onClick={() => setMode("forgot")}
+                    className="text-xs font-medium text-primary hover:underline"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
                 <Input
                   id="password"
                   type="password"
@@ -162,3 +228,4 @@ function AuthPage() {
     </div>
   );
 }
+

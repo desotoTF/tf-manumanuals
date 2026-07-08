@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
-import { Square, Circle, ArrowRight, Type, Trash2 } from "lucide-react";
+import { Square, Circle, ArrowRight, Type, Trash2, Crop, Check, X } from "lucide-react";
 
 const MAX_W = 900;
 const MAX_H = 560;
@@ -47,6 +47,7 @@ export function ImageEditorDialog({
   const canvasElRef = useRef<HTMLCanvasElement | null>(null);
   const fabricRef = useRef<any>(null);
   const originalImageRef = useRef<HTMLImageElement | null>(null);
+  const cropRectRef = useRef<any>(null);
   const [canvasSize, setCanvasSize] = useState<{ width: number; height: number } | null>(null);
   const [ready, setReady] = useState(false);
   const [fill, setFill] = useState("#ff2d55");
@@ -54,6 +55,7 @@ export function ImageEditorDialog({
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [shadow, setShadow] = useState(0);
   const [noFill, setNoFill] = useState(true);
+  const [cropping, setCropping] = useState(false);
   const effectiveFill = () => (noFill ? "transparent" : fill);
 
   // Mount canvas + load background image when dialog opens.
@@ -153,10 +155,13 @@ export function ImageEditorDialog({
     const { fabric, canvas } = await withFabric();
     if (!canvas) return;
     const s = await shadowObj();
-    // Arrow as a polyline: shaft + arrowhead grouped
+    // Arrow as a polyline: shaft + arrowhead grouped. Color comes from the
+    // stroke picker (fall back to fill when stroke is transparent) so the
+    // Fill/Stroke pickers apply predictably to a mostly-linear shape.
     const w = strokeWidth;
+    const arrowColor = stroke && stroke !== "transparent" ? stroke : (noFill ? "#000000" : fill);
     const shaft = new fabric.Line([0, 0, 160, 0], {
-      stroke: fill, strokeWidth: w,
+      stroke: arrowColor, strokeWidth: w, fill: arrowColor,
     });
     const head = new fabric.Polygon(
       [
@@ -164,7 +169,7 @@ export function ImageEditorDialog({
         { x: 140, y: -10 - w },
         { x: 140, y: 10 + w },
       ],
-      { fill, stroke: fill, strokeWidth: 1 },
+      { fill: arrowColor, stroke: arrowColor, strokeWidth: 1 },
     );
     const group = new fabric.Group([shaft, head], {
       left: 60, top: 80, shadow: s ?? undefined,
@@ -200,7 +205,22 @@ export function ImageEditorDialog({
     if (!canvas) return;
     const active = canvas.getActiveObject?.();
     if (!active) return;
-    active.set({ fill: effectiveFill(), stroke, strokeWidth });
+    const applyStyles = (obj: any) => {
+      // For grouped shapes (e.g. Arrow = line + polygon) fabric ignores
+      // fill/stroke set on the Group itself, so we walk children manually.
+      if (typeof obj.forEachObject === "function") {
+        obj.forEachObject((child: any) => applyStyles(child));
+      } else {
+        const isLine = obj.type === "line";
+        obj.set({
+          fill: isLine ? undefined : effectiveFill(),
+          stroke: stroke,
+          strokeWidth,
+        });
+      }
+    };
+    applyStyles(active);
+    active.dirty = true;
     (async () => {
       const s = await shadowObj();
       active.set({ shadow: s ?? null });
@@ -208,6 +228,107 @@ export function ImageEditorDialog({
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fill, noFill, stroke, strokeWidth, shadow]);
+
+  // ----- Crop -----
+  const startCrop = async () => {
+    const { fabric, canvas } = await withFabric();
+    if (!canvas || cropping) return;
+    const w = canvas.getWidth();
+    const h = canvas.getHeight();
+    const rect = new fabric.Rect({
+      left: w * 0.1,
+      top: h * 0.1,
+      width: w * 0.8,
+      height: h * 0.8,
+      fill: "rgba(0,0,0,0.05)",
+      stroke: "#ff2d55",
+      strokeDashArray: [8, 6],
+      strokeWidth: 2,
+      cornerColor: "#ff2d55",
+      transparentCorners: false,
+      hasRotatingPoint: false,
+      lockRotation: true,
+    });
+    cropRectRef.current = rect;
+    canvas.add(rect);
+    canvas.setActiveObject(rect);
+    canvas.requestRenderAll();
+    setCropping(true);
+  };
+
+  const cancelCrop = () => {
+    const canvas = fabricRef.current;
+    if (canvas && cropRectRef.current) {
+      canvas.remove(cropRectRef.current);
+      canvas.requestRenderAll();
+    }
+    cropRectRef.current = null;
+    setCropping(false);
+  };
+
+  const applyCrop = async () => {
+    const canvas = fabricRef.current;
+    const sourceImage = originalImageRef.current;
+    const rect = cropRectRef.current;
+    if (!canvas || !sourceImage || !rect) return;
+    const displayWidth = canvasSize?.width || canvas.getWidth();
+    const displayHeight = canvasSize?.height || canvas.getHeight();
+    const scaleToSource = (sourceImage.naturalWidth || sourceImage.width) / displayWidth;
+    // Compute crop in source-image pixels, clamped.
+    const sx = Math.max(0, Math.round(rect.left * scaleToSource));
+    const sy = Math.max(0, Math.round(rect.top * scaleToSource));
+    const sw = Math.min(
+      sourceImage.naturalWidth - sx,
+      Math.round(rect.width * (rect.scaleX ?? 1) * scaleToSource),
+    );
+    const sh = Math.min(
+      sourceImage.naturalHeight - sy,
+      Math.round(rect.height * (rect.scaleY ?? 1) * scaleToSource),
+    );
+    if (sw <= 4 || sh <= 4) {
+      cancelCrop();
+      return;
+    }
+    // Ask before dropping any existing annotations.
+    const otherObjs = canvas.getObjects().filter((o: any) => o !== rect);
+    if (otherObjs.length > 0 && !confirm("Cropping will remove existing annotations. Continue?")) {
+      return;
+    }
+    const off = document.createElement("canvas");
+    off.width = sw;
+    off.height = sh;
+    const ctx = off.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(sourceImage, sx, sy, sw, sh, 0, 0, sw, sh);
+    const dataUrl = off.toDataURL("image/png");
+    const newImg = await loadImageElement(dataUrl);
+    originalImageRef.current = newImg;
+
+    // Recompute display size at MAX_W/MAX_H.
+    const iw = newImg.naturalWidth;
+    const ih = newImg.naturalHeight;
+    const s = Math.min(MAX_W / iw, MAX_H / ih, 1);
+    const cw = Math.round(iw * s);
+    const ch = Math.round(ih * s);
+
+    // Reset canvas: clear all, resize, dispose+recreate not needed.
+    canvas.clear();
+    canvas.setDimensions({ width: cw, height: ch });
+    if (canvas.wrapperEl) {
+      Object.assign(canvas.wrapperEl.style, {
+        width: `${cw}px`,
+        height: `${ch}px`,
+      });
+    }
+    setCanvasSize({ width: cw, height: ch });
+    if (canvasElRef.current) {
+      canvasElRef.current.style.width = `${cw}px`;
+      canvasElRef.current.style.height = `${ch}px`;
+    }
+    cropRectRef.current = null;
+    setCropping(false);
+    canvas.requestRenderAll();
+  };
 
   const handleSave = async () => {
     const canvas = fabricRef.current;
@@ -258,10 +379,24 @@ export function ImageEditorDialog({
             <Button size="sm" variant="outline" onClick={addArrow} disabled={!ready}>
               <ArrowRight className="mr-1 h-4 w-4" /> Arrow
             </Button>
-            <Button size="sm" variant="outline" onClick={addText} disabled={!ready}>
+            <Button size="sm" variant="outline" onClick={addText} disabled={!ready || cropping}>
               <Type className="mr-1 h-4 w-4" /> Text
             </Button>
-            <Button size="sm" variant="ghost" className="text-destructive" onClick={removeSelected} disabled={!ready}>
+            {!cropping ? (
+              <Button size="sm" variant="outline" onClick={startCrop} disabled={!ready}>
+                <Crop className="mr-1 h-4 w-4" /> Crop
+              </Button>
+            ) : (
+              <>
+                <Button size="sm" onClick={applyCrop} disabled={!ready}>
+                  <Check className="mr-1 h-4 w-4" /> Apply crop
+                </Button>
+                <Button size="sm" variant="ghost" onClick={cancelCrop}>
+                  <X className="mr-1 h-4 w-4" /> Cancel
+                </Button>
+              </>
+            )}
+            <Button size="sm" variant="ghost" className="text-destructive" onClick={removeSelected} disabled={!ready || cropping}>
               <Trash2 className="mr-1 h-4 w-4" /> Delete
             </Button>
           </div>

@@ -1,142 +1,39 @@
-## Goal
+# Plan
 
-Redesign the `MasterManualPreview` output (the DOM that html2canvas + jsPDF snapshots into the published PDF) to match the attached mockup, for the ThumperFab Master template only. Steps/Installation content is unchanged — only the surrounding chrome, cover, parts/tools page, and warning styling change.
+## 1. Image editor (`ImageEditorDialog.tsx`)
 
-## 1. Assets + fonts
+- Fix Arrow color: the arrow group's shaft/head are created with `fill`/`stroke` from state at add-time only. Rewire the "style pickers → active object" effect to walk into `fabric.Group` children and update line/polygon `stroke`+`fill` (right now `.set({fill, stroke})` on a Group is a no-op for its children).
+- Add **Crop** to the toolbar (next to Rect/Circle/Arrow/Text). Behavior:
+  - Enters crop mode → overlays a draggable/resizable rect on the canvas.
+  - "Apply crop" button confirms → we re-render both the background `<img>` and the fabric canvas to the cropped region, scaling annotations proportionally. Original source image reference is replaced with the cropped bitmap so `handleSave` still exports full-resolution.
+  - "Cancel crop" restores.
 
-- Upload `TF-PDF-Header.svg` and `TF-PDF-Logo.svg` to the CDN via `lovable-assets` and store the resulting `.asset.json` pointers under `src/assets/`. These become the default header + logo for the ThumperFab Master template.
-- Extend `BrandingTokens` (`src/lib/branding.ts`) with:
-  - `header_svg_url: string` (default = uploaded header asset URL)
-  - `logo_svg_url: string` (default = uploaded logo asset URL — used on interior pages)
-  - Keep `logo_url` as-is for backward compat.
-- Add "Teko" via `<link>` in `src/routes/__root.tsx` head (`Teko:wght@500;600`) — Google Fonts, per Tailwind v4 rules (never `@import` in `styles.css`).
-- Extend `EditBrandingDialog` "Identity" tab with two new file/URL fields: **Cover header SVG** and **Interior logo SVG**, both supporting URL paste (upload wiring can reuse `manual-assets` bucket via existing signed-URL flow — small addition, low risk).
+## 2. Tools manager (modal from gear icon)
 
-## 2. New renderer: `ThumperFabMasterPreview`
+- New `ToolsManagerDialog.tsx` opened by a gear icon rendered next to the Tools combobox in the manual editor (find current usage of `listTools`/`upsertTool`).
+- Modal lists all org tools with inline rename, an "Add new" row, and a delete button.
+- Delete is **blocked if referenced**: add `countToolUsage(toolId)` server fn that scans `manual_versions.content` JSON for the tool id/name. If count > 0, show usage count and disable delete with an explanation.
+- Rename updates the row in `public.tools`; existing manuals reference tools by id so rename propagates automatically on next render. If tools are stored by name in version content, rename also rewrites those occurrences (will confirm during implementation by reading `ManualListEditors.tsx` / version schema).
 
-Create `src/components/manual/ThumperFabMasterPreview.tsx`. `MasterManualPreview.tsx` becomes a thin dispatcher that returns the new renderer when `template.slug === "thumperfab-master"` (or the template's `branding.variant === "thumperfab-master"`), otherwise falls back to the current renderer. Every other template keeps its existing look, per your answer.
+## 3. Reset password on login
 
-The new renderer uses fixed 816×1056 px pages (8.5×11 @ 96dpi), same as today, so the html2canvas → jsPDF pipeline continues to work with zero changes to `products.$productId.tsx`.
+- Add "Forgot password?" link on `src/routes/auth.tsx` → opens a small inline form that calls `supabase.auth.resetPasswordForEmail(email, { redirectTo: <origin>/auth/reset })`.
+- New route `src/routes/auth.reset.tsx` handles the recovery session and lets the user set a new password via `supabase.auth.updateUser({ password })`.
 
-### Page 1 (cover)
+## 4. Page-2 (Parts & Tools) upgrades
 
-```
-[ TF-PDF-Header SVG — full content width, ~140px tall ]
+Files: `src/components/manual/MasterManualPreview.tsx`, `StepLayoutView.tsx`, `src/routes/_authenticated/products.$productId.tsx`, and the editor sidebar.
 
-Make/Model         Teko SemiBold 24pt  #ed1c24     (from meta.name)
-Product Name       Teko Medium    22pt  #000000    (from meta.variant)
-SKU: XXXXX         Arial          11pt  #000000
+- **Extra one-column steps on page 2**: extend the manual version schema with `partsPageSteps: Step[]` (or reuse existing step list with a `page: 'parts'` marker). Render below the two-col parts+tools block; if content overflows the page height, the renderer already page-breaks — verify and add a forced break helper if needed.
+- **Callout always available on parts step**: move the callout dropdown outside the step body so it's visible whether or not any step exists. Values: `none | info | caution | danger`. Persist on the parts page object, render in `MasterManualPreview` above/below the two-col block.
+- **Right-hand sidebar redesign** (from the mock): two distinct cards.
+  - **Card 1 — Cover Page (1)**: cover image with Replace / Odoo fetch / Remove (unchanged behavior, restyled).
+  - **Card 2 — Parts & Tools Page (2)**: "Add step" button + "Add callout" dropdown, then a list of any extra steps with reorder/delete. Consistent card chrome (border, header, spacing) with the rest of the app's shadcn cards.
 
-[ hero image — full content width, centered, letterboxed ]
-  source: content.hero_image_url  (Odoo cover or user upload)
+## Technical notes
 
-...spacer flex...
-
-[ footer, centered ]
-Thumper Fab                          Arial Black 10pt #000
-5103 Elysian Fields Rd, ...          Arial 10pt #000
-Customer Service: 903-472-0928       Arial 10pt #000
-www.thumperfab.com                   Arial 10pt #ed1c24
-
-Ver. X                               Arial Bold 12pt #000, right-aligned
-```
-
-### Page 2 (Parts / Tools / BOM images) — two-column throughout
-
-Grid: two columns 50/50 with a small gutter. Both columns flow independently, so if parts overrun the tools column the pages continue side-by-side across subsequent sheets.
-
-```
-+------------------------------+------------------------------+
-| Interior header (see §3)                                      |
-+------------------------------+------------------------------+
-| PARTS  (red bar heading)     | TOOLS  (red bar heading)     |
-| REF | QTY | HARDWARE table   | · tool 1                     |
-| ...                          | · tool 2                     |
-|                              |                              |
-| Hardware Kit (sub-heading)   |                              |
-| A/B/C rows                   |                              |
-+------------------------------+------------------------------+
-| BOM images grid (spans both cols)                             |
-|  [REF] [image thumb]  [REF] [image thumb] ...                 |
-|  drawn from part_catalog images keyed by SKU + REF letter/no. |
-|  overflows onto additional pages as needed                    |
-+------------------------------+------------------------------+
-| Warnings block (centered)    (see §4)                         |
-+---------------------------------------------------------------+
-| Interior footer (see §3)                                      |
-```
-
-Parts + Hardware Kit render as one continuous left column so REF numbering flows naturally. Cleaner table styling than current: tighter row height, single 1px `#000` grid, red header row with white text, no zebra, `Hardware Kit` shown as a full-width sub-header row inside the same table.
-
-The BOM images grid uses `PartCatalogLookup` (already wired). Each cell shows the REF label (bold, boxed) next to the thumbnail so it matches the mockup's A/B/C/D/E/F layout.
-
-### Interior pages (page 2+, including installation steps)
-
-```
-+---------------------------------------------------------------+
-| Make/Model       Teko SemiBold 24pt #ed1c24  |                |
-| Product Name     Teko Medium    22pt #000    | [TF-PDF-Logo]  |
-| SKU: XXXXX       Arial          11pt #000    |  right-aligned |
-|---------------------------------------------------------------|
-|   4px solid black horizontal line, full width                 |
-|                                                               |
-|   ...page content (installation steps unchanged)...           |
-|                                                               |
-|---------------------------------------------------------------|
-| SKU (left)     Product + " Install Manual" (center)   Page N  |
-+---------------------------------------------------------------+
-```
-
-Page numbers: rendered as CSS counters on the printable stack, or via a small React counter that indexes each page wrapper (since jsPDF splits by canvas slicing, actually derive them from the wrapper index at render time — same trick the current preview would need; safe because the DOM order === page order).
-
-## 3. Warnings (styled)
-
-Replace the current `content.warnings` block. Each warning has a header row (severity title in bold caps) and a body row:
-
-- **Info** — light blue bg `#DFF1FA`, title `#0C5A8F`, body `#111`
-- **Caution** — light amber bg `#FFF4CE`, title `#8A6100`, body `#111`
-- **Danger** — solid red bg `#ed1c24`, title + body white
-
-Titles default to `INFO`, `CAUTION`, `DANGER` but each warning can carry an override `title` (add optional `title?: string` to the warning type in `src/lib/types.ts`; existing rows keep working via defaults).
-
-Placement: bottom of page 2 content, centered as in the mockup. Renders once — not repeated per interior page.
-
-## 4. Tables — cleanup
-
-- Fixed column widths (REF 48px, QTY 48px, HARDWARE fills rest).
-- Uniform 6px vertical / 10px horizontal padding, 1px `#111` borders, header row `#ed1c24` bg + white Teko SemiBold caps.
-- Tools list: same visual weight as parts table cells (13px Arial), single column bulleted list, no two-column split.
-- Hardware Kit rendered as a sub-header row inside the Parts table (single continuous table, not two side-by-side tables) so REF/QTY columns align.
-
-## 5. Branding dialog
-
-Add the two SVG fields to the Identity tab so the user can swap header/logo per template. Wire an "Upload SVG" button next to each URL input that reuses the existing `manual-assets` signed upload flow (mirroring how `uploadPartCatalogImage` works). No new bucket, no new server function scope beyond a tiny `uploadTemplateAsset` fn that accepts base64 + returns a signed URL.
-
-## 6. Files touched
-
-Created:
-
-- `src/assets/tf-pdf-header.svg.asset.json`
-- `src/assets/tf-pdf-logo.svg.asset.json`
-- `src/components/manual/ThumperFabMasterPreview.tsx`
-- `src/lib/template-assets.functions.ts` (single `uploadTemplateAsset` server fn)
-
-Edited:
-
-- `src/lib/branding.ts` — add `header_svg_url`, `logo_svg_url` fields + defaults
-- `src/lib/types.ts` — add optional `title?: string` to warning
-- `src/components/manual/MasterManualPreview.tsx` — dispatch to new renderer when template is ThumperFab Master; keep current implementation as the fallback
-- `src/components/templates/EditBrandingDialog.tsx` — two new SVG fields + upload buttons
-- `src/routes/__root.tsx` — Teko Google Font `<link>` (preconnect + stylesheet)
-
-Untouched:
-
-- `src/routes/_authenticated/products.$productId.tsx` publish flow (still snapshots `#manual-pdf-source` via html2canvas + jsPDF)
-- Installation steps rendering (`StepLayoutView`)
-- All other templates
-
-## Open items / small risks
-
-- **Detecting the ThumperFab Master template**: I'll dispatch on a stable marker. If the template row has `slug`/`key` we use that; otherwise I'll add `branding.variant: "thumperfab-master"` and set it on the built-in template row via a small migration. I'll confirm the schema when I open `templates.functions.ts` during build.
-- **Page-number rendering** inside html2canvas: I'll number pages by wrapping each `pageBase` div and using its index — deterministic because the DOM order matches the sliced pages.
-- **Warning title field**: existing manuals have no `title`, so I default per severity. No data migration needed.
+- No new tables needed; extend the JSON schema stored in `manual_versions.content`.
+- Fabric Group children mutation: use `active.forEachObject((o) => o.set(...))` or specifically target `line`/`polygon` types.
+- Crop implementation: draw a `fabric.Rect` with `hasControls: true`, on Apply create an offscreen canvas cropped from `originalImageRef.current`, then reload the dialog state with the new bitmap.
+- Tool usage scan: `select id, content from manual_versions where content::text ilike '%<toolId>%'` server-side is fine at this scale; refine to structured JSONB path check.
+- Reset route: only accessible during a recovery session; if `getSession()` has no `recovery` event, render "link expired".

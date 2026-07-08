@@ -73,8 +73,10 @@ import {
   Download,
   Pencil,
   RotateCcw,
+  Settings,
 } from "lucide-react";
 import { ImageEditorDialog } from "@/components/manual-editor/ImageEditorDialog";
+import { ToolsManagerDialog } from "@/components/manual-editor/ToolsManagerDialog";
 import { getMasterTemplate } from "@/lib/templates.functions";
 import { MasterManualPreview } from "@/components/manual/MasterManualPreview";
 
@@ -716,6 +718,14 @@ function ProductEditorPage() {
           )}
 
           {activeVersion && (
+            <PartsPageCard
+              content={content}
+              editable={!!editable}
+              onChange={(next: ManualContent) => setContent(next)}
+            />
+          )}
+
+          {activeVersion && (
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center justify-between">
@@ -877,6 +887,8 @@ function ContentEditor({
   productSku: string;
 }) {
   const [tab, setTab] = useState<"steps" | "images" | "parts" | "tools">("steps");
+  const [manageToolsOpen, setManageToolsOpen] = useState(false);
+  const { orgId } = useActiveOrg();
 
   // Asset list (for image pickers + the Images tab). Figure numbering
   // is now driven by placement inside steps, not by this list's order.
@@ -918,7 +930,27 @@ function ContentEditor({
             {t.label}
           </button>
         ))}
+        {tab === "tools" && orgId && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-1"
+            onClick={() => setManageToolsOpen(true)}
+            title="Manage tools library"
+            aria-label="Manage tools library"
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
+        )}
       </div>
+
+      {orgId && (
+        <ToolsManagerDialog
+          open={manageToolsOpen}
+          onOpenChange={setManageToolsOpen}
+          organizationId={orgId}
+        />
+      )}
 
       <Card>
         <CardContent className="space-y-3 pt-4">
@@ -2004,5 +2036,176 @@ function PartsTabPanel({
         catalog={catalogControls}
       />
     </div>
+  );
+}
+
+// ---------- Parts & Tools page card (page 2 sidebar) ----------
+// Mirrors CoverImageCard styling. Provides:
+//   * Add step  — appends a one-column step rendered on page 2 below the
+//     parts + tools + BOM images block. Overflow continues onto page 3.
+//   * Add callout  — none / info / caution / danger. Always available.
+function PartsPageCard({
+  content,
+  editable,
+  onChange,
+}: {
+  content: ManualContent;
+  editable: boolean;
+  onChange: (next: ManualContent) => void;
+}) {
+  const callout = content.parts_page_callout ?? null;
+  const steps = content.parts_page_steps ?? [];
+  const severity = callout?.severity ?? "none";
+
+  const updateCallout = (v: string) => {
+    if (v === "none") {
+      onChange({ ...content, parts_page_callout: null });
+      return;
+    }
+    onChange({
+      ...content,
+      parts_page_callout: {
+        severity: v as "info" | "caution" | "danger",
+        body: callout?.body ?? "",
+      },
+    });
+  };
+
+  const addStep = () => {
+    onChange({
+      ...content,
+      parts_page_steps: [...steps, newStep("one_col")],
+    });
+  };
+
+  const updateStep = (i: number, next: ManualStep) => {
+    const arr = [...steps];
+    arr[i] = next;
+    onChange({ ...content, parts_page_steps: arr });
+  };
+
+  const removeStep = (i: number) => {
+    onChange({
+      ...content,
+      parts_page_steps: steps.filter((_, j) => j !== i),
+    });
+  };
+
+  return (
+    <Card className="mb-4">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">Parts &amp; Tools Page (2)</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-xs">
+        <div className="flex flex-col gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="justify-start"
+            onClick={addStep}
+            disabled={!editable}
+          >
+            <Plus className="mr-2 h-4 w-4" /> Add step
+          </Button>
+
+          <div className="flex items-center gap-2">
+            <Label className="whitespace-nowrap text-xs">Add callout</Label>
+            <Select
+              value={severity}
+              onValueChange={updateCallout}
+              disabled={!editable}
+            >
+              <SelectTrigger className="h-8 flex-1 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                <SelectItem value="info">Info</SelectItem>
+                <SelectItem value="caution">Caution</SelectItem>
+                <SelectItem value="danger">Danger</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {callout && callout.severity !== ("none" as never) && (
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Callout text</Label>
+            <Textarea
+              rows={2}
+              value={callout.body}
+              disabled={!editable}
+              onChange={(e) =>
+                onChange({
+                  ...content,
+                  parts_page_callout: {
+                    severity: callout.severity,
+                    body: e.target.value,
+                  },
+                })
+              }
+              placeholder="Callout body — shown above the Parts / Tools table"
+            />
+          </div>
+        )}
+
+        {steps.length > 0 && (
+          <div className="space-y-2 border-t border-border pt-2">
+            <div className="text-xs font-medium text-muted-foreground">
+              Extra steps on page 2 ({steps.length})
+            </div>
+            {steps.map((s, i) => (
+              <div
+                key={s.id}
+                className="flex items-start gap-2 rounded-md border border-border p-2"
+              >
+                <div className="flex-1 space-y-1">
+                  <Input
+                    value={s.title}
+                    onChange={(e) =>
+                      updateStep(i, { ...s, title: e.target.value })
+                    }
+                    disabled={!editable}
+                    placeholder={`Step title`}
+                    className="h-8 text-xs"
+                  />
+                  <Textarea
+                    rows={2}
+                    value={s.slots?.[0]?.text_html ?? ""}
+                    onChange={(e) => {
+                      const slots = s.slots ?? [];
+                      const first = slots[0] ?? {
+                        id: `sl-${Date.now()}`,
+                        text_html: "",
+                        asset_id: null,
+                        caption: "",
+                        callout: null,
+                      };
+                      updateStep(i, {
+                        ...s,
+                        slots: [{ ...first, text_html: e.target.value }],
+                      });
+                    }}
+                    disabled={!editable}
+                    placeholder="Step body"
+                    className="text-xs"
+                  />
+                </div>
+                {editable && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive"
+                    onClick={() => removeStep(i)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

@@ -57,6 +57,17 @@ export interface ManualContent {
   // Sourced from Odoo's product.template.image_1920 by default, replaceable
   // by the editor.
   hero_image_url?: string | null;
+  // A single callout rendered on page 2 (Parts & Tools) above the two-col
+  // block. Kept outside the step so it's always available even when there
+  // are no extra steps.
+  parts_page_callout?: {
+    severity: "info" | "caution" | "danger";
+    body: string;
+  } | null;
+  // Optional extra one-column steps rendered on page 2 below the parts +
+  // tools + BOM images block. Content that overflows the page continues on
+  // page 3.
+  parts_page_steps?: ManualStep[];
 }
 
 // A single installation step.

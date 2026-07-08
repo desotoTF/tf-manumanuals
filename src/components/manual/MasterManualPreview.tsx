@@ -321,6 +321,16 @@ export function MasterManualPreview({
       {/* ---------- PAGE 2 · PARTS / TOOLS / BOM IMAGES ---------- */}
       <div data-manual-page="true" style={pageStyle}>
         <InteriorFrame meta={meta} logoSvgMarkup={interiorLogoMarkup} pageNum={2} totalPages={totalPages} scale={scale}>
+          {/* Callout above the parts/tools table, always available */}
+          {content.parts_page_callout && content.parts_page_callout.body && (
+            <div style={{ marginBottom: 12, display: "flex", justifyContent: "center" }}>
+              <WarningBlock
+                severity={content.parts_page_callout.severity}
+                body={content.parts_page_callout.body}
+              />
+            </div>
+          )}
+
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             {/* Left column: Parts + Hardware Kit as one continuous table */}
             <div>
@@ -350,6 +360,34 @@ export function MasterManualPreview({
             </div>
           )}
 
+          {/* Extra one-column steps that live on page 2. Overflow continues onto page 3. */}
+          {(content.parts_page_steps ?? []).length > 0 && (
+            <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+              {(content.parts_page_steps ?? []).map((raw, i) => {
+                const s = normalizeStep(raw);
+                return (
+                  <div key={s.id ?? i}>
+                    {s.title && (
+                      <div
+                        style={{
+                          fontFamily: FONT_HEADING,
+                          fontWeight: 600,
+                          fontSize: 14,
+                          color: INK,
+                          marginBottom: 4,
+                        }}
+                      >
+                        {s.title}
+                      </div>
+                    )}
+                    <div style={{ color: INK, fontSize: 12, lineHeight: 1.4 }}>
+                      <StepLayoutView step={s} assets={assetMap} figMap={figMap} pdfSafe={pdfSafe} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* Warnings block */}
           {content.warnings.length > 0 && (
