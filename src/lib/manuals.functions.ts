@@ -1468,7 +1468,7 @@ export const cloneManual = createServerFn({ method: "POST" })
       .from("manuals")
       .insert({
         product_id: sourceManual.product_id,
-        title: `Copy of ${sourceManual.title}`,
+        title: data.title?.trim() || `${sourceManual.title} (copy)`,
         created_by: userId,
         template_id: sourceManual.template_id,
         source: sourceManual.source ?? "authored",
