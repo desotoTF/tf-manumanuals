@@ -73,6 +73,7 @@ import {
   Download,
   Pencil,
   RotateCcw,
+  Settings,
 } from "lucide-react";
 import { ImageEditorDialog } from "@/components/manual-editor/ImageEditorDialog";
 import { ToolsManagerDialog } from "@/components/manual-editor/ToolsManagerDialog";
