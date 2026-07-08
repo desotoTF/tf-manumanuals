@@ -887,6 +887,8 @@ function ContentEditor({
   productSku: string;
 }) {
   const [tab, setTab] = useState<"steps" | "images" | "parts" | "tools">("steps");
+  const [manageToolsOpen, setManageToolsOpen] = useState(false);
+  const { orgId } = useActiveOrg();
 
   // Asset list (for image pickers + the Images tab). Figure numbering
   // is now driven by placement inside steps, not by this list's order.
@@ -928,7 +930,27 @@ function ContentEditor({
             {t.label}
           </button>
         ))}
+        {tab === "tools" && orgId && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-1"
+            onClick={() => setManageToolsOpen(true)}
+            title="Manage tools library"
+            aria-label="Manage tools library"
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
+        )}
       </div>
+
+      {orgId && (
+        <ToolsManagerDialog
+          open={manageToolsOpen}
+          onOpenChange={setManageToolsOpen}
+          organizationId={orgId}
+        />
+      )}
 
       <Card>
         <CardContent className="space-y-3 pt-4">
