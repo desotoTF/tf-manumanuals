@@ -318,31 +318,33 @@ function SlotEditor({
       </div>
 
       {/* Callout */}
-      <div className="mt-3">
-        {slot.callout ? (
-          <CalloutEditor
-            callout={slot.callout}
-            disabled={disabled}
-            onChange={(c) => onChange({ ...slot, callout: c })}
-            onRemove={() => onChange({ ...slot, callout: null })}
-          />
-        ) : (
-          !disabled && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() =>
-                onChange({
-                  ...slot,
-                  callout: { severity: "info", body: "" },
-                })
-              }
-            >
-              <AlertTriangle className="mr-2 h-4 w-4" /> Add callout
-            </Button>
-          )
-        )}
-      </div>
+      {!hideCallout && (
+        <div className="mt-3">
+          {slot.callout ? (
+            <CalloutEditor
+              callout={slot.callout}
+              disabled={disabled}
+              onChange={(c) => onChange({ ...slot, callout: c })}
+              onRemove={() => onChange({ ...slot, callout: null })}
+            />
+          ) : (
+            !disabled && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  onChange({
+                    ...slot,
+                    callout: { severity: "info", body: "" },
+                  })
+                }
+              >
+                <AlertTriangle className="mr-2 h-4 w-4" /> Add callout
+              </Button>
+            )
+          )}
+        </div>
+      )}
     </div>
   );
 }
