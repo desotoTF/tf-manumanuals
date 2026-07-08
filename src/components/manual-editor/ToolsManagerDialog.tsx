@@ -60,7 +60,7 @@ export function ToolsManagerDialog({
   };
 
   const renameMut = useMutation({
-    mutationFn: (row: Tool) =>
+    mutationFn: (row: ToolRow) =>
       rename({
         data: {
           id: row.id,
@@ -78,7 +78,7 @@ export function ToolsManagerDialog({
   });
 
   const deleteMut = useMutation({
-    mutationFn: async (row: Tool) => {
+    mutationFn: async (row: ToolRow) => {
       const usage = await countUsage({
         data: { id: row.id, organizationId },
       });
