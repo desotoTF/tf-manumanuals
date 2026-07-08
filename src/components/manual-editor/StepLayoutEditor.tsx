@@ -148,6 +148,7 @@ export function StepLayoutEditor({
   allowedLayouts,
   onInlineUpload,
   hideLayoutSwitcher,
+  hideCallout,
 }: Props) {
   const normalized = useMemo(() => normalizeStep(step), [step]);
   const layout = normalized.layout ?? "two_col";
