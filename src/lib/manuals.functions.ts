@@ -1425,9 +1425,11 @@ export const cloneManual = createServerFn({ method: "POST" })
       .object({
         manualId: uuid,
         versionId: uuid.optional(),
+        title: z.string().trim().min(1).max(300).optional(),
       })
       .parse(d),
   )
+
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
