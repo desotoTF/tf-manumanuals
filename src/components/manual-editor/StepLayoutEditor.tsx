@@ -198,6 +198,7 @@ export function StepLayoutEditor({
             figMap={figMap}
             onChange={(s) => updateSlot(i, s)}
             onInlineUpload={onInlineUpload}
+            hideCallout={hideCallout}
           />
         ))}
       </div>
