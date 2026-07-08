@@ -262,34 +262,46 @@ function ManualsPage() {
                       : "—"}
                   </TableCell>
                   <TableCell
-                    className="text-right"
+                    className="text-left"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Clone manual"
-                      className="text-muted-foreground hover:text-foreground"
-                      disabled={cloneMut.isPending}
-                      onClick={() => cloneMut.mutate(r.manual_id)}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Delete manual"
-                      className="text-muted-foreground hover:text-destructive"
-                      onClick={() =>
-                        setToDelete({
-                          manualId: r.manual_id,
-                          label: formatManualLabel(r.sku, r.product_name),
-                        })
-                      }
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Clone manual"
+                        title="Clone manual"
+                        className="text-muted-foreground hover:text-foreground"
+                        disabled={cloneMut.isPending}
+                        onClick={() => {
+                          const defaultTitle = `${r.product_name} (copy)`;
+                          setCloneTitle(defaultTitle);
+                          setToClone({
+                            manualId: r.manual_id,
+                            defaultTitle,
+                          });
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Delete manual"
+                        title="Delete manual"
+                        className="text-muted-foreground hover:text-destructive"
+                        onClick={() =>
+                          setToDelete({
+                            manualId: r.manual_id,
+                            label: r.product_name,
+                          })
+                        }
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </TableCell>
+
                 </TableRow>
               );
             })}
