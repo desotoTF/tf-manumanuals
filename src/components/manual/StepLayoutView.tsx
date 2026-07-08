@@ -115,7 +115,7 @@ function SlotView({
               style={{ display: "block", height: "auto", width: "100%" }}
               crossOrigin="anonymous"
             />
-            {(slot.caption || asset.caption) && (
+            {slot.caption && (
               <figcaption
                 style={{
                   borderTop: "1px solid #D9DDE5",
@@ -125,7 +125,7 @@ function SlotView({
                   fontSize: 11,
                 }}
               >
-                {slot.caption || asset.caption}
+                {slot.caption}
               </figcaption>
             )}
           </figure>
