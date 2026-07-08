@@ -11,7 +11,6 @@ import { toast } from "sonner";
 import { Factory } from "lucide-react";
 
 export const Route = createFileRoute("/auth/reset")({
-  ssr: false,
   head: () => ({ meta: [{ title: "Reset password — ManuManuals" }] }),
   component: ResetPage,
 });

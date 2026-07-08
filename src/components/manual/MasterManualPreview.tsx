@@ -11,12 +11,14 @@
 //            with a per-page footer showing SKU · title · page number.
 import { useEffect, useMemo, useState } from "react";
 import {
+  type BrandingHeaderAsset,
   type BrandingTokens,
   mergeBranding,
   resolveHeaderSvgMarkup,
   resolveHeaderSvgUrl,
   resolveLogoSvgMarkup,
   resolveLogoSvgUrl,
+  sanitizeSvgMarkup,
 } from "@/lib/branding";
 import type { ManualContent } from "@/lib/types";
 import { normalizeStep } from "@/lib/types";
@@ -65,14 +67,67 @@ function logoAspectWidth(svgMarkup: string, height: number): number {
 }
 
 function inlineSvg(svgMarkup: string, style: string): string {
-  if (!svgMarkup.trim()) return "";
-  const withoutXml = svgMarkup
-    .replace(/<\?xml[\s\S]*?\?>/gi, "")
-    .replace(/<!doctype[\s\S]*?>/gi, "");
+  const withoutXml = sanitizeSvgMarkup(svgMarkup);
+  if (!withoutXml) return "";
   if (!/<svg\b/i.test(withoutXml)) return "";
   return withoutXml.replace(
     /<svg\b([^>]*)>/i,
     `<svg$1 style="${style}" preserveAspectRatio="xMidYMid meet">`,
+  );
+}
+
+function headerAssetSvg(asset: BrandingHeaderAsset | null | undefined): string {
+  if (!asset || asset.type !== "svg") return "";
+  return sanitizeSvgMarkup(asset.value);
+}
+
+function headerAssetImage(asset: BrandingHeaderAsset | null | undefined): string {
+  if (!asset || asset.type !== "image") return "";
+  return asset.value;
+}
+
+function HeaderAssetView({
+  asset,
+  svgMarkup,
+  alt,
+  mode,
+}: {
+  asset?: BrandingHeaderAsset | null;
+  svgMarkup: string;
+  alt: string;
+  mode: "cover" | "interior";
+}) {
+  const imageUrl = headerAssetImage(asset);
+  if (imageUrl) {
+    return (
+      <img
+        src={imageUrl}
+        alt={alt}
+        crossOrigin="anonymous"
+        style={{
+          display: "block",
+          height: "100%",
+          width: "100%",
+          objectFit: "contain",
+          objectPosition: mode === "interior" ? "right center" : "center center",
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      aria-label={alt}
+      style={{ height: "100%", width: "100%" }}
+      dangerouslySetInnerHTML={{
+        __html: inlineSvg(
+          svgMarkup,
+          mode === "cover"
+            ? "width:100%;height:100%;display:block;background-color:transparent;color:#111827;border-color:transparent"
+            : "height:100%;width:100%;display:block;background-color:transparent;color:#111827;border-color:transparent",
+        ),
+      }}
+    />
   );
 }
 
@@ -141,15 +196,17 @@ export function MasterManualPreview({
   const b = useMemo(() => mergeBranding(brandingInput), [brandingInput]);
   const headerSvgFallback = resolveHeaderSvgMarkup(b);
   const logoSvgFallback = resolveLogoSvgMarkup(b);
-  const headerSvgUrl = resolveHeaderSvgUrl(b);
-  const logoSvgUrl = resolveLogoSvgUrl(b);
+  const coverHeaderAsset = b.assets.coverHeader;
+  const interiorHeaderAsset = b.assets.secondaryHeader;
+  const headerSvgUrl = coverHeaderAsset ? undefined : resolveHeaderSvgUrl(b);
+  const logoSvgUrl = interiorHeaderAsset ? undefined : resolveLogoSvgUrl(b);
   const headerSvgMarkup = useInlineSvg(headerSvgUrl);
   const logoSvgMarkup = useInlineSvg(logoSvgUrl);
-  // Prefer the fetched asset (user-uploaded or default template SVG). Only
-  // fall back to the inline built-in markup if the fetch failed / returned
-  // empty, so the header never renders blank.
-  const coverHeaderMarkup = headerSvgMarkup || headerSvgFallback;
-  const interiorLogoMarkup = logoSvgMarkup || logoSvgFallback;
+  // Prefer DB-backed template assets. URL fetches are kept only for legacy
+  // branding rows; the shipped defaults are inline so deployed mirrors don't
+  // depend on Lovable-only asset roots.
+  const coverHeaderMarkup = headerAssetSvg(coverHeaderAsset) || headerSvgMarkup || headerSvgFallback;
+  const interiorLogoMarkup = headerAssetSvg(interiorHeaderAsset) || logoSvgMarkup || logoSvgFallback;
   const assetMap = assets ?? {};
   const catalogMap = partCatalog ?? {};
   const figMap = useMemo(
@@ -205,7 +262,6 @@ export function MasterManualPreview({
         <div style={{ padding: PAGE_PAD * scale, height: "100%", display: "flex", flexDirection: "column" }}>
           {/* SVG header band — inlined so it renders reliably and is captured by html2canvas */}
           <div
-            aria-label={b.footer.companyName}
             style={{
               width: "100%",
               height: 146 * scale,
@@ -214,13 +270,14 @@ export function MasterManualPreview({
               alignItems: "flex-start",
               overflow: "hidden",
             }}
-            dangerouslySetInnerHTML={{
-              __html: inlineSvg(
-                coverHeaderMarkup,
-                "width:100%;height:100%;display:block",
-              ),
-            }}
-          />
+          >
+            <HeaderAssetView
+              asset={coverHeaderAsset}
+              svgMarkup={coverHeaderMarkup}
+              alt={`${b.footer.companyName} manual header`}
+              mode="cover"
+            />
+          </div>
 
           {b.cover.tagline.trim() ? (
             <div
@@ -339,7 +396,7 @@ export function MasterManualPreview({
 
       {/* ---------- PAGE 2 · PARTS / TOOLS / BOM IMAGES ---------- */}
       <div data-manual-page="true" style={pageStyle}>
-        <InteriorFrame meta={meta} logoSvgMarkup={interiorLogoMarkup} pageNum={2} totalPages={totalPages} scale={scale}>
+        <InteriorFrame meta={meta} branding={b} headerAsset={interiorHeaderAsset} logoSvgMarkup={interiorLogoMarkup} pageNum={2} totalPages={totalPages} scale={scale}>
           {/* Callout above the parts/tools table, always available */}
           {content.parts_page_callout && content.parts_page_callout.body && (
             <div style={{ marginBottom: 12, display: "flex", justifyContent: "center" }}>
@@ -425,7 +482,7 @@ export function MasterManualPreview({
         const pageNum = 3 + idx;
         return (
           <div key={s.id ?? idx} data-manual-page="true" style={pageStyle}>
-            <InteriorFrame meta={meta} logoSvgMarkup={interiorLogoMarkup} pageNum={pageNum} totalPages={totalPages} scale={scale}>
+            <InteriorFrame meta={meta} branding={b} headerAsset={interiorHeaderAsset} logoSvgMarkup={interiorLogoMarkup} pageNum={pageNum} totalPages={totalPages} scale={scale}>
               {idx === 0 && (
                 <div
                   style={{
@@ -469,6 +526,8 @@ export function MasterManualPreview({
 // ---------- Interior page chrome (header + footer) ----------
 function InteriorFrame({
   meta,
+  branding,
+  headerAsset,
   logoSvgMarkup,
   pageNum,
   totalPages,
@@ -476,12 +535,15 @@ function InteriorFrame({
   children,
 }: {
   meta: ManualPreviewMeta;
+  branding: BrandingTokens;
+  headerAsset?: BrandingHeaderAsset | null;
   logoSvgMarkup: string;
   pageNum: number;
   totalPages: number;
   scale: number;
   children: React.ReactNode;
 }) {
+  const headerImage = headerAssetImage(headerAsset);
   return (
     <div
       style={{
@@ -492,63 +554,69 @@ function InteriorFrame({
         boxSizing: "border-box",
       }}
     >
-      {/* Top header: title block left, logo SVG right */}
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
-        <div style={{ flex: 1 }}>
-          <div
-            style={{
-              fontFamily: FONT_HEADING,
-              fontWeight: 600,
-              fontSize: 24,
-              color: RED,
-              lineHeight: 1.0,
-            }}
-          >
-            {meta.name}
-          </div>
-          {meta.variant && (
+      {branding.header.show && (
+        <>
+          {/* Top header: title block left, logo/SVG right */}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+            <div style={{ flex: 1 }}>
+              <div
+                style={{
+                  fontFamily: FONT_HEADING,
+                  fontWeight: 600,
+                  fontSize: 24,
+                  color: RED,
+                  lineHeight: 1.0,
+                }}
+              >
+                {meta.name}
+              </div>
+              {meta.variant && (
+                <div
+                  style={{
+                    fontFamily: FONT_HEADING,
+                    fontWeight: 500,
+                    fontSize: 22,
+                    color: INK,
+                    lineHeight: 1.05,
+                    marginTop: 1,
+                  }}
+                >
+                  {meta.variant}
+                </div>
+              )}
+              {branding.header.showSku && (
+                <div style={{ fontFamily: FONT_BODY, fontSize: 11, color: INK, marginTop: 4 }}>
+                  SKU: {meta.sku}
+                </div>
+              )}
+            </div>
             <div
+              aria-hidden
               style={{
-                fontFamily: FONT_HEADING,
-                fontWeight: 500,
-                fontSize: 22,
-                color: INK,
-                lineHeight: 1.05,
-                marginTop: 1,
+                height: 64 * scale,
+                width: headerImage
+                  ? 72 * scale
+                  : Math.max(logoAspectWidth(logoSvgMarkup, 64 * scale), 48 * scale),
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-end",
+                flexShrink: 0,
+                overflow: "hidden",
               }}
             >
-              {meta.variant}
+              <HeaderAssetView
+                asset={headerAsset}
+                svgMarkup={logoSvgMarkup}
+                alt="Thumper Fab"
+                mode="interior"
+              />
             </div>
-          )}
-          <div style={{ fontFamily: FONT_BODY, fontSize: 11, color: INK, marginTop: 4 }}>
-            SKU: {meta.sku}
           </div>
-        </div>
-        <div
-          aria-hidden
-          style={{
-            height: 64 * scale,
-            width: Math.max(logoAspectWidth(logoSvgMarkup, 64 * scale), 48 * scale),
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "flex-end",
-            flexShrink: 0,
-            overflow: "hidden",
-          }}
-          // Inline the SVG so it renders on every page (no per-request CORS/
-          // Content-Disposition surprises) and html2canvas captures it cleanly.
-          dangerouslySetInnerHTML={{
-            __html: inlineSvg(
-              logoSvgMarkup,
-              "height:100%;width:100%;display:block",
-            ),
-          }}
-        />
 
-      </div>
-
-      {/* 4px black horizontal line */}
-      <div style={{ borderTop: `4px solid ${INK}`, marginTop: 8, marginBottom: 12 }} />
+          {/* 4px black horizontal line */}
+          <div style={{ borderTop: `4px solid ${INK}`, marginTop: 8, marginBottom: 12 }} />
+        </>
+      )}
 
       {/* Body */}
       <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>{children}</div>

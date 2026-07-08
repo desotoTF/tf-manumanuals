@@ -101,9 +101,30 @@ const baseTfSku = (sku: string): string => {
   return match ? match[1].toUpperCase() : sku;
 };
 
+async function waitForExportAssets(source: HTMLElement): Promise<void> {
+  await document.fonts?.ready.catch(() => undefined);
+  const images = Array.from(source.querySelectorAll<HTMLImageElement>("img"));
+  await Promise.all(
+    images.map(async (img) => {
+      if (img.complete && img.naturalWidth > 0) return;
+      try {
+        await img.decode();
+      } catch {
+        await new Promise<void>((resolve) => {
+          const done = () => resolve();
+          img.addEventListener("load", done, { once: true });
+          img.addEventListener("error", done, { once: true });
+          setTimeout(done, 2500);
+        });
+      }
+    }),
+  );
+}
+
 async function renderManualPagesPdf(source: HTMLElement): Promise<Blob> {
   const { default: html2canvas } = await import("html2canvas");
   const { default: jsPDF } = await import("jspdf");
+  await waitForExportAssets(source);
   const pages = Array.from(source.querySelectorAll<HTMLElement>("[data-manual-page='true']"));
   if (pages.length === 0) throw new Error("No manual pages found to export");
 
@@ -153,6 +174,25 @@ async function renderManualPagesPdf(source: HTMLElement): Promise<Blob> {
         }
         doc.body.style.background = "#ffffff";
         doc.body.style.color = "#111827";
+        doc.querySelectorAll<SVGElement>("[data-manual-page='true'] svg, [data-manual-page='true'] svg *").forEach((el) => {
+          const style = (el as SVGElement & { style: CSSStyleDeclaration }).style;
+          style.backgroundColor = "transparent";
+          style.color = "#111827";
+          style.borderColor = "transparent";
+          style.outlineColor = "transparent";
+          style.boxShadow = "none";
+        });
+        doc.querySelectorAll<HTMLElement>("[data-manual-page='true'], [data-manual-page='true'] *").forEach((el) => {
+          const style = doc.defaultView?.getComputedStyle(el);
+          if (!style) return;
+          const colorProps = ["color", "backgroundColor", "borderColor", "borderTopColor", "borderRightColor", "borderBottomColor", "borderLeftColor"] as const;
+          for (const prop of colorProps) {
+            const value = style[prop];
+            if (value && /oklch|lch|lab/i.test(value)) {
+              el.style[prop] = prop === "color" ? "#111827" : prop === "backgroundColor" ? "transparent" : "#d9dde5";
+            }
+          }
+        });
       },
     });
     if (index > 0) pdf.addPage();
@@ -1749,10 +1789,11 @@ function ManualPreviewDialog({
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) {
       console.error("[Save as PDF] failed:", err);
+      const message = err instanceof Error ? err.message : String(err);
       toast.error(
-        err instanceof Error && /tainted|cross-origin|CORS/i.test(err.message)
+        /tainted|cross-origin|CORS/i.test(message)
           ? "Couldn't save PDF: an image blocked cross-origin capture. Re-upload the image or contact support."
-          : "Couldn't save PDF. Check the console for details.",
+          : `Couldn't save PDF: ${message || "unknown export error"}`,
       );
     } finally {
       setSavingPdf(false);

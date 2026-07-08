@@ -55,7 +55,8 @@ export const Route = createFileRoute("/manuals/$slug")({
 });
 
 function PublicManualPage() {
-  const { product, version, assets, layout } = Route.useLoaderData();
+  const { product, version, assets, layout: rawLayout } = Route.useLoaderData();
+  const layout = (rawLayout ?? "classic") as "classic" | "compact" | "field_guide" | "service_card";
   const content = (version!.content ?? {}) as Partial<ManualContent>;
   const publishedAt = version!.published_at ? format(new Date(version!.published_at), "MMM d, yyyy") : null;
 

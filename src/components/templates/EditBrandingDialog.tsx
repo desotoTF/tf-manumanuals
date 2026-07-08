@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Upload, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -31,7 +32,9 @@ import {
 import {
   DEFAULT_BRANDING,
   FONT_CHOICES,
+  type BrandingHeaderAsset,
   mergeBranding,
+  sanitizeSvgMarkup,
   type BrandingTokens,
 } from "@/lib/branding";
 import { MasterManualPreview } from "@/components/manual/MasterManualPreview";
@@ -115,12 +118,29 @@ export function EditBrandingDialog({
               </TabsList>
 
               <TabsContent value="identity" className="space-y-3 pt-3">
-                <Field label="Cover header SVG URL (page 1 banner)">
-                  <Input value={b.header_svg_url} onChange={(e) => setB({ ...b, header_svg_url: e.target.value })} placeholder="/__l5e/assets-v1/…/tf-pdf-header.svg" />
-                </Field>
-                <Field label="Interior logo SVG URL (page 2+ header)">
-                  <Input value={b.logo_svg_url} onChange={(e) => setB({ ...b, logo_svg_url: e.target.value })} placeholder="/__l5e/assets-v1/…/tf-pdf-logo.svg" />
-                </Field>
+                <HeaderAssetField
+                  label="Cover page header"
+                  asset={b.assets.coverHeader}
+                  fallbackLabel="Built-in ThumperFab header"
+                  onChange={(asset) => setB({ ...b, assets: { ...b.assets, coverHeader: asset } })}
+                />
+                <HeaderAssetField
+                  label="Secondary page header"
+                  asset={b.assets.secondaryHeader}
+                  fallbackLabel="Built-in ThumperFab logo"
+                  onChange={(asset) => setB({ ...b, assets: { ...b.assets, secondaryHeader: asset } })}
+                />
+                <details className="rounded-md border border-border p-3 text-xs">
+                  <summary className="cursor-pointer font-medium text-muted-foreground">Legacy URL fields</summary>
+                  <div className="mt-3 space-y-3">
+                    <Field label="Cover header SVG URL">
+                      <Input value={b.header_svg_url} onChange={(e) => setB({ ...b, header_svg_url: e.target.value })} placeholder="/__l5e/assets-v1/…/tf-pdf-header.svg" />
+                    </Field>
+                    <Field label="Interior logo SVG URL">
+                      <Input value={b.logo_svg_url} onChange={(e) => setB({ ...b, logo_svg_url: e.target.value })} placeholder="/__l5e/assets-v1/…/tf-pdf-logo.svg" />
+                    </Field>
+                  </div>
+                </details>
                 <Field label="Legacy logo URL (leave blank for built-in)">
                   <Input value={b.logo_url} onChange={(e) => setB({ ...b, logo_url: e.target.value })} placeholder="https://…/logo.png" />
                 </Field>
@@ -233,6 +253,124 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
       <div className="flex gap-2 items-center">
         <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="h-9 w-12 cursor-pointer rounded border" />
         <Input value={value} onChange={(e) => onChange(e.target.value)} className="font-mono text-xs" />
+      </div>
+    </div>
+  );
+}
+
+const MAX_HEADER_ASSET_BYTES = 750_000;
+
+async function fileToHeaderAsset(file: File): Promise<BrandingHeaderAsset> {
+  if (file.size > MAX_HEADER_ASSET_BYTES) {
+    throw new Error("Header file is too large. Use an SVG or an image under 750 KB.");
+  }
+  const contentType = file.type || contentTypeFromName(file.name);
+  if (contentType === "image/svg+xml" || file.name.toLowerCase().endsWith(".svg")) {
+    const value = sanitizeSvgMarkup(await file.text());
+    if (!/<svg\b/i.test(value)) throw new Error("That file is not a valid SVG.");
+    return { type: "svg", value, filename: file.name, contentType: "image/svg+xml" };
+  }
+  if (!/^image\/(png|jpe?g|webp)$/i.test(contentType)) {
+    throw new Error("Use an SVG, PNG, JPG, or WebP header file.");
+  }
+  const buf = await file.arrayBuffer();
+  let binary = "";
+  const bytes = new Uint8Array(buf);
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunk, bytes.length)));
+  }
+  return {
+    type: "image",
+    value: `data:${contentType};base64,${btoa(binary)}`,
+    filename: file.name,
+    contentType,
+  };
+}
+
+function contentTypeFromName(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".svg")) return "image/svg+xml";
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".webp")) return "image/webp";
+  return "application/octet-stream";
+}
+
+function HeaderAssetField({
+  label,
+  asset,
+  fallbackLabel,
+  onChange,
+}: {
+  label: string;
+  asset: BrandingHeaderAsset | null;
+  fallbackLabel: string;
+  onChange: (asset: BrandingHeaderAsset | null) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const inputId = `${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-upload`;
+  const handleFile = async (file: File | undefined) => {
+    if (!file) return;
+    setBusy(true);
+    try {
+      onChange(await fileToHeaderAsset(file));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not read header file");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2 rounded-md border border-border p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <Label className="text-xs">{label}</Label>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {asset?.filename ?? fallbackLabel}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Input
+            id={inputId}
+            type="file"
+            accept="image/svg+xml,image/png,image/jpeg,image/webp,.svg,.png,.jpg,.jpeg,.webp"
+            className="hidden"
+            onChange={(e) => {
+              void handleFile(e.currentTarget.files?.[0]);
+              e.currentTarget.value = "";
+            }}
+          />
+          <Button asChild type="button" size="sm" variant="outline" disabled={busy}>
+            <label htmlFor={inputId} className="cursor-pointer">
+              <Upload className="mr-1.5 h-3.5 w-3.5" /> {busy ? "Reading…" : "Replace"}
+            </label>
+          </Button>
+          {asset && (
+            <Button type="button" size="icon" variant="ghost" onClick={() => onChange(null)} aria-label={`Remove ${label}`}>
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      </div>
+      <div className="flex h-20 items-center justify-center overflow-hidden rounded border bg-white p-2">
+        {asset?.type === "svg" ? (
+          <div
+            className="h-full w-full"
+            // eslint-disable-next-line react/no-danger
+            dangerouslySetInnerHTML={{
+              __html: sanitizeSvgMarkup(asset.value).replace(
+                /<svg\b([^>]*)>/i,
+                '<svg$1 style="width:100%;height:100%;display:block" preserveAspectRatio="xMidYMid meet">',
+              ),
+            }}
+          />
+        ) : asset?.type === "image" ? (
+          <img src={asset.value} alt={label} className="h-full w-full object-contain" />
+        ) : (
+          <span className="text-xs text-muted-foreground">{fallbackLabel}</span>
+        )}
       </div>
     </div>
   );
