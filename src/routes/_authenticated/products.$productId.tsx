@@ -721,7 +721,7 @@ function ProductEditorPage() {
             <PartsPageCard
               content={content}
               editable={!!editable}
-              onChange={(next) => setContent(next)}
+              onChange={(next: ManualContent) => setContent(next)}
             />
           )}
 
