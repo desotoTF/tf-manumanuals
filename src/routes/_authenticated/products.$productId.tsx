@@ -2120,11 +2120,27 @@ function PartsPageCard({
   content,
   editable,
   onChange,
+  assets,
+  onInlineUpload,
 }: {
   content: ManualContent;
   editable: boolean;
   onChange: (next: ManualContent) => void;
+  assets: Array<{ id: string; url: string | null; metadata: { caption?: string } | null; type?: string }>;
+  onInlineUpload: (file: File) => Promise<string | null>;
 }) {
+  const figureSources = useMemo(
+    () =>
+      assets
+        .filter((a) => a.type === "image" || a.url)
+        .map((a) => ({
+          asset_id: a.id,
+          caption: a.metadata?.caption ?? null,
+          url: a.url ?? null,
+        })),
+    [assets],
+  );
+  const figMap = useStepFigureMap(content.parts_page_steps ?? []);
   const callout = content.parts_page_callout ?? null;
   const steps = content.parts_page_steps ?? [];
   const severity = callout?.severity ?? "none";
