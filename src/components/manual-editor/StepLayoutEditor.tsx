@@ -67,6 +67,8 @@ interface Props {
   onInlineUpload?: (file: File) => Promise<string | null>;
   /** Hide the built-in layout switcher (parent renders its own). */
   hideLayoutSwitcher?: boolean;
+  /** Hide the "Add callout" affordance on each slot. */
+  hideCallout?: boolean;
 }
 
 /** Standalone layout switcher — usable inline in a step header row. */
