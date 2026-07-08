@@ -155,10 +155,13 @@ export function ImageEditorDialog({
     const { fabric, canvas } = await withFabric();
     if (!canvas) return;
     const s = await shadowObj();
-    // Arrow as a polyline: shaft + arrowhead grouped
+    // Arrow as a polyline: shaft + arrowhead grouped. Color comes from the
+    // stroke picker (fall back to fill when stroke is transparent) so the
+    // Fill/Stroke pickers apply predictably to a mostly-linear shape.
     const w = strokeWidth;
+    const arrowColor = stroke && stroke !== "transparent" ? stroke : (noFill ? "#000000" : fill);
     const shaft = new fabric.Line([0, 0, 160, 0], {
-      stroke: fill, strokeWidth: w,
+      stroke: arrowColor, strokeWidth: w, fill: arrowColor,
     });
     const head = new fabric.Polygon(
       [
@@ -166,7 +169,7 @@ export function ImageEditorDialog({
         { x: 140, y: -10 - w },
         { x: 140, y: 10 + w },
       ],
-      { fill, stroke: fill, strokeWidth: 1 },
+      { fill: arrowColor, stroke: arrowColor, strokeWidth: 1 },
     );
     const group = new fabric.Group([shaft, head], {
       left: 60, top: 80, shadow: s ?? undefined,
