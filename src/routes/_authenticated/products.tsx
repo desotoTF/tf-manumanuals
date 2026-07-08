@@ -345,6 +345,60 @@ function ManualsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog
+        open={!!toClone}
+        onOpenChange={(o) => !o && !cloneMut.isPending && setToClone(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Duplicate manual</DialogTitle>
+            <DialogDescription>
+              A new draft will be created with the name below. You can edit it
+              before or after cloning.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="clone-title">New manual name</Label>
+            <Input
+              id="clone-title"
+              value={cloneTitle}
+              onChange={(e) => setCloneTitle(e.target.value)}
+              disabled={cloneMut.isPending}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setToClone(null)}
+              disabled={cloneMut.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={cloneMut.isPending || !cloneTitle.trim()}
+              onClick={() => {
+                if (!toClone) return;
+                cloneMut.mutate({
+                  manualId: toClone.manualId,
+                  title: cloneTitle.trim(),
+                });
+              }}
+            >
+              {cloneMut.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Duplicating…
+                </>
+              ) : (
+                "Duplicate"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
