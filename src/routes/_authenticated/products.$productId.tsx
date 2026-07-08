@@ -2238,57 +2238,47 @@ function PartsPageCard({
         )}
 
         {steps.length > 0 && (
-          <div className="space-y-2 border-t border-border pt-2">
+          <div className="space-y-3 border-t border-border pt-2">
             <div className="text-xs font-medium text-muted-foreground">
               Extra steps on page 2 ({steps.length})
             </div>
             {steps.map((s, i) => (
               <div
                 key={s.id}
-                className="flex items-start gap-2 rounded-md border border-border p-2"
+                className="space-y-2 rounded-md border border-border p-2"
               >
-                <div className="flex-1 space-y-1">
+                <div className="flex items-center gap-2">
                   <Input
                     value={s.title}
                     onChange={(e) =>
                       updateStep(i, { ...s, title: e.target.value })
                     }
                     disabled={!editable}
-                    placeholder={`Step title`}
-                    className="h-8 text-xs"
+                    placeholder="Step title"
+                    className="h-8 flex-1 text-xs"
                   />
-                  <Textarea
-                    rows={2}
-                    value={s.slots?.[0]?.text_html ?? ""}
-                    onChange={(e) => {
-                      const slots = s.slots ?? [];
-                      const first = slots[0] ?? {
-                        id: `sl-${Date.now()}`,
-                        text_html: "",
-                        asset_id: null,
-                        caption: "",
-                        callout: null,
-                      };
-                      updateStep(i, {
-                        ...s,
-                        slots: [{ ...first, text_html: e.target.value }],
-                      });
-                    }}
-                    disabled={!editable}
-                    placeholder="Step body"
-                    className="text-xs"
-                  />
+                  {editable && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive"
+                      onClick={() => removeStep(i)}
+                      aria-label="Remove step"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
-                {editable && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-destructive"
-                    onClick={() => removeStep(i)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                )}
+                <StepLayoutEditor
+                  step={s}
+                  disabled={!editable}
+                  images={figureSources}
+                  figMap={figMap}
+                  onInlineUpload={onInlineUpload}
+                  hideLayoutSwitcher
+                  hideCallout
+                  onChange={(next) => updateStep(i, next)}
+                />
               </div>
             ))}
           </div>
