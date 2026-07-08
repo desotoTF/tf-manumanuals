@@ -785,6 +785,14 @@ function ProductEditorPage() {
               content={content}
               editable={!!editable}
               onChange={(next: ManualContent) => setContent(next)}
+              assets={assets as Array<{ id: string; url: string | null; metadata: { caption?: string } | null; type?: string }>}
+              onInlineUpload={async (file) => {
+                const asset = (await uploadAssetMut.mutateAsync({ file })) as
+                  | { id?: string }
+                  | null
+                  | undefined;
+                return asset?.id ?? null;
+              }}
             />
           )}
 
