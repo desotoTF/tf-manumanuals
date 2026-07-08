@@ -1,39 +1,61 @@
-# Plan
+I understand the issue: the current renderer is falling back because it depends on `__l5e` asset URLs and client-side SVG fetches. That is fragile, especially with the second Git push/build using a separate backend/database and a different app origin.
 
-## 1. Image editor (`ImageEditorDialog.tsx`)
+## What I will change
 
-- Fix Arrow color: the arrow group's shaft/head are created with `fill`/`stroke` from state at add-time only. Rewire the "style pickers → active object" effect to walk into `fabric.Group` children and update line/polygon `stroke`+`fill` (right now `.set({fill, stroke})` on a Group is a no-op for its children).
-- Add **Crop** to the toolbar (next to Rect/Circle/Arrow/Text). Behavior:
-  - Enters crop mode → overlays a draggable/resizable rect on the canvas.
-  - "Apply crop" button confirms → we re-render both the background `<img>` and the fabric canvas to the cropped region, scaling annotations proportionally. Original source image reference is replaced with the cropped bitmap so `handleSave` still exports full-resolution.
-  - "Cancel crop" restores.
+1. **Stop relying on `__l5e` URLs for PDF headers**
+   - The root for those URLs is the current app origin, e.g. preview would be:
+     `https://id-preview--9ef353a3-ccb6-4767-99d7-c0cf84e7bb5c.lovable.app/__l5e/assets-v1/...`
+   - But that URL strategy is not safe for the second non-Lovable build, so I will not make the fix depend on it.
 
-## 2. Tools manager (modal from gear icon)
+2. **Use the SVGs you uploaded as the actual template header assets**
+   - Use `TF-PDF-Header-2.svg` for the cover/page-1 header.
+   - Use `TF-PDF-Logo-2.svg` for secondary page headers unless you prefer a full secondary header band later.
+   - Store SVG markup directly inside the master template `branding` JSON so it renders inline with no fetch, no CORS, no CDN root, and no asset migration dependency.
 
-- New `ToolsManagerDialog.tsx` opened by a gear icon rendered next to the Tools combobox in the manual editor (find current usage of `listTools`/`upsertTool`).
-- Modal lists all org tools with inline rename, an "Add new" row, and a delete button.
-- Delete is **blocked if referenced**: add `countToolUsage(toolId)` server fn that scans `manual_versions.content` JSON for the tool id/name. If count > 0, show usage count and disable delete with an explanation.
-- Rename updates the row in `public.tools`; existing manuals reference tools by id so rename propagates automatically on next render. If tools are stored by name in version content, rename also rewrites those occurrences (will confirm during implementation by reading `ManualListEditors.tsx` / version schema).
+3. **Add template editor upload/replace controls**
+   - In the template branding editor, replace the raw URL-only fields with two upload controls:
+     - Cover page header asset
+     - Secondary page header asset
+   - Accept SVG and raster images (`svg`, `png`, `jpg`, `webp`).
+   - SVGs will be stored/rendered inline. Raster images will be stored as small data URLs in template branding with file-size validation to avoid bloating the DB.
+   - Include clear Replace and Remove actions for each.
 
-## 3. Reset password on login
+4. **Make the renderer asset-type aware**
+   - If template branding has inline SVG markup, render it directly.
+   - If it has an uploaded raster data URL, render it as an image.
+   - Only use the built-in fallback when no template asset exists.
+   - Respect `header.show` so inner headers do not silently disappear.
 
-- Add "Forgot password?" link on `src/routes/auth.tsx` → opens a small inline form that calls `supabase.auth.resetPasswordForEmail(email, { redirectTo: <origin>/auth/reset })`.
-- New route `src/routes/auth.reset.tsx` handles the recovery session and lets the user set a new password via `supabase.auth.updateUser({ password })`.
+5. **Fix Save as PDF / local export**
+   - Add an export preflight that waits for images/SVGs/fonts before calling `html2canvas`.
+   - Normalize header assets to inline/data assets before capture so headers cannot taint or disappear.
+   - Improve the error message to show the real export error instead of only “Check the console.”
+   - Verify by opening the preview and running the export path; I will not report success unless the rendered preview shows your uploaded header SVGs and PDF export completes.
 
-## 4. Page-2 (Parts & Tools) upgrades
+6. **Handle the two-build / two-database relationship correctly**
+   - No table migration should be needed because `manual_templates.branding` already exists in both the Lovable backend and the external backend catch-up migration.
+   - The key difference is data: each backend has its own `manual_templates` rows and branding JSON.
+   - After this change, the header assets live in the template branding row of whichever backend the app is connected to. That means the Lovable preview DB and the external DB can each have their own uploaded headers, and the app will not depend on Lovable CDN paths working in the second deployment.
 
-Files: `src/components/manual/MasterManualPreview.tsx`, `StepLayoutView.tsx`, `src/routes/_authenticated/products.$productId.tsx`, and the editor sidebar.
+## Confirmation from current code
 
-- **Extra one-column steps on page 2**: extend the manual version schema with `partsPageSteps: Step[]` (or reuse existing step list with a `page: 'parts'` marker). Render below the two-col parts+tools block; if content overflows the page height, the renderer already page-breaks — verify and add a forced break helper if needed.
-- **Callout always available on parts step**: move the callout dropdown outside the step body so it's visible whether or not any step exists. Values: `none | info | caution | danger`. Persist on the parts page object, render in `MasterManualPreview` above/below the two-col block.
-- **Right-hand sidebar redesign** (from the mock): two distinct cards.
-  - **Card 1 — Cover Page (1)**: cover image with Replace / Odoo fetch / Remove (unchanged behavior, restyled).
-  - **Card 2 — Parts & Tools Page (2)**: "Add step" button + "Add callout" dropdown, then a list of any extra steps with reorder/delete. Consistent card chrome (border, header, spacing) with the rest of the app's shadcn cards.
+- The existing project already has Lovable asset pointers for:
+  - `tf-pdf-header.svg`
+  - `tf-pdf-logo.svg`
+- Those are not reliable for the second deployment because they are relative `__l5e` asset paths.
+- The uploaded files you just provided should be treated as the source of truth for this fix.
 
-## Technical notes
+## Files I expect to touch
 
-- No new tables needed; extend the JSON schema stored in `manual_versions.content`.
-- Fabric Group children mutation: use `active.forEachObject((o) => o.set(...))` or specifically target `line`/`polygon` types.
-- Crop implementation: draw a `fabric.Rect` with `hasControls: true`, on Apply create an offscreen canvas cropped from `originalImageRef.current`, then reload the dialog state with the new bitmap.
-- Tool usage scan: `select id, content from manual_versions where content::text ilike '%<toolId>%'` server-side is fine at this scale; refine to structured JSONB path check.
-- Reset route: only accessible during a recovery session; if `getSession()` has no `recovery` event, render "link expired".
+- `src/lib/branding.ts`
+- `src/components/manual/MasterManualPreview.tsx`
+- `src/components/templates/EditBrandingDialog.tsx`
+- `src/routes/_authenticated/products.$productId.tsx`
+- Possibly `src/lib/templates.functions.ts` only if upload validation needs to run server-side; otherwise no backend schema changes.
+
+## Verification before saying it works
+
+- Confirm the template editor preview uses the uploaded SVGs, not fallback art.
+- Confirm a real manual preview uses the uploaded SVGs on page 1 and secondary pages.
+- Confirm Save as PDF completes without the current error.
+- Confirm the approach is compatible with the second Git push / external DB because the assets are stored in `branding` JSON, not Lovable-only asset URLs.
