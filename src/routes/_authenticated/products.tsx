@@ -227,8 +227,9 @@ function ManualsPage() {
                   }
                 >
                   <TableCell className="font-mono text-sm">
-                    {formatManualLabel(r.sku, r.product_name)}
+                    {r.product_name}
                   </TableCell>
+
                   <TableCell>
                     <Badge className={variant.className} variant="secondary">
                       {variant.label}
