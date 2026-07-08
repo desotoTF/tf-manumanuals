@@ -64,6 +64,18 @@ function logoAspectWidth(svgMarkup: string, height: number): number {
   return Math.round(height * (w / h));
 }
 
+function inlineSvg(svgMarkup: string, style: string): string {
+  if (!svgMarkup.trim()) return "";
+  const withoutXml = svgMarkup
+    .replace(/<\?xml[\s\S]*?\?>/gi, "")
+    .replace(/<!doctype[\s\S]*?>/gi, "");
+  if (!/<svg\b/i.test(withoutXml)) return "";
+  return withoutXml.replace(
+    /<svg\b([^>]*)>/i,
+    `<svg$1 style="${style}" preserveAspectRatio="xMidYMid meet">`,
+  );
+}
+
 
 export interface ManualPreviewMeta {
   sku: string;
@@ -194,11 +206,18 @@ export function MasterManualPreview({
           {/* SVG header band — inlined so it renders reliably and is captured by html2canvas */}
           <div
             aria-label={b.footer.companyName}
-            style={{ width: "100%", marginBottom: 20 * scale }}
+            style={{
+              width: "100%",
+              height: 146 * scale,
+              marginBottom: 20 * scale,
+              display: "flex",
+              alignItems: "flex-start",
+              overflow: "hidden",
+            }}
             dangerouslySetInnerHTML={{
-              __html: coverHeaderMarkup.replace(
-                /<svg\b([^>]*)>/i,
-                `<svg$1 style="width:100%;height:auto;display:block" preserveAspectRatio="xMidYMid meet">`,
+              __html: inlineSvg(
+                coverHeaderMarkup,
+                "width:100%;height:100%;display:block",
               ),
             }}
           />
@@ -508,21 +527,21 @@ function InteriorFrame({
         <div
           aria-hidden
           style={{
-            height: 56 * scale,
-            width: logoAspectWidth(logoSvgMarkup, 56 * scale),
+            height: 64 * scale,
+            width: Math.max(logoAspectWidth(logoSvgMarkup, 64 * scale), 48 * scale),
             display: "flex",
             alignItems: "center",
+            justifyContent: "flex-end",
             flexShrink: 0,
+            overflow: "hidden",
           }}
           // Inline the SVG so it renders on every page (no per-request CORS/
           // Content-Disposition surprises) and html2canvas captures it cleanly.
           dangerouslySetInnerHTML={{
-            __html: logoSvgMarkup
-              ? logoSvgMarkup.replace(
-                  /<svg\b([^>]*)>/i,
-                  `<svg$1 style="height:100%;width:100%;display:block" preserveAspectRatio="xMidYMid meet">`,
-                )
-              : "",
+            __html: inlineSvg(
+              logoSvgMarkup,
+              "height:100%;width:100%;display:block",
+            ),
           }}
         />
 

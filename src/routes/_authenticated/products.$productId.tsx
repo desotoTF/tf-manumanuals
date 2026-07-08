@@ -11,6 +11,7 @@ import {
   getProductWorkspace,
   getManualVersion,
   createManualDraft,
+  cloneManual,
   saveDraftContent,
   transitionManualVersion,
   addManualAsset,
@@ -74,6 +75,7 @@ import {
   Pencil,
   RotateCcw,
   Settings,
+  Copy,
 } from "lucide-react";
 import { ImageEditorDialog } from "@/components/manual-editor/ImageEditorDialog";
 import { ToolsManagerDialog } from "@/components/manual-editor/ToolsManagerDialog";
@@ -180,6 +182,7 @@ function ProductEditorPage() {
   const fetchWorkspace = useServerFn(getProductWorkspace);
   const fetchVersion = useServerFn(getManualVersion);
   const createDraft = useServerFn(createManualDraft);
+  const cloneManualFn = useServerFn(cloneManual);
   const saveDraft = useServerFn(saveDraftContent);
   const transition = useServerFn(transitionManualVersion);
   const addAsset = useServerFn(addManualAsset);
@@ -305,6 +308,17 @@ function ProductEditorPage() {
       qc.invalidateQueries({ queryKey: ["product-workspace", productId] });
       setImportOpen(false);
       toast.success("Manual imported — review the draft");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const cloneMut = useMutation({
+    mutationFn: () => cloneManualFn({ data: { manualId: primaryManual!.id, versionId: activeVersionId ?? undefined } }),
+    onSuccess: ({ versionId }) => {
+      setActiveVersionId(versionId);
+      loadedVersionRef.current = null;
+      qc.invalidateQueries({ queryKey: ["product-workspace", productId] });
+      toast.success("Manual cloned as a new draft");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -488,6 +502,15 @@ function ProductEditorPage() {
           {primaryManual && (
             <Button variant="outline" onClick={() => setPreviewOpen(true)}>
               <Eye className="mr-2 h-4 w-4" /> Preview
+            </Button>
+          )}
+          {primaryManual && activeVersion && (
+            <Button
+              variant="outline"
+              onClick={() => cloneMut.mutate()}
+              disabled={cloneMut.isPending}
+            >
+              <Copy className="mr-2 h-4 w-4" /> Clone manual
             </Button>
           )}
           {!primaryManual && (

@@ -12,12 +12,13 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import { Plus, Search, Loader2, Trash2 } from "lucide-react";
+import { Copy, Plus, Search, Loader2, Trash2 } from "lucide-react";
 import { useActiveOrg } from "@/components/AppShell";
 import {
   listManualsWithStatus,
   createManualFromSku,
   deleteManual,
+  cloneManual,
 } from "@/lib/manuals.functions";
 import { lookupProductBySku } from "@/lib/products.functions";
 import { listTemplates } from "@/lib/templates.functions";
@@ -96,6 +97,7 @@ function ManualsPage() {
   const qc = useQueryClient();
   const fetchManuals = useServerFn(listManualsWithStatus);
   const deleteManualFn = useServerFn(deleteManual);
+  const cloneManualFn = useServerFn(cloneManual);
   const [filter, setFilter] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [toDelete, setToDelete] = useState<{
@@ -115,6 +117,19 @@ function ManualsPage() {
       toast.success("Manual deleted");
       qc.invalidateQueries({ queryKey: ["manuals", orgId] });
       setToDelete(null);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const cloneMut = useMutation({
+    mutationFn: (manualId: string) => cloneManualFn({ data: { manualId } }),
+    onSuccess: (res) => {
+      toast.success("Manual cloned as a new draft");
+      qc.invalidateQueries({ queryKey: ["manuals", orgId] });
+      navigate({
+        to: "/products/$productId",
+        params: { productId: res.productId },
+      });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -240,6 +255,16 @@ function ManualsPage() {
                     className="text-right"
                     onClick={(e) => e.stopPropagation()}
                   >
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Clone manual"
+                      className="text-muted-foreground hover:text-foreground"
+                      disabled={cloneMut.isPending}
+                      onClick={() => cloneMut.mutate(r.manual_id)}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"

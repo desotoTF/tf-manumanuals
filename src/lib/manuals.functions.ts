@@ -1414,6 +1414,169 @@ export const deleteManual = createServerFn({ method: "POST" })
     };
   });
 
+// ---------- Clone a manual ----------
+// Creates a new manual on the same product with a v1 draft copied from the
+// selected/latest source version. Asset rows are duplicated and content asset
+// references are remapped to the cloned asset ids.
+export const cloneManual = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        manualId: uuid,
+        versionId: uuid.optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+
+    const { data: sourceManual, error: mErr } = await supabase
+      .from("manuals")
+      .select("id, product_id, title, template_id, source, products!inner(organization_id)")
+      .eq("id", data.manualId)
+      .maybeSingle();
+    if (mErr) throw mErr;
+    if (!sourceManual) throw new Error("Manual not found");
+
+    const { data: sourceVersion, error: vErr } = await supabase
+      .from("manual_versions")
+      .select("id, content, bom_snapshot_id, change_summary")
+      .eq("manual_id", data.manualId)
+      .order("version_number", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (vErr) throw vErr;
+    if (!sourceVersion) throw new Error("No version available to clone");
+
+    const sourceVersionId = data.versionId ?? sourceVersion.id;
+    const versionToClone = data.versionId
+      ? (
+          await supabase
+            .from("manual_versions")
+            .select("id, content, bom_snapshot_id, change_summary")
+            .eq("id", data.versionId)
+            .eq("manual_id", data.manualId)
+            .maybeSingle()
+        ).data
+      : sourceVersion;
+    if (!versionToClone) throw new Error("Version not found");
+
+    const { data: newManual, error: newManualErr } = await supabase
+      .from("manuals")
+      .insert({
+        product_id: sourceManual.product_id,
+        title: `Copy of ${sourceManual.title}`,
+        created_by: userId,
+        template_id: sourceManual.template_id,
+        source: sourceManual.source ?? "authored",
+      } as never)
+      .select("id")
+      .single();
+    if (newManualErr) throw newManualErr;
+
+    const { data: newVersion, error: newVersionErr } = await supabase
+      .from("manual_versions")
+      .insert({
+        manual_id: newManual.id,
+        version_number: 1,
+        bom_snapshot_id: versionToClone.bom_snapshot_id ?? null,
+        state: "draft",
+        content: (versionToClone.content ?? emptyManualContent()) as never,
+        change_summary: `Cloned from ${sourceManual.title}`,
+        created_by: userId,
+      })
+      .select("id")
+      .single();
+    if (newVersionErr) throw newVersionErr;
+
+    const { data: sourceAssets, error: assetsErr } = await supabase
+      .from("manual_assets")
+      .select("id, type, storage_path, url, metadata")
+      .eq("manual_version_id", sourceVersionId);
+    if (assetsErr) throw assetsErr;
+
+    const orgId = (sourceManual as unknown as { products: { organization_id: string } })
+      .products.organization_id;
+    const assetIdMap = new Map<string, string>();
+    const clonedAssets: Array<Record<string, unknown>> = [];
+
+    if ((sourceAssets ?? []).length > 0) {
+      const { supabaseAdmin } = await import(
+        "@/integrations/supabase/client.server"
+      );
+
+      for (const [i, asset] of (sourceAssets ?? []).entries()) {
+        const nextId = crypto.randomUUID();
+        assetIdMap.set(asset.id, nextId);
+        let nextStoragePath = asset.storage_path as string | null;
+        let nextUrl = asset.url as string | null;
+
+        if (nextStoragePath) {
+          const filename = nextStoragePath.split("/").pop() || `asset-${i}`;
+          const copyPath = `manual-images/${orgId}/${sourceManual.product_id}/${newVersion.id}/clone-${Date.now()}-${i}-${filename}`;
+          const { error: copyErr } = await supabaseAdmin.storage
+            .from("manual-assets")
+            .copy(nextStoragePath, copyPath);
+          if (!copyErr) {
+            const { data: signed } = await supabaseAdmin.storage
+              .from("manual-assets")
+              .createSignedUrl(copyPath, 60 * 60 * 24 * 365 * 10);
+            nextStoragePath = copyPath;
+            nextUrl = signed?.signedUrl ?? nextUrl;
+          } else {
+            // Keep rendering via the existing signed URL, but do not point the
+            // cloned asset row at the source storage object; deleting the clone
+            // must never delete the original manual's file.
+            nextStoragePath = null;
+          }
+        }
+
+        clonedAssets.push({
+          id: nextId,
+          manual_version_id: newVersion.id,
+          type: asset.type,
+          storage_path: nextStoragePath,
+          url: nextUrl,
+          metadata: asset.metadata ?? {},
+        });
+      }
+
+      const { error: insertAssetsErr } = await supabase
+        .from("manual_assets")
+        .insert(clonedAssets as never);
+      if (insertAssetsErr) throw insertAssetsErr;
+    }
+
+    if (assetIdMap.size > 0) {
+      const remapJson = (value: unknown): unknown => {
+        if (typeof value === "string") return assetIdMap.get(value) ?? value;
+        if (Array.isArray(value)) return value.map(remapJson);
+        if (value && typeof value === "object") {
+          return Object.fromEntries(
+            Object.entries(value as Record<string, unknown>).map(([key, val]) => [
+              key,
+              remapJson(val),
+            ]),
+          );
+        }
+        return value;
+      };
+      const remappedContent = remapJson(versionToClone.content) as Record<string, unknown>;
+      const { error: updateContentErr } = await supabase
+        .from("manual_versions")
+        .update({ content: remappedContent as never })
+        .eq("id", newVersion.id);
+      if (updateContentErr) throw updateContentErr;
+    }
+
+    return {
+      productId: sourceManual.product_id,
+      manualId: newManual.id,
+      versionId: newVersion.id,
+    };
+  });
+
 
 
 // ---------- Cover image (page 1) ----------
