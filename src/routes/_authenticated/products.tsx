@@ -128,10 +128,12 @@ function ManualsPage() {
   });
 
   const cloneMut = useMutation({
-    mutationFn: (manualId: string) => cloneManualFn({ data: { manualId } }),
+    mutationFn: (vars: { manualId: string; title?: string }) =>
+      cloneManualFn({ data: vars }),
     onSuccess: (res) => {
       toast.success("Manual cloned as a new draft");
       qc.invalidateQueries({ queryKey: ["manuals", orgId] });
+      setToClone(null);
       navigate({
         to: "/products/$productId",
         params: { productId: res.productId },
@@ -139,6 +141,7 @@ function ManualsPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
 
   const rows = useMemo(() => {
     const data = manualsQuery.data ?? [];
