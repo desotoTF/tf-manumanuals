@@ -293,6 +293,29 @@ function SlotEditor({
                 disabled={disabled}
                 className="h-8 text-sm"
               />
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Image size
+                </span>
+                <Select
+                  value={String(slot.image_width ?? 100)}
+                  onValueChange={(v) =>
+                    onChange({ ...slot, image_width: Number(v) as ImageWidth })
+                  }
+                  disabled={disabled}
+                >
+                  <SelectTrigger className="h-7 w-[90px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {IMAGE_WIDTH_OPTIONS.map((w) => (
+                      <SelectItem key={w} value={String(w)} className="text-xs">
+                        {w}%
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             {!disabled && (
               <Button
