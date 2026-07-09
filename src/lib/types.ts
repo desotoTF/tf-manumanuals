@@ -107,12 +107,17 @@ export interface StepCallout {
   body: string;
 }
 
+export type ImageWidth = 25 | 50 | 60 | 75 | 80 | 100;
+export const IMAGE_WIDTH_OPTIONS: ImageWidth[] = [100, 80, 75, 60, 50, 25];
+
 export interface StepSlot {
   id: string;
   text_html: string;
   asset_id: string | null;
   caption?: string;
   callout?: StepCallout | null;
+  /** Rendered width of the image relative to its slot column (percent). Default 100. */
+  image_width?: ImageWidth;
 }
 
 export const DEFAULT_STEP_LAYOUT: StepLayout = "two_col";
