@@ -30,7 +30,10 @@ function loadImageElement(src: string) {
 }
 
 function fitDims(iw: number, ih: number) {
-  const scale = Math.min(MAX_W / iw, MAX_H / ih, 1);
+  // Always zoom the editable preview to fit the available editor area. Crops
+  // often create a smaller bitmap; leaving it at natural pixel size made the
+  // post-crop/re-opened view look like a shifted or partial image.
+  const scale = Math.min(MAX_W / iw, MAX_H / ih);
   return { width: Math.round(iw * scale), height: Math.round(ih * scale), scale };
 }
 
@@ -82,7 +85,8 @@ export function ImageEditorDialog({
       selectable: false,
       evented: false,
     });
-    canvas.backgroundImage = bg;
+    canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+    canvas.set("backgroundImage", bg);
     canvas.setDimensions({ width: cw, height: ch });
     if (canvas.wrapperEl) {
       Object.assign(canvas.wrapperEl.style, {
@@ -96,6 +100,7 @@ export function ImageEditorDialog({
     }
     setCanvasSize({ width: cw, height: ch });
     currentImageRef.current = img;
+    canvas.calcOffset();
     canvas.requestRenderAll();
     return bg;
   };
@@ -302,24 +307,24 @@ export function ImageEditorDialog({
     const rect = cropRectRef.current;
     if (!canvas || !sourceImage || !rect) return;
 
-    // Rect geometry in canvas (display) coordinates. Fabric applies scaleX/Y
-    // to the base width/height when the user drags handles, so factor those in.
-    const dispX = rect.left ?? 0;
-    const dispY = rect.top ?? 0;
-    const dispW = (rect.width ?? 0) * (rect.scaleX ?? 1);
-    const dispH = (rect.height ?? 0) * (rect.scaleY ?? 1);
+    rect.setCoords?.();
+    const bounds = rect.getBoundingRect();
 
-    // Convert display coords → source-image pixels. The background image
-    // fills the canvas exactly (scaleX/Y map source px to display px), so
-    // the conversion factor is sourceWidth / canvasWidth.
+    // Convert the actual rendered crop box in canvas coords → source pixels.
+    // Using Fabric's bounding box avoids stale left/top/scale values after a
+    // user drags resize handles, which was causing the saved crop to shift.
     const sourceW = sourceImage.naturalWidth || sourceImage.width;
     const sourceH = sourceImage.naturalHeight || sourceImage.height;
+    const x1 = Math.max(0, Math.min(canvas.getWidth(), bounds.left));
+    const y1 = Math.max(0, Math.min(canvas.getHeight(), bounds.top));
+    const x2 = Math.max(0, Math.min(canvas.getWidth(), bounds.left + bounds.width));
+    const y2 = Math.max(0, Math.min(canvas.getHeight(), bounds.top + bounds.height));
     const kx = sourceW / canvas.getWidth();
     const ky = sourceH / canvas.getHeight();
-    const sx = Math.max(0, Math.round(dispX * kx));
-    const sy = Math.max(0, Math.round(dispY * ky));
-    const sw = Math.min(sourceW - sx, Math.round(dispW * kx));
-    const sh = Math.min(sourceH - sy, Math.round(dispH * ky));
+    const sx = Math.max(0, Math.round(x1 * kx));
+    const sy = Math.max(0, Math.round(y1 * ky));
+    const sw = Math.min(sourceW - sx, Math.round((x2 - x1) * kx));
+    const sh = Math.min(sourceH - sy, Math.round((y2 - y1) * ky));
     if (sw <= 4 || sh <= 4) {
       cancelCrop();
       return;
@@ -355,18 +360,35 @@ export function ImageEditorDialog({
     if (!canvas || !sourceImage) return;
     canvas.discardActiveObject();
     canvas.requestRenderAll();
-    // Export at source-pixel resolution. Because the background image lives
-    // inside the fabric canvas, one export produces the composited PNG with
-    // annotations already baked in — no separate drawImage step.
     const sourceWidth = sourceImage.naturalWidth || sourceImage.width;
-    const multiplier = sourceWidth / canvas.getWidth();
-    const dataUrl: string = canvas.toDataURL({
-      format: "png",
-      multiplier,
-      enableRetinaScaling: false,
-    });
-    const res = await fetch(dataUrl);
-    const blob = await res.blob();
+    const sourceHeight = sourceImage.naturalHeight || sourceImage.height;
+    const out = document.createElement("canvas");
+    out.width = sourceWidth;
+    out.height = sourceHeight;
+    const ctx = out.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(sourceImage, 0, 0, sourceWidth, sourceHeight);
+
+    const objects = canvas.getObjects?.() ?? [];
+    if (objects.length > 0) {
+      const previousBackground = canvas.backgroundImage;
+      canvas.set("backgroundImage", undefined);
+      canvas.requestRenderAll();
+      const multiplier = sourceWidth / canvas.getWidth();
+      const overlayUrl: string = canvas.toDataURL({
+        format: "png",
+        multiplier,
+        enableRetinaScaling: false,
+      });
+      canvas.set("backgroundImage", previousBackground);
+      canvas.requestRenderAll();
+      const overlay = await loadImageElement(overlayUrl);
+      ctx.drawImage(overlay, 0, 0, sourceWidth, sourceHeight);
+    }
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      out.toBlob(resolve, "image/png"),
+    );
     if (!blob) return;
     await onSave(blob);
   };
