@@ -30,7 +30,10 @@ function loadImageElement(src: string) {
 }
 
 function fitDims(iw: number, ih: number) {
-  const scale = Math.min(MAX_W / iw, MAX_H / ih, 1);
+  // Always zoom the editable preview to fit the available editor area. Crops
+  // often create a smaller bitmap; leaving it at natural pixel size made the
+  // post-crop/re-opened view look like a shifted or partial image.
+  const scale = Math.min(MAX_W / iw, MAX_H / ih);
   return { width: Math.round(iw * scale), height: Math.round(ih * scale), scale };
 }
 
