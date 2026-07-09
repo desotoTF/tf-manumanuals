@@ -44,10 +44,12 @@ import {
 import { cn } from "@/lib/utils";
 import {
   ALL_STEP_LAYOUTS,
+  IMAGE_WIDTH_OPTIONS,
   STEP_LAYOUT_LABEL,
   changeStepLayout,
   figureToken,
   normalizeStep,
+  type ImageWidth,
   type ManualStep,
   type StepCallout,
   type StepLayout,
