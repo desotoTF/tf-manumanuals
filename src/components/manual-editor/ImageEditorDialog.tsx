@@ -1,8 +1,6 @@
-// Canvas image editor built on fabric.js v7. Loads an image as the canvas
-// background, lets the user drop rectangles, circles, arrows, and text on
-// top, tune fill/stroke/shadow, then exports the flattened result as a PNG
-// blob. Only used in the browser — fabric is dynamically imported so it
-// never ships in an SSR bundle.
+// Canvas image editor built on fabric.js v7. The source image lives INSIDE
+// the fabric canvas as its backgroundImage so the on-screen preview, the
+// crop math, and the exported PNG all share one coordinate system.
 import { useEffect, useRef, useState } from "react";
 import {
   Dialog,
@@ -31,6 +29,11 @@ function loadImageElement(src: string) {
   });
 }
 
+function fitDims(iw: number, ih: number) {
+  const scale = Math.min(MAX_W / iw, MAX_H / ih, 1);
+  return { width: Math.round(iw * scale), height: Math.round(ih * scale), scale };
+}
+
 export function ImageEditorDialog({
   open,
   onOpenChange,
@@ -46,7 +49,9 @@ export function ImageEditorDialog({
 }) {
   const canvasElRef = useRef<HTMLCanvasElement | null>(null);
   const fabricRef = useRef<any>(null);
-  const originalImageRef = useRef<HTMLImageElement | null>(null);
+  // Bitmap currently displayed as the canvas background (may be a cropped
+  // derivative of the original). Used as the source-of-truth for save/crop.
+  const currentImageRef = useRef<HTMLImageElement | null>(null);
   const cropRectRef = useRef<any>(null);
   const [canvasSize, setCanvasSize] = useState<{ width: number; height: number } | null>(null);
   const [ready, setReady] = useState(false);
@@ -58,24 +63,57 @@ export function ImageEditorDialog({
   const [cropping, setCropping] = useState(false);
   const effectiveFill = () => (noFill ? "transparent" : fill);
 
+  // Set a bitmap as the fabric canvas background, resizing the canvas to
+  // the fitted display size. Returns the fabric backgroundImage instance.
+  const setBackground = async (img: HTMLImageElement) => {
+    const canvas = fabricRef.current;
+    if (!canvas) return null;
+    const fabric = await import("fabric");
+    const iw = img.naturalWidth || img.width;
+    const ih = img.naturalHeight || img.height;
+    const { width: cw, height: ch, scale } = fitDims(iw, ih);
+    const bg = new fabric.FabricImage(img, {
+      left: 0,
+      top: 0,
+      originX: "left",
+      originY: "top",
+      scaleX: scale,
+      scaleY: scale,
+      selectable: false,
+      evented: false,
+    });
+    canvas.backgroundImage = bg;
+    canvas.setDimensions({ width: cw, height: ch });
+    if (canvas.wrapperEl) {
+      Object.assign(canvas.wrapperEl.style, {
+        width: `${cw}px`,
+        height: `${ch}px`,
+      });
+    }
+    if (canvasElRef.current) {
+      canvasElRef.current.style.width = `${cw}px`;
+      canvasElRef.current.style.height = `${ch}px`;
+    }
+    setCanvasSize({ width: cw, height: ch });
+    currentImageRef.current = img;
+    canvas.requestRenderAll();
+    return bg;
+  };
+
   // Mount canvas + load background image when dialog opens.
   useEffect(() => {
     if (!open || !imageUrl) return;
     let cancelled = false;
     setReady(false);
     setCanvasSize(null);
-    originalImageRef.current = null;
+    currentImageRef.current = null;
     (async () => {
       const sourceImage = await loadImageElement(imageUrl);
       if (cancelled || !canvasElRef.current) return;
-      const iw = sourceImage.naturalWidth || sourceImage.width || MAX_W;
-      const ih = sourceImage.naturalHeight || sourceImage.height || MAX_H;
-      const scale = Math.min(MAX_W / iw, MAX_H / ih, 1);
-      const cw = Math.round(iw * scale);
-      const ch = Math.round(ih * scale);
-
-      originalImageRef.current = sourceImage;
-      setCanvasSize({ width: cw, height: ch });
+      const { width: cw, height: ch } = fitDims(
+        sourceImage.naturalWidth || sourceImage.width || MAX_W,
+        sourceImage.naturalHeight || sourceImage.height || MAX_H,
+      );
 
       const canvasEl = canvasElRef.current;
       canvasEl.width = cw;
@@ -84,9 +122,6 @@ export function ImageEditorDialog({
       canvasEl.style.height = `${ch}px`;
 
       const fabric = await import("fabric");
-      // Force fabric to ignore the device pixel ratio globally for this session.
-      // enableRetinaScaling:false on the canvas alone was not enough on hi-DPI
-      // displays — the image ended up occupying only 1/4 of the backing store.
       try { (fabric as any).config?.configure?.({ devicePixelRatio: 1 }); } catch {}
       if (cancelled) return;
       const canvas = new fabric.Canvas(canvasEl, {
@@ -95,16 +130,14 @@ export function ImageEditorDialog({
         enableRetinaScaling: false,
       });
       fabricRef.current = canvas;
-      canvas.setDimensions({ width: cw, height: ch });
       if (canvas.wrapperEl) {
         Object.assign(canvas.wrapperEl.style, {
           position: "absolute",
           inset: "0",
-          width: `${cw}px`,
-          height: `${ch}px`,
         });
       }
-      canvas.renderAll();
+      await setBackground(sourceImage);
+      if (cancelled) return;
       setReady(true);
     })();
     return () => {
@@ -155,9 +188,6 @@ export function ImageEditorDialog({
     const { fabric, canvas } = await withFabric();
     if (!canvas) return;
     const s = await shadowObj();
-    // Arrow as a polyline: shaft + arrowhead grouped. Color comes from the
-    // stroke picker (fall back to fill when stroke is transparent) so the
-    // Fill/Stroke pickers apply predictably to a mostly-linear shape.
     const w = strokeWidth;
     const arrowColor = stroke && stroke !== "transparent" ? stroke : (noFill ? "#000000" : fill);
     const shaft = new fabric.Line([0, 0, 160, 0], {
@@ -199,15 +229,12 @@ export function ImageEditorDialog({
     canvas.requestRenderAll();
   };
 
-  // Live-update selected object when the style pickers change.
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
     const active = canvas.getActiveObject?.();
     if (!active) return;
     const applyStyles = (obj: any) => {
-      // For grouped shapes (e.g. Arrow = line + polygon) fabric ignores
-      // fill/stroke set on the Group itself, so we walk children manually.
       if (typeof obj.forEachObject === "function") {
         obj.forEachObject((child: any) => applyStyles(child));
       } else {
@@ -240,10 +267,13 @@ export function ImageEditorDialog({
       top: h * 0.1,
       width: w * 0.8,
       height: h * 0.8,
+      originX: "left",
+      originY: "top",
       fill: "rgba(0,0,0,0.05)",
       stroke: "#ff2d55",
       strokeDashArray: [8, 6],
       strokeWidth: 2,
+      strokeUniform: true,
       cornerColor: "#ff2d55",
       transparentCorners: false,
       hasRotatingPoint: false,
@@ -268,32 +298,40 @@ export function ImageEditorDialog({
 
   const applyCrop = async () => {
     const canvas = fabricRef.current;
-    const sourceImage = originalImageRef.current;
+    const sourceImage = currentImageRef.current;
     const rect = cropRectRef.current;
     if (!canvas || !sourceImage || !rect) return;
-    const displayWidth = canvasSize?.width || canvas.getWidth();
-    const displayHeight = canvasSize?.height || canvas.getHeight();
-    const scaleToSource = (sourceImage.naturalWidth || sourceImage.width) / displayWidth;
-    // Compute crop in source-image pixels, clamped.
-    const sx = Math.max(0, Math.round(rect.left * scaleToSource));
-    const sy = Math.max(0, Math.round(rect.top * scaleToSource));
-    const sw = Math.min(
-      sourceImage.naturalWidth - sx,
-      Math.round(rect.width * (rect.scaleX ?? 1) * scaleToSource),
-    );
-    const sh = Math.min(
-      sourceImage.naturalHeight - sy,
-      Math.round(rect.height * (rect.scaleY ?? 1) * scaleToSource),
-    );
+
+    // Rect geometry in canvas (display) coordinates. Fabric applies scaleX/Y
+    // to the base width/height when the user drags handles, so factor those in.
+    const dispX = rect.left ?? 0;
+    const dispY = rect.top ?? 0;
+    const dispW = (rect.width ?? 0) * (rect.scaleX ?? 1);
+    const dispH = (rect.height ?? 0) * (rect.scaleY ?? 1);
+
+    // Convert display coords → source-image pixels. The background image
+    // fills the canvas exactly (scaleX/Y map source px to display px), so
+    // the conversion factor is sourceWidth / canvasWidth.
+    const sourceW = sourceImage.naturalWidth || sourceImage.width;
+    const sourceH = sourceImage.naturalHeight || sourceImage.height;
+    const kx = sourceW / canvas.getWidth();
+    const ky = sourceH / canvas.getHeight();
+    const sx = Math.max(0, Math.round(dispX * kx));
+    const sy = Math.max(0, Math.round(dispY * ky));
+    const sw = Math.min(sourceW - sx, Math.round(dispW * kx));
+    const sh = Math.min(sourceH - sy, Math.round(dispH * ky));
     if (sw <= 4 || sh <= 4) {
       cancelCrop();
       return;
     }
-    // Ask before dropping any existing annotations.
+
+    // Confirm before dropping annotations.
     const otherObjs = canvas.getObjects().filter((o: any) => o !== rect);
     if (otherObjs.length > 0 && !confirm("Cropping will remove existing annotations. Continue?")) {
       return;
     }
+
+    // Rasterise the crop region from the source bitmap.
     const off = document.createElement("canvas");
     off.width = sw;
     off.height = sh;
@@ -302,61 +340,33 @@ export function ImageEditorDialog({
     ctx.drawImage(sourceImage, sx, sy, sw, sh, 0, 0, sw, sh);
     const dataUrl = off.toDataURL("image/png");
     const newImg = await loadImageElement(dataUrl);
-    originalImageRef.current = newImg;
 
-    // Recompute display size at MAX_W/MAX_H.
-    const iw = newImg.naturalWidth;
-    const ih = newImg.naturalHeight;
-    const s = Math.min(MAX_W / iw, MAX_H / ih, 1);
-    const cw = Math.round(iw * s);
-    const ch = Math.round(ih * s);
-
-    // Reset canvas: clear all, resize, dispose+recreate not needed.
-    canvas.clear();
-    canvas.setDimensions({ width: cw, height: ch });
-    if (canvas.wrapperEl) {
-      Object.assign(canvas.wrapperEl.style, {
-        width: `${cw}px`,
-        height: `${ch}px`,
-      });
-    }
-    setCanvasSize({ width: cw, height: ch });
-    if (canvasElRef.current) {
-      canvasElRef.current.style.width = `${cw}px`;
-      canvasElRef.current.style.height = `${ch}px`;
-    }
+    // Reset canvas, then swap in the cropped bitmap as the new background.
+    canvas.remove(rect);
+    otherObjs.forEach((o: any) => canvas.remove(o));
     cropRectRef.current = null;
     setCropping(false);
-    canvas.requestRenderAll();
+    await setBackground(newImg);
   };
 
   const handleSave = async () => {
     const canvas = fabricRef.current;
-    const sourceImage = originalImageRef.current;
+    const sourceImage = currentImageRef.current;
     if (!canvas || !sourceImage) return;
     canvas.discardActiveObject();
     canvas.requestRenderAll();
+    // Export at source-pixel resolution. Because the background image lives
+    // inside the fabric canvas, one export produces the composited PNG with
+    // annotations already baked in — no separate drawImage step.
     const sourceWidth = sourceImage.naturalWidth || sourceImage.width;
-    const sourceHeight = sourceImage.naturalHeight || sourceImage.height;
-    const displayWidth = canvasSize?.width || canvas.getWidth();
-    const exportScale = sourceWidth / displayWidth;
-
-    const output = document.createElement("canvas");
-    output.width = sourceWidth;
-    output.height = sourceHeight;
-    const ctx = output.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(sourceImage, 0, 0, sourceWidth, sourceHeight);
-
-    const overlayDataUrl: string = canvas.toDataURL({
+    const multiplier = sourceWidth / canvas.getWidth();
+    const dataUrl: string = canvas.toDataURL({
       format: "png",
-      multiplier: exportScale,
+      multiplier,
       enableRetinaScaling: false,
     });
-    const overlay = await loadImageElement(overlayDataUrl);
-    ctx.drawImage(overlay, 0, 0, sourceWidth, sourceHeight);
-
-    const blob = await new Promise<Blob | null>((resolve) => output.toBlob(resolve, "image/png"));
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
     if (!blob) return;
     await onSave(blob);
   };
@@ -443,17 +453,6 @@ export function ImageEditorDialog({
             className="relative shrink-0"
             style={{ width: canvasSize?.width ?? MAX_W, height: canvasSize?.height ?? MAX_H }}
           >
-            <img
-              src={imageUrl ?? ""}
-              alt="Original image preview"
-              draggable={false}
-              className="block select-none"
-              style={{
-                width: canvasSize?.width ?? MAX_W,
-                height: canvasSize?.height ?? MAX_H,
-                opacity: canvasSize ? 1 : 0,
-              }}
-            />
             <canvas ref={canvasElRef} />
           </div>
         </div>

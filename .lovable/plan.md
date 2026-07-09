@@ -1,61 +1,43 @@
-I understand the issue: the current renderer is falling back because it depends on `__l5e` asset URLs and client-side SVG fetches. That is fragile, especially with the second Git push/build using a separate backend/database and a different app origin.
+## 1. Image editor: crop saves a different region than shown
 
-## What I will change
+**Root cause:** `ImageEditorDialog` renders the "background" as a plain `<img src={imageUrl}>` sitting behind the Fabric canvas. Fabric never actually holds the image — it's overlay-only. So:
 
-1. **Stop relying on `__l5e` URLs for PDF headers**
-   - The root for those URLs is the current app origin, e.g. preview would be:
-     `https://id-preview--9ef353a3-ccb6-4767-99d7-c0cf84e7bb5c.lovable.app/__l5e/assets-v1/...`
-   - But that URL strategy is not safe for the second non-Lovable build, so I will not make the fix depend on it.
+- The crop rectangle is drawn against the `<img>` visually, but the crop math uses the fabric canvas coordinates. Any mismatch between the img's rendered box and the canvas (rounding, DPR, style vs attribute size) shifts sx/sy.
+- After Apply crop, we swap `originalImageRef` to the cropped bitmap and resize the canvas — but the `<img>` tag still shows the *original* `imageUrl` at the new size, so the on-screen preview is squished/mis-cropped and doesn't reflect what Save will actually write.
+- On Save, `ctx.drawImage(originalImageRef, ...)` uses the (possibly re-cropped multiple times) reference plus the overlay scaled by `sourceWidth / displayWidth`. When displayWidth was recomputed from a different scale than the source, the overlay scale is wrong and the composited output shows "a whole different section."
 
-2. **Use the SVGs you uploaded as the actual template header assets**
-   - Use `TF-PDF-Header-2.svg` for the cover/page-1 header.
-   - Use `TF-PDF-Logo-2.svg` for secondary page headers unless you prefer a full secondary header band later.
-   - Store SVG markup directly inside the master template `branding` JSON so it renders inline with no fetch, no CORS, no CDN root, and no asset migration dependency.
+**Fix:** make the Fabric canvas the single source of truth for what the user sees.
 
-3. **Add template editor upload/replace controls**
-   - In the template branding editor, replace the raw URL-only fields with two upload controls:
-     - Cover page header asset
-     - Secondary page header asset
-   - Accept SVG and raster images (`svg`, `png`, `jpg`, `webp`).
-   - SVGs will be stored/rendered inline. Raster images will be stored as small data URLs in template branding with file-size validation to avoid bloating the DB.
-   - Include clear Replace and Remove actions for each.
+- Remove the sibling `<img>` element. Load the source image into Fabric as `canvas.backgroundImage` (via `fabric.FabricImage.fromURL`) scaled to fit `MAX_W × MAX_H`.
+- Crop workflow: compute sx/sy/sw/sh from the crop rect against the *background image's* current scale (`backgroundImage.scaleX/scaleY`), draw to an offscreen canvas at source pixels, then set the resulting bitmap as the new background image and resize the fabric canvas to the new fitted dimensions. Update `originalImageRef` to the cropped bitmap so subsequent crops/saves are consistent.
+- Save workflow: export via `canvas.toDataURL({ multiplier: sourceWidth / canvas.getWidth(), enableRetinaScaling: false })`. Because the background image is now inside the canvas, this single export produces the final composited PNG at source resolution — no separate `drawImage(originalImage) + overlay` step, which eliminates the scale mismatch.
+- Keep `enableRetinaScaling: false` and the existing `devicePixelRatio: 1` config.
 
-4. **Make the renderer asset-type aware**
-   - If template branding has inline SVG markup, render it directly.
-   - If it has an uploaded raster data URL, render it as an image.
-   - Only use the built-in fallback when no template asset exists.
-   - Respect `header.show` so inner headers do not silently disappear.
+Verification: launch Playwright, open a product step's image editor, draw a crop rect over a known corner, Apply, Save, and diff the saved blob against the expected region using `PIL`.
 
-5. **Fix Save as PDF / local export**
-   - Add an export preflight that waits for images/SVGs/fonts before calling `html2canvas`.
-   - Normalize header assets to inline/data assets before capture so headers cannot taint or disappear.
-   - Improve the error message to show the real export error instead of only “Check the console.”
-   - Verify by opening the preview and running the export path; I will not report success unless the rendered preview shows your uploaded header SVGs and PDF export completes.
+## 2. Per-image size control in step layouts
 
-6. **Handle the two-build / two-database relationship correctly**
-   - No table migration should be needed because `manual_templates.branding` already exists in both the Lovable backend and the external backend catch-up migration.
-   - The key difference is data: each backend has its own `manual_templates` rows and branding JSON.
-   - After this change, the header assets live in the template branding row of whichever backend the app is connected to. That means the Lovable preview DB and the external DB can each have their own uploaded headers, and the app will not depend on Lovable CDN paths working in the second deployment.
+Currently `StepSlot` has `{ text_html, asset_id, caption, callout }` and the view renders the image at whatever width the slot column gives it. Add an explicit width percentage per slot.
 
-## Confirmation from current code
+**Data model** (`src/lib/types.ts`):
+- Extend `StepSlot` with `image_width?: ImageWidth` where `ImageWidth = 25 | 50 | 60 | 75 | 80 | 100`.
+- Default = `100` (current behavior) so existing manuals render unchanged.
+- Export `IMAGE_WIDTH_OPTIONS = [100, 80, 75, 60, 50, 25]` for reuse.
 
-- The existing project already has Lovable asset pointers for:
-  - `tf-pdf-header.svg`
-  - `tf-pdf-logo.svg`
-- Those are not reliable for the second deployment because they are relative `__l5e` asset paths.
-- The uploaded files you just provided should be treated as the source of truth for this fix.
+**Editor** (`src/components/manual-editor/StepLayoutEditor.tsx`):
+- Next to each slot's image thumbnail / upload control, add a compact `Select` (shadcn) labeled "Image size" with the six options. Only shown when `slot.asset_id` is set.
+- Persist by updating `slot.image_width` through the existing slot-update path.
 
-## Files I expect to touch
+**View** (`src/components/manual/StepLayoutView.tsx` and the PDF preview in `MasterManualPreview.tsx`):
+- Wrap the rendered image in a container with `style={{ width: `${image_width ?? 100}%` }}` and `mx-auto` so it stays left-aligned inside the slot but shrinks predictably. Caption stays under the image at the same width.
+- No change to layout column widths — this only shrinks the image within its slot, letting the text below reflow up naturally.
 
-- `src/lib/branding.ts`
-- `src/components/manual/MasterManualPreview.tsx`
-- `src/components/templates/EditBrandingDialog.tsx`
-- `src/routes/_authenticated/products.$productId.tsx`
-- Possibly `src/lib/templates.functions.ts` only if upload validation needs to run server-side; otherwise no backend schema changes.
+**Migration:** none needed. `normalizeStep` already tolerates missing slot fields; the width falls back to 100.
 
-## Verification before saying it works
+## Files touched
 
-- Confirm the template editor preview uses the uploaded SVGs, not fallback art.
-- Confirm a real manual preview uses the uploaded SVGs on page 1 and secondary pages.
-- Confirm Save as PDF completes without the current error.
-- Confirm the approach is compatible with the second Git push / external DB because the assets are stored in `branding` JSON, not Lovable-only asset URLs.
+- `src/components/manual-editor/ImageEditorDialog.tsx` — rework background handling, crop, and save paths.
+- `src/lib/types.ts` — add `image_width` to `StepSlot`, add `IMAGE_WIDTH_OPTIONS`.
+- `src/components/manual-editor/StepLayoutEditor.tsx` — width dropdown per image slot.
+- `src/components/manual/StepLayoutView.tsx` — apply width to rendered image + caption wrapper.
+- `src/components/manual/MasterManualPreview.tsx` — same width wrapper in the PDF preview render path (if it uses its own image renderer rather than `StepLayoutView`).

@@ -97,6 +97,7 @@ function SlotView({
   pdfSafe?: boolean;
 }) {
   const asset = slot.asset_id ? assets[slot.asset_id] : null;
+  const widthPct = slot.image_width ?? 100;
   if (pdfSafe) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -104,6 +105,7 @@ function SlotView({
           <figure
             style={{
               margin: 0,
+              width: `${widthPct}%`,
               overflow: "hidden",
               border: "1px solid #D9DDE5",
               borderRadius: 6,
@@ -158,7 +160,10 @@ function SlotView({
   return (
     <div className="space-y-3">
       {asset?.url && (
-        <figure className="overflow-hidden rounded-md border border-border">
+        <figure
+          className="overflow-hidden rounded-md border border-border"
+          style={{ width: `${widthPct}%` }}
+        >
           <img
             src={asset.url}
             alt={slot.caption ?? asset.caption ?? ""}
