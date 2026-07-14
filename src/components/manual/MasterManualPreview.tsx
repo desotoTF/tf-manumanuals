@@ -625,7 +625,7 @@ export function MasterManualPreview({
                   style={{ width: "55%", maxWidth: 380 }}
                   // eslint-disable-next-line react/no-danger
                   dangerouslySetInnerHTML={{
-                    __html: backCoverSvgMarkup.replace(
+                    __html: scopeSvgClasses(backCoverSvgMarkup).replace(
                       /<svg\b([^>]*)>/i,
                       '<svg$1 style="width:100%;height:auto;display:block" preserveAspectRatio="xMidYMid meet">',
                     ),
