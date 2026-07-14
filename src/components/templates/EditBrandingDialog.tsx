@@ -218,6 +218,42 @@ export function EditBrandingDialog({
                   <Input value={b.footer.website} onChange={(e) => setB({ ...b, footer: { ...b.footer, website: e.target.value } })} />
                 </Field>
               </TabsContent>
+
+              <TabsContent value="legal" className="space-y-3 pt-3">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={b.disclaimer.show}
+                    onChange={(e) => setB({ ...b, disclaimer: { ...b.disclaimer, show: e.target.checked } })}
+                  />
+                  Include product disclaimer page (2nd to last)
+                </label>
+                <Field label="Disclaimer title">
+                  <Input
+                    value={b.disclaimer.title}
+                    onChange={(e) => setB({ ...b, disclaimer: { ...b.disclaimer, title: e.target.value } })}
+                  />
+                </Field>
+                <Field label="Disclaimer body">
+                  <Textarea
+                    rows={14}
+                    className="text-xs font-mono"
+                    value={b.disclaimer.body}
+                    onChange={(e) => setB({ ...b, disclaimer: { ...b.disclaimer, body: e.target.value } })}
+                  />
+                </Field>
+                <label className="flex items-center gap-2 text-sm pt-2 border-t">
+                  <input
+                    type="checkbox"
+                    checked={b.backCover.show}
+                    onChange={(e) => setB({ ...b, backCover: { ...b.backCover, show: e.target.checked } })}
+                  />
+                  Include back cover page (Thumper Fab logo + contact info)
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Back cover uses the company name, address, phone, and website from the Footer tab.
+                </p>
+              </TabsContent>
             </Tabs>
           </div>
 
