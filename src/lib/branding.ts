@@ -161,6 +161,10 @@ function mergeHeaderAssets(
       source && Object.prototype.hasOwnProperty.call(source, "secondaryHeader")
         ? source.secondaryHeader ?? null
         : DEFAULT_BRANDING.assets.secondaryHeader,
+    backCoverLogo:
+      source && Object.prototype.hasOwnProperty.call(source, "backCoverLogo")
+        ? source.backCoverLogo ?? null
+        : DEFAULT_BRANDING.assets.backCoverLogo,
   };
 }
 
