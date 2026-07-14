@@ -6,6 +6,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Upload, X } from "lucide-react";
 import {
@@ -110,11 +111,12 @@ export function EditBrandingDialog({
         <div className="grid grid-cols-[minmax(0,420px)_1fr] gap-0 max-h-[calc(90vh-180px)]">
           <div className="overflow-y-auto px-6 py-4 border-r">
             <Tabs defaultValue="identity">
-              <TabsList className="grid grid-cols-4 w-full">
+              <TabsList className="grid grid-cols-5 w-full">
                 <TabsTrigger value="identity">Identity</TabsTrigger>
                 <TabsTrigger value="colors">Colors</TabsTrigger>
                 <TabsTrigger value="type">Type</TabsTrigger>
                 <TabsTrigger value="footer">Footer</TabsTrigger>
+                <TabsTrigger value="legal">Legal</TabsTrigger>
               </TabsList>
 
               <TabsContent value="identity" className="space-y-3 pt-3">
