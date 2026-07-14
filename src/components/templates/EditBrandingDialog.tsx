@@ -6,6 +6,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Upload, X } from "lucide-react";
 import {
@@ -110,11 +111,12 @@ export function EditBrandingDialog({
         <div className="grid grid-cols-[minmax(0,420px)_1fr] gap-0 max-h-[calc(90vh-180px)]">
           <div className="overflow-y-auto px-6 py-4 border-r">
             <Tabs defaultValue="identity">
-              <TabsList className="grid grid-cols-4 w-full">
+              <TabsList className="grid grid-cols-5 w-full">
                 <TabsTrigger value="identity">Identity</TabsTrigger>
                 <TabsTrigger value="colors">Colors</TabsTrigger>
                 <TabsTrigger value="type">Type</TabsTrigger>
                 <TabsTrigger value="footer">Footer</TabsTrigger>
+                <TabsTrigger value="legal">Legal</TabsTrigger>
               </TabsList>
 
               <TabsContent value="identity" className="space-y-3 pt-3">
@@ -215,6 +217,42 @@ export function EditBrandingDialog({
                 <Field label="Website">
                   <Input value={b.footer.website} onChange={(e) => setB({ ...b, footer: { ...b.footer, website: e.target.value } })} />
                 </Field>
+              </TabsContent>
+
+              <TabsContent value="legal" className="space-y-3 pt-3">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={b.disclaimer.show}
+                    onChange={(e) => setB({ ...b, disclaimer: { ...b.disclaimer, show: e.target.checked } })}
+                  />
+                  Include product disclaimer page (2nd to last)
+                </label>
+                <Field label="Disclaimer title">
+                  <Input
+                    value={b.disclaimer.title}
+                    onChange={(e) => setB({ ...b, disclaimer: { ...b.disclaimer, title: e.target.value } })}
+                  />
+                </Field>
+                <Field label="Disclaimer body">
+                  <Textarea
+                    rows={14}
+                    className="text-xs font-mono"
+                    value={b.disclaimer.body}
+                    onChange={(e) => setB({ ...b, disclaimer: { ...b.disclaimer, body: e.target.value } })}
+                  />
+                </Field>
+                <label className="flex items-center gap-2 text-sm pt-2 border-t">
+                  <input
+                    type="checkbox"
+                    checked={b.backCover.show}
+                    onChange={(e) => setB({ ...b, backCover: { ...b.backCover, show: e.target.checked } })}
+                  />
+                  Include back cover page (Thumper Fab logo + contact info)
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Back cover uses the company name, address, phone, and website from the Footer tab.
+                </p>
               </TabsContent>
             </Tabs>
           </div>

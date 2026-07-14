@@ -24,6 +24,7 @@ import type { ManualContent } from "@/lib/types";
 import { normalizeStep } from "@/lib/types";
 import { StepLayoutView } from "@/components/manual/StepLayoutView";
 import { buildFigureMapFromSteps } from "@/lib/figure-refs";
+import tfLogoWordmark from "@/assets/tf-logo-wordmark.svg.asset.json";
 
 // Fetch an SVG once and inline it as markup. Inlining sidesteps
 // `Content-Disposition: attachment` / CORS quirks that leave `<img>` broken,
@@ -220,7 +221,11 @@ export function MasterManualPreview({
   // existing step layout; html2canvas will re-slice as needed if a step
   // overflows).
   const stepsPages = content.steps.length > 0 ? content.steps : [];
-  const totalPages = 2 + stepsPages.length;
+  const showDisclaimer = b.disclaimer.show && b.disclaimer.body.trim().length > 0;
+  const showBackCover = b.backCover.show;
+  const totalPages = 2 + stepsPages.length + (showDisclaimer ? 1 : 0) + (showBackCover ? 1 : 0);
+  const disclaimerPageNum = 2 + stepsPages.length + (showDisclaimer ? 1 : 0);
+  const backCoverPageNum = totalPages;
 
   const pageStyle: React.CSSProperties = {
     width: PAGE_W * scale,
@@ -519,6 +524,104 @@ export function MasterManualPreview({
           </div>
         );
       })}
+
+      {/* ---------- DISCLAIMER (2nd to last) ---------- */}
+      {showDisclaimer && (
+        <div data-manual-page="true" style={pageStyle}>
+          <InteriorFrame
+            meta={meta}
+            branding={b}
+            headerAsset={interiorHeaderAsset}
+            logoSvgMarkup={interiorLogoMarkup}
+            pageNum={disclaimerPageNum}
+            totalPages={totalPages}
+            scale={scale}
+          >
+            <div
+              style={{
+                fontFamily: FONT_HEADING,
+                fontWeight: 600,
+                fontSize: 24,
+                color: RED,
+                borderBottom: `3px solid ${RED}`,
+                paddingBottom: 4,
+                marginBottom: 12,
+                textTransform: "uppercase",
+              }}
+            >
+              {b.disclaimer.title}
+            </div>
+            <div
+              style={{
+                fontFamily: FONT_BODY,
+                fontSize: 9.5,
+                lineHeight: 1.45,
+                color: INK,
+                textAlign: "justify",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {b.disclaimer.body}
+            </div>
+          </InteriorFrame>
+        </div>
+      )}
+
+      {/* ---------- BACK COVER (last page) ---------- */}
+      {showBackCover && (
+        <div data-manual-page="true" style={pageStyle}>
+          <div
+            style={{
+              padding: PAGE_PAD * scale,
+              height: "100%",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              boxSizing: "border-box",
+              position: "relative",
+            }}
+          >
+            <div
+              style={{
+                flex: 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "100%",
+              }}
+            >
+              <img
+                src={tfLogoWordmark.url}
+                alt={b.footer.companyName}
+                crossOrigin="anonymous"
+                style={{ width: "45%", maxWidth: 320, height: "auto", display: "block" }}
+              />
+            </div>
+            <div style={{ textAlign: "center", paddingBottom: 24 * scale }}>
+              <div
+                style={{
+                  fontFamily: "Arial Black, Arial, sans-serif",
+                  fontWeight: 900,
+                  fontSize: 14,
+                  color: INK,
+                }}
+              >
+                {b.footer.companyName}
+              </div>
+              <div style={{ fontFamily: FONT_BODY, fontSize: 13, color: INK, marginTop: 2 }}>
+                {b.footer.address}
+              </div>
+              <div style={{ fontFamily: FONT_BODY, fontSize: 13, color: INK }}>
+                Customer Service: {b.footer.phone}
+              </div>
+              <div style={{ fontFamily: FONT_BODY, fontSize: 13, color: RED, marginTop: 14, fontWeight: 700 }}>
+                {b.footer.website}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
