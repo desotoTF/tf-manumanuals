@@ -5,6 +5,7 @@ import tfPdfHeader from "@/assets/tf-pdf-header.svg.asset.json";
 import tfPdfLogo from "@/assets/tf-pdf-logo.svg.asset.json";
 import tfPdfHeaderMarkup from "@/assets/tf-pdf-header-2.svg?raw";
 import tfPdfLogoMarkup from "@/assets/tf-pdf-logo-2.svg?raw";
+import tfLogoWordmarkMarkup from "@/assets/tf-logo-wordmark.svg?raw";
 
 export interface BrandingHeaderAsset {
   type: "svg" | "image";
@@ -22,6 +23,7 @@ export interface BrandingTokens {
   assets: {
     coverHeader: BrandingHeaderAsset | null;
     secondaryHeader: BrandingHeaderAsset | null;
+    backCoverLogo: BrandingHeaderAsset | null;
   };
   colors: {
     brand: string;
@@ -78,6 +80,12 @@ export const DEFAULT_BRANDING: BrandingTokens = {
       type: "svg",
       value: tfPdfLogoMarkup,
       filename: "TF-PDF-Logo-2.svg",
+      contentType: "image/svg+xml",
+    },
+    backCoverLogo: {
+      type: "svg",
+      value: tfLogoWordmarkMarkup,
+      filename: "TF-Logo-w-Text.svg",
       contentType: "image/svg+xml",
     },
   },
@@ -153,6 +161,10 @@ function mergeHeaderAssets(
       source && Object.prototype.hasOwnProperty.call(source, "secondaryHeader")
         ? source.secondaryHeader ?? null
         : DEFAULT_BRANDING.assets.secondaryHeader,
+    backCoverLogo:
+      source && Object.prototype.hasOwnProperty.call(source, "backCoverLogo")
+        ? source.backCoverLogo ?? null
+        : DEFAULT_BRANDING.assets.backCoverLogo,
   };
 }
 

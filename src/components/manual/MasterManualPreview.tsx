@@ -24,7 +24,7 @@ import type { ManualContent } from "@/lib/types";
 import { normalizeStep } from "@/lib/types";
 import { StepLayoutView } from "@/components/manual/StepLayoutView";
 import { buildFigureMapFromSteps } from "@/lib/figure-refs";
-import tfLogoWordmark from "@/assets/tf-logo-wordmark.svg.asset.json";
+
 
 // Fetch an SVG once and inline it as markup. Inlining sidesteps
 // `Content-Disposition: attachment` / CORS quirks that leave `<img>` broken,
@@ -208,6 +208,9 @@ export function MasterManualPreview({
   // depend on Lovable-only asset roots.
   const coverHeaderMarkup = headerAssetSvg(coverHeaderAsset) || headerSvgMarkup || headerSvgFallback;
   const interiorLogoMarkup = headerAssetSvg(interiorHeaderAsset) || logoSvgMarkup || logoSvgFallback;
+  const backCoverAsset = b.assets.backCoverLogo;
+  const backCoverSvgMarkup = headerAssetSvg(backCoverAsset);
+  const backCoverImageUrl = headerAssetImage(backCoverAsset);
   const assetMap = assets ?? {};
   const catalogMap = partCatalog ?? {};
   const figMap = useMemo(
@@ -554,8 +557,8 @@ export function MasterManualPreview({
             <div
               style={{
                 fontFamily: FONT_BODY,
-                fontSize: 9.5,
-                lineHeight: 1.45,
+                fontSize: 11,
+                lineHeight: 1.5,
                 color: INK,
                 textAlign: "justify",
                 whiteSpace: "pre-wrap",
@@ -574,31 +577,54 @@ export function MasterManualPreview({
             style={{
               padding: PAGE_PAD * scale,
               height: "100%",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
               boxSizing: "border-box",
               position: "relative",
             }}
           >
+            {/* Dead-centered logo */}
             <div
               style={{
-                flex: 1,
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                width: "100%",
+                pointerEvents: "none",
               }}
             >
-              <img
-                src={tfLogoWordmark.url}
-                alt={b.footer.companyName}
-                crossOrigin="anonymous"
-                style={{ width: "45%", maxWidth: 320, height: "auto", display: "block" }}
-              />
+              {backCoverSvgMarkup ? (
+                <div
+                  style={{ width: "55%", maxWidth: 380 }}
+                  // eslint-disable-next-line react/no-danger
+                  dangerouslySetInnerHTML={{
+                    __html: backCoverSvgMarkup.replace(
+                      /<svg\b([^>]*)>/i,
+                      '<svg$1 style="width:100%;height:auto;display:block" preserveAspectRatio="xMidYMid meet">',
+                    ),
+                  }}
+                />
+              ) : backCoverImageUrl ? (
+                <img
+                  src={backCoverImageUrl}
+                  alt={b.footer.companyName}
+                  crossOrigin="anonymous"
+                  style={{ width: "55%", maxWidth: 380, height: "auto", display: "block" }}
+                />
+              ) : null}
             </div>
-            <div style={{ textAlign: "center", paddingBottom: 24 * scale }}>
+            {/* Contact info pinned to bottom */}
+            <div
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                bottom: 32 * scale,
+                textAlign: "center",
+              }}
+            >
               <div
                 style={{
                   fontFamily: "Arial Black, Arial, sans-serif",

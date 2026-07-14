@@ -253,6 +253,12 @@ export function EditBrandingDialog({
                 <p className="text-xs text-muted-foreground">
                   Back cover uses the company name, address, phone, and website from the Footer tab.
                 </p>
+                <HeaderAssetField
+                  label="Back cover logo (SVG recommended)"
+                  asset={b.assets.backCoverLogo}
+                  fallbackLabel="Default Thumper Fab wordmark"
+                  onChange={(asset) => setB({ ...b, assets: { ...b.assets, backCoverLogo: asset } })}
+                />
               </TabsContent>
             </Tabs>
           </div>
