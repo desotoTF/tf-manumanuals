@@ -67,11 +67,36 @@ function logoAspectWidth(svgMarkup: string, height: number): number {
   return Math.round(height * (w / h));
 }
 
+// Illustrator/Figma-exported SVGs commonly embed a `<style>` block using
+// generic class names like `.cls-1`. When multiple such SVGs are inlined
+// into the same document their CSS rules collide and stomp each other's
+// fills. Rename every class to a unique per-render prefix to isolate them.
+let scopeCounter = 0;
+function scopeSvgClasses(markup: string): string {
+  const styleMatch = markup.match(/<style\b[^>]*>([\s\S]*?)<\/style>/i);
+  if (!styleMatch) return markup;
+  const classNames = new Set<string>();
+  const re = /\.([A-Za-z_][\w-]*)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(styleMatch[1])) !== null) classNames.add(m[1]);
+  if (classNames.size === 0) return markup;
+  const prefix = `s${(++scopeCounter).toString(36)}-`;
+  let out = markup;
+  for (const cls of classNames) {
+    const esc = cls.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+    out = out.replace(new RegExp(`\\.${esc}(?![\\w-])`, "g"), `.${prefix}${cls}`);
+    out = out.replace(new RegExp(`(class\\s*=\\s*"[^"]*?)\\b${esc}\\b`, "g"), `$1${prefix}${cls}`);
+    out = out.replace(new RegExp(`(class\\s*=\\s*'[^']*?)\\b${esc}\\b`, "g"), `$1${prefix}${cls}`);
+  }
+  return out;
+}
+
 function inlineSvg(svgMarkup: string, style: string): string {
   const withoutXml = sanitizeSvgMarkup(svgMarkup);
   if (!withoutXml) return "";
   if (!/<svg\b/i.test(withoutXml)) return "";
-  return withoutXml.replace(
+  const scoped = scopeSvgClasses(withoutXml);
+  return scoped.replace(
     /<svg\b([^>]*)>/i,
     `<svg$1 style="${style}" preserveAspectRatio="xMidYMid meet">`,
   );
