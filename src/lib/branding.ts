@@ -178,6 +178,8 @@ export function mergeBranding(b: unknown): BrandingTokens {
     header: { ...DEFAULT_BRANDING.header, ...(incoming.header ?? {}) },
     footer: { ...DEFAULT_BRANDING.footer, ...(incoming.footer ?? {}) },
     tables: { ...DEFAULT_BRANDING.tables, ...(incoming.tables ?? {}) },
+    disclaimer: { ...DEFAULT_BRANDING.disclaimer, ...(incoming.disclaimer ?? {}) },
+    backCover: { ...DEFAULT_BRANDING.backCover, ...(incoming.backCover ?? {}) },
   };
 }
 
