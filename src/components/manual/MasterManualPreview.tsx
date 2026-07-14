@@ -524,6 +524,104 @@ export function MasterManualPreview({
           </div>
         );
       })}
+
+      {/* ---------- DISCLAIMER (2nd to last) ---------- */}
+      {showDisclaimer && (
+        <div data-manual-page="true" style={pageStyle}>
+          <InteriorFrame
+            meta={meta}
+            branding={b}
+            headerAsset={interiorHeaderAsset}
+            logoSvgMarkup={interiorLogoMarkup}
+            pageNum={disclaimerPageNum}
+            totalPages={totalPages}
+            scale={scale}
+          >
+            <div
+              style={{
+                fontFamily: FONT_HEADING,
+                fontWeight: 600,
+                fontSize: 24,
+                color: RED,
+                borderBottom: `3px solid ${RED}`,
+                paddingBottom: 4,
+                marginBottom: 12,
+                textTransform: "uppercase",
+              }}
+            >
+              {b.disclaimer.title}
+            </div>
+            <div
+              style={{
+                fontFamily: FONT_BODY,
+                fontSize: 9.5,
+                lineHeight: 1.45,
+                color: INK,
+                textAlign: "justify",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {b.disclaimer.body}
+            </div>
+          </InteriorFrame>
+        </div>
+      )}
+
+      {/* ---------- BACK COVER (last page) ---------- */}
+      {showBackCover && (
+        <div data-manual-page="true" style={pageStyle}>
+          <div
+            style={{
+              padding: PAGE_PAD * scale,
+              height: "100%",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              boxSizing: "border-box",
+              position: "relative",
+            }}
+          >
+            <div
+              style={{
+                flex: 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "100%",
+              }}
+            >
+              <img
+                src={tfLogoWordmark.url}
+                alt={b.footer.companyName}
+                crossOrigin="anonymous"
+                style={{ width: "45%", maxWidth: 320, height: "auto", display: "block" }}
+              />
+            </div>
+            <div style={{ textAlign: "center", paddingBottom: 24 * scale }}>
+              <div
+                style={{
+                  fontFamily: "Arial Black, Arial, sans-serif",
+                  fontWeight: 900,
+                  fontSize: 14,
+                  color: INK,
+                }}
+              >
+                {b.footer.companyName}
+              </div>
+              <div style={{ fontFamily: FONT_BODY, fontSize: 13, color: INK, marginTop: 2 }}>
+                {b.footer.address}
+              </div>
+              <div style={{ fontFamily: FONT_BODY, fontSize: 13, color: INK }}>
+                Customer Service: {b.footer.phone}
+              </div>
+              <div style={{ fontFamily: FONT_BODY, fontSize: 13, color: RED, marginTop: 14, fontWeight: 700 }}>
+                {b.footer.website}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
