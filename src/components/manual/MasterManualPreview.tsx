@@ -24,6 +24,7 @@ import type { ManualContent } from "@/lib/types";
 import { normalizeStep } from "@/lib/types";
 import { StepLayoutView } from "@/components/manual/StepLayoutView";
 import { buildFigureMapFromSteps } from "@/lib/figure-refs";
+import tfLogoWordmark from "@/assets/tf-logo-wordmark.svg.asset.json";
 
 // Fetch an SVG once and inline it as markup. Inlining sidesteps
 // `Content-Disposition: attachment` / CORS quirks that leave `<img>` broken,
@@ -220,7 +221,11 @@ export function MasterManualPreview({
   // existing step layout; html2canvas will re-slice as needed if a step
   // overflows).
   const stepsPages = content.steps.length > 0 ? content.steps : [];
-  const totalPages = 2 + stepsPages.length;
+  const showDisclaimer = b.disclaimer.show && b.disclaimer.body.trim().length > 0;
+  const showBackCover = b.backCover.show;
+  const totalPages = 2 + stepsPages.length + (showDisclaimer ? 1 : 0) + (showBackCover ? 1 : 0);
+  const disclaimerPageNum = 2 + stepsPages.length + (showDisclaimer ? 1 : 0);
+  const backCoverPageNum = totalPages;
 
   const pageStyle: React.CSSProperties = {
     width: PAGE_W * scale,
