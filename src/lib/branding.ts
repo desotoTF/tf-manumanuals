@@ -53,6 +53,14 @@ export interface BrandingTokens {
     zebra: boolean;
     borderColor: string;
   };
+  disclaimer: {
+    show: boolean;
+    title: string;
+    body: string;
+  };
+  backCover: {
+    show: boolean;
+  };
 }
 
 export const DEFAULT_BRANDING: BrandingTokens = {
