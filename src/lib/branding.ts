@@ -82,6 +82,12 @@ export const DEFAULT_BRANDING: BrandingTokens = {
       filename: "TF-PDF-Logo-2.svg",
       contentType: "image/svg+xml",
     },
+    backCoverLogo: {
+      type: "svg",
+      value: tfLogoWordmarkMarkup,
+      filename: "TF-Logo-w-Text.svg",
+      contentType: "image/svg+xml",
+    },
   },
   colors: {
     brand: "#ED1C24",
