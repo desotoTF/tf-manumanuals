@@ -24,7 +24,7 @@ import type { ManualContent } from "@/lib/types";
 import { normalizeStep } from "@/lib/types";
 import { StepLayoutView } from "@/components/manual/StepLayoutView";
 import { buildFigureMapFromSteps } from "@/lib/figure-refs";
-import tfLogoWordmark from "@/assets/tf-logo-wordmark.svg.asset.json";
+
 
 // Fetch an SVG once and inline it as markup. Inlining sidesteps
 // `Content-Disposition: attachment` / CORS quirks that leave `<img>` broken,
