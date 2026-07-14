@@ -5,6 +5,7 @@ import tfPdfHeader from "@/assets/tf-pdf-header.svg.asset.json";
 import tfPdfLogo from "@/assets/tf-pdf-logo.svg.asset.json";
 import tfPdfHeaderMarkup from "@/assets/tf-pdf-header-2.svg?raw";
 import tfPdfLogoMarkup from "@/assets/tf-pdf-logo-2.svg?raw";
+import tfLogoWordmarkMarkup from "@/assets/tf-logo-wordmark.svg?raw";
 
 export interface BrandingHeaderAsset {
   type: "svg" | "image";
