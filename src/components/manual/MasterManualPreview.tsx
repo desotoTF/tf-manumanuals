@@ -208,6 +208,9 @@ export function MasterManualPreview({
   // depend on Lovable-only asset roots.
   const coverHeaderMarkup = headerAssetSvg(coverHeaderAsset) || headerSvgMarkup || headerSvgFallback;
   const interiorLogoMarkup = headerAssetSvg(interiorHeaderAsset) || logoSvgMarkup || logoSvgFallback;
+  const backCoverAsset = b.assets.backCoverLogo;
+  const backCoverSvgMarkup = headerAssetSvg(backCoverAsset);
+  const backCoverImageUrl = headerAssetImage(backCoverAsset);
   const assetMap = assets ?? {};
   const catalogMap = partCatalog ?? {};
   const figMap = useMemo(
