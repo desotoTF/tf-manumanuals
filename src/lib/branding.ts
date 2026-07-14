@@ -23,6 +23,7 @@ export interface BrandingTokens {
   assets: {
     coverHeader: BrandingHeaderAsset | null;
     secondaryHeader: BrandingHeaderAsset | null;
+    backCoverLogo: BrandingHeaderAsset | null;
   };
   colors: {
     brand: string;
