@@ -582,8 +582,8 @@ export function MasterManualPreview({
             <div
               style={{
                 fontFamily: FONT_BODY,
-                fontSize: 11,
-                lineHeight: 1.5,
+                fontSize: 14,
+                lineHeight: 1.32,
                 color: INK,
                 textAlign: "justify",
                 whiteSpace: "pre-wrap",
