@@ -121,9 +121,31 @@ async function waitForExportAssets(source: HTMLElement): Promise<void> {
   );
 }
 
+async function importWithRetry<T>(loader: () => Promise<T>, label: string, attempts = 3): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await loader();
+    } catch (err) {
+      lastErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      // Chunk load failure — usually a stale client after redeploy.
+      if (!/dynamically imported module|Failed to fetch|Importing a module script failed|ChunkLoadError/i.test(msg)) {
+        throw err;
+      }
+      await new Promise((r) => setTimeout(r, 400 * (i + 1)));
+    }
+  }
+  throw new Error(
+    `Couldn't load ${label}. The app was updated since this tab was opened — please refresh the page and try again. (${
+      lastErr instanceof Error ? lastErr.message : String(lastErr)
+    })`,
+  );
+}
+
 async function renderManualPagesPdf(source: HTMLElement): Promise<Blob> {
-  const { default: html2canvas } = await import("html2canvas");
-  const { default: jsPDF } = await import("jspdf");
+  const { default: html2canvas } = await importWithRetry(() => import("html2canvas"), "PDF renderer");
+  const { default: jsPDF } = await importWithRetry(() => import("jspdf"), "PDF renderer");
   await waitForExportAssets(source);
   const pages = Array.from(source.querySelectorAll<HTMLElement>("[data-manual-page='true']"));
   if (pages.length === 0) throw new Error("No manual pages found to export");
