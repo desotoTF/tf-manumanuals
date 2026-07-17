@@ -836,7 +836,7 @@ function PartsTable({
         <tr>
           <th style={{ width: 48, textAlign: "center" }}>REF</th>
           <th style={{ width: 48, textAlign: "center" }}>QTY</th>
-          <th>HARDWARE</th>
+          <th>DESCRIPTION</th>
         </tr>
       </thead>
       <tbody>
