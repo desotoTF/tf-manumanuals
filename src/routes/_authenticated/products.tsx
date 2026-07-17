@@ -434,6 +434,63 @@ function ManualsPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={!!toRename}
+        onOpenChange={(o) => !o && !renameMut.isPending && setToRename(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename manual</DialogTitle>
+            <DialogDescription>
+              Update the display name of this manual.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="rename-title">Manual name</Label>
+            <Input
+              id="rename-title"
+              value={renameTitle}
+              onChange={(e) => setRenameTitle(e.target.value)}
+              disabled={renameMut.isPending}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setToRename(null)}
+              disabled={renameMut.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                renameMut.isPending ||
+                !renameTitle.trim() ||
+                renameTitle.trim() === toRename?.currentTitle
+              }
+              onClick={() => {
+                if (!toRename) return;
+                renameMut.mutate({
+                  manualId: toRename.manualId,
+                  title: renameTitle.trim(),
+                });
+              }}
+            >
+              {renameMut.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving…
+                </>
+              ) : (
+                "Save"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+
     </div>
   );
 }
