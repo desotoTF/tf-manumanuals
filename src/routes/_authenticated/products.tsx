@@ -149,6 +149,18 @@ function ManualsPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const renameMut = useMutation({
+    mutationFn: (vars: { manualId: string; title: string }) =>
+      renameManualFn({ data: vars }),
+    onSuccess: () => {
+      toast.success("Manual renamed");
+      qc.invalidateQueries({ queryKey: ["manuals", orgId] });
+      setToRename(null);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+
 
   const rows = useMemo(() => {
     const data = manualsQuery.data ?? [];
