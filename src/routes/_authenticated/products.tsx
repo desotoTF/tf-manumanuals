@@ -99,6 +99,7 @@ function ManualsPage() {
   const fetchManuals = useServerFn(listManualsWithStatus);
   const deleteManualFn = useServerFn(deleteManual);
   const cloneManualFn = useServerFn(cloneManual);
+  const renameManualFn = useServerFn(renameManual);
   const [filter, setFilter] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [toDelete, setToDelete] = useState<{
@@ -110,6 +111,11 @@ function ManualsPage() {
     defaultTitle: string;
   } | null>(null);
   const [cloneTitle, setCloneTitle] = useState("");
+  const [toRename, setToRename] = useState<{
+    manualId: string;
+    currentTitle: string;
+  } | null>(null);
+  const [renameTitle, setRenameTitle] = useState("");
 
 
   const manualsQuery = useQuery({
