@@ -1414,6 +1414,27 @@ export const deleteManual = createServerFn({ method: "POST" })
     };
   });
 
+// ---------- Rename a manual ----------
+export const renameManual = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        manualId: uuid,
+        title: z.string().trim().min(1).max(300),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { error } = await supabase
+      .from("manuals")
+      .update({ title: data.title.trim() })
+      .eq("id", data.manualId);
+    if (error) throw error;
+    return { ok: true as const, title: data.title.trim() };
+  });
+
 // ---------- Clone a manual ----------
 // Creates a new manual on the same product with a v1 draft copied from the
 // selected/latest source version. Asset rows are duplicated and content asset

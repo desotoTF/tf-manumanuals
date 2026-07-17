@@ -12,13 +12,14 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import { Copy, Plus, Search, Loader2, Trash2 } from "lucide-react";
+import { Copy, Pencil, Plus, Search, Loader2, Trash2 } from "lucide-react";
 import { useActiveOrg } from "@/components/AppShell";
 import {
   listManualsWithStatus,
   createManualFromSku,
   deleteManual,
   cloneManual,
+  renameManual,
 } from "@/lib/manuals.functions";
 import { lookupProductBySku } from "@/lib/products.functions";
 import { listTemplates } from "@/lib/templates.functions";
@@ -98,6 +99,7 @@ function ManualsPage() {
   const fetchManuals = useServerFn(listManualsWithStatus);
   const deleteManualFn = useServerFn(deleteManual);
   const cloneManualFn = useServerFn(cloneManual);
+  const renameManualFn = useServerFn(renameManual);
   const [filter, setFilter] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [toDelete, setToDelete] = useState<{
@@ -109,6 +111,11 @@ function ManualsPage() {
     defaultTitle: string;
   } | null>(null);
   const [cloneTitle, setCloneTitle] = useState("");
+  const [toRename, setToRename] = useState<{
+    manualId: string;
+    currentTitle: string;
+  } | null>(null);
+  const [renameTitle, setRenameTitle] = useState("");
 
 
   const manualsQuery = useQuery({
@@ -141,6 +148,18 @@ function ManualsPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  const renameMut = useMutation({
+    mutationFn: (vars: { manualId: string; title: string }) =>
+      renameManualFn({ data: vars }),
+    onSuccess: () => {
+      toast.success("Manual renamed");
+      qc.invalidateQueries({ queryKey: ["manuals", orgId] });
+      setToRename(null);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
 
 
   const rows = useMemo(() => {
@@ -287,6 +306,22 @@ function ManualsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label="Rename manual"
+                        title="Rename manual"
+                        className="text-muted-foreground hover:text-foreground"
+                        onClick={() => {
+                          setRenameTitle(r.product_name);
+                          setToRename({
+                            manualId: r.manual_id,
+                            currentTitle: r.product_name,
+                          });
+                        }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         aria-label="Delete manual"
                         title="Delete manual"
                         className="text-muted-foreground hover:text-destructive"
@@ -398,6 +433,63 @@ function ManualsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={!!toRename}
+        onOpenChange={(o) => !o && !renameMut.isPending && setToRename(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename manual</DialogTitle>
+            <DialogDescription>
+              Update the display name of this manual.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="rename-title">Manual name</Label>
+            <Input
+              id="rename-title"
+              value={renameTitle}
+              onChange={(e) => setRenameTitle(e.target.value)}
+              disabled={renameMut.isPending}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setToRename(null)}
+              disabled={renameMut.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                renameMut.isPending ||
+                !renameTitle.trim() ||
+                renameTitle.trim() === toRename?.currentTitle
+              }
+              onClick={() => {
+                if (!toRename) return;
+                renameMut.mutate({
+                  manualId: toRename.manualId,
+                  title: renameTitle.trim(),
+                });
+              }}
+            >
+              {renameMut.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving…
+                </>
+              ) : (
+                "Save"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
 
     </div>
   );
