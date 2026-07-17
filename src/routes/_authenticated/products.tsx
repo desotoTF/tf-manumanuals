@@ -306,6 +306,22 @@ function ManualsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label="Rename manual"
+                        title="Rename manual"
+                        className="text-muted-foreground hover:text-foreground"
+                        onClick={() => {
+                          setRenameTitle(r.product_name);
+                          setToRename({
+                            manualId: r.manual_id,
+                            currentTitle: r.product_name,
+                          });
+                        }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         aria-label="Delete manual"
                         title="Delete manual"
                         className="text-muted-foreground hover:text-destructive"
