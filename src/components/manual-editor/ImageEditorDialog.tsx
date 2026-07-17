@@ -215,15 +215,29 @@ export function ImageEditorDialog({
   const addText = async () => {
     const { fabric, canvas } = await withFabric();
     if (!canvas) return;
+    const value = window.prompt("Enter text", "Text");
+    if (value === null) return;
+    const content = value.trim() || "Text";
     const s = await shadowObj();
-    const t = new fabric.IText("Text", {
-      left: 80, top: 80,
-      fill, stroke, strokeWidth: strokeWidth > 0 ? Math.min(strokeWidth, 2) : 0,
-      fontFamily: "Arial", fontSize: 32, fontWeight: 700,
+    const t = new fabric.Textbox(content, {
+      left: 80,
+      top: 80,
+      width: Math.max(120, content.length * 18),
+      fill: noFill ? "#000000" : fill,
+      stroke: strokeWidth > 0 ? stroke : undefined,
+      strokeWidth: strokeWidth > 0 ? Math.min(strokeWidth, 2) : 0,
+      paintFirst: "stroke",
+      fontFamily: "Arial",
+      fontSize: 32,
+      fontWeight: 700,
+      editable: true,
       shadow: s ?? undefined,
     });
-    canvas.add(t); canvas.setActiveObject(t); canvas.requestRenderAll();
+    canvas.add(t);
+    canvas.setActiveObject(t);
+    canvas.requestRenderAll();
   };
+
 
   const removeSelected = () => {
     const canvas = fabricRef.current;
