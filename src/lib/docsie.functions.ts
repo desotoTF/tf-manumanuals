@@ -468,6 +468,10 @@ export const getImportJob = createServerFn({ method: "POST" })
       source_url: job.source_url as string,
       created_at: job.created_at as string,
       chapters,
+      imageCount: collectAllImages(
+        md,
+        (job.raw_result as { data?: unknown } | null)?.data,
+      ).length,
     };
   });
 
