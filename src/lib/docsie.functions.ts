@@ -7,6 +7,7 @@ import {
   parseDocsieMarkdown,
   guessLayout,
   markdownTitle,
+  collectAllImages,
   type DocsieChapter,
 } from "@/lib/docsie-markdown";
 import type { ManualContent, ManualStep, StepSlot } from "@/lib/types";
