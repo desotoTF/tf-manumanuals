@@ -349,15 +349,16 @@ export const createManualFromSku = createServerFn({ method: "POST" })
     }
 
     // Only attach ERP identity when no other row already owns it.
-    const erpFields =
-      data.erpConnectionId && data.odooProductId && !erpOwnerId
-        ? {
-            erp_connection_id: data.erpConnectionId,
-            erp_product_id: data.odooProductId,
-          }
-        : data.erpConnectionId && !data.odooProductId
-          ? { erp_connection_id: data.erpConnectionId }
-          : {};
+    const erpFields: {
+      erp_connection_id?: string;
+      erp_product_id?: string;
+    } = {};
+    if (data.erpConnectionId) {
+      erpFields.erp_connection_id = data.erpConnectionId;
+      if (data.odooProductId && !erpOwnerId) {
+        erpFields.erp_product_id = data.odooProductId;
+      }
+    }
 
     let productId: string;
     if (erpOwnerId) {
