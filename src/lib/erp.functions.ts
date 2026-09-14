@@ -264,6 +264,7 @@ export const syncBoms = createServerFn({ method: "POST" })
                 : null,
               is_active: true,
               web_slug: slugBase,
+              is_sync_placeholder: !hasRealSku,
             },
             { onConflict: "organization_id,sku" },
           )
