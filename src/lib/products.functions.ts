@@ -24,6 +24,7 @@ export const listProductsWithStatus = createServerFn({ method: "GET" })
       `,
       )
       .eq("organization_id", data.organizationId)
+      .eq("is_sync_placeholder", false)
       .order("sku");
     if (error) throw error;
     return (rows ?? []).map((r) => ({
@@ -48,6 +49,7 @@ export const listProductsWithoutManual = createServerFn({ method: "GET" })
       .select("id, sku, name")
       .eq("organization_id", data.organizationId)
       .eq("is_active", true)
+      .eq("is_sync_placeholder", false)
       .order("sku");
     if (error) throw error;
     const ids = (products ?? []).map((p) => p.id);
