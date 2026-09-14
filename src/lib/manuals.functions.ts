@@ -326,56 +326,81 @@ export const createManualFromSku = createServerFn({ method: "POST" })
       sku.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") ||
       `sku-${Date.now()}`;
 
-    // Upsert product on (organization_id, sku).
-    const { data: prod, error: pErr } = await supabase
+    // A product row may already exist either under this SKU, or under a
+    // different SKU that points at the same ERP product. The second case
+    // trips products_org_conn_erp_uidx, so resolve it before writing.
+    const { data: bySku } = await supabase
       .from("products")
-      .upsert(
-        {
-          organization_id: data.organizationId,
-          sku,
-          name,
-          is_active: true,
-          web_slug: slugBase,
-          ...(data.erpConnectionId
-            ? { erp_connection_id: data.erpConnectionId }
-            : {}),
-          ...(data.odooProductId
-            ? { erp_product_id: data.odooProductId }
-            : {}),
-          template_sku: sku,
-        },
-        { onConflict: "organization_id,sku" },
-      )
       .select("id")
-      .single();
-    let productId: string;
-    if (pErr) {
-      // Slug collision fallback: append a short suffix.
-      const { data: prod2, error: pErr2 } = await supabase
+      .eq("organization_id", data.organizationId)
+      .eq("sku", sku)
+      .maybeSingle();
+
+    let erpOwnerId: string | null = null;
+    if (!bySku && data.erpConnectionId && data.odooProductId) {
+      const { data: byErp } = await supabase
         .from("products")
-        .upsert(
-          {
-            organization_id: data.organizationId,
-            sku,
-            name,
-            is_active: true,
-            web_slug: `${slugBase}-${Date.now().toString(36).slice(-4)}`,
-            ...(data.erpConnectionId
-              ? { erp_connection_id: data.erpConnectionId }
-              : {}),
-            ...(data.odooProductId
-              ? { erp_product_id: data.odooProductId }
-              : {}),
-            template_sku: sku,
-          },
-          { onConflict: "organization_id,sku" },
-        )
+        .select("id")
+        .eq("organization_id", data.organizationId)
+        .eq("erp_connection_id", data.erpConnectionId)
+        .eq("erp_product_id", data.odooProductId)
+        .maybeSingle();
+      erpOwnerId = byErp?.id ?? null;
+    }
+
+    // Only attach ERP identity when no other row already owns it.
+    const erpFields =
+      data.erpConnectionId && data.odooProductId && !erpOwnerId
+        ? {
+            erp_connection_id: data.erpConnectionId,
+            erp_product_id: data.odooProductId,
+          }
+        : data.erpConnectionId && !data.odooProductId
+          ? { erp_connection_id: data.erpConnectionId }
+          : {};
+
+    let productId: string;
+    if (erpOwnerId) {
+      // Reuse the existing row for this ERP product; keep its SKU/name fresh.
+      const { error: uErr } = await supabase
+        .from("products")
+        .update({ sku, name, is_active: true, template_sku: sku })
+        .eq("id", erpOwnerId);
+      if (uErr) throw uErr;
+      productId = erpOwnerId;
+    } else {
+      const payload = {
+        organization_id: data.organizationId,
+        sku,
+        name,
+        is_active: true,
+        web_slug: slugBase,
+        ...erpFields,
+        template_sku: sku,
+      };
+      const { data: prod, error: pErr } = await supabase
+        .from("products")
+        .upsert(payload, { onConflict: "organization_id,sku" })
         .select("id")
         .single();
-      if (pErr2) throw pErr2;
-      productId = prod2.id;
-    } else {
-      productId = prod.id;
+      if (pErr) {
+        // Slug collision fallback: append a short suffix.
+        const { data: prod2, error: pErr2 } = await supabase
+          .from("products")
+          .upsert(
+            {
+              ...payload,
+              web_slug: `${slugBase}-${Date.now().toString(36).slice(-4)}`,
+            },
+            { onConflict: "organization_id,sku" },
+          )
+          .select("id")
+          .single();
+        if (pErr2) throw pErr2;
+        productId = prod2.id;
+      } else {
+        productId = prod.id;
+      }
     }
 
 
