@@ -475,6 +475,13 @@ export const createManualFromSku = createServerFn({ method: "POST" })
       }));
     }
 
+    // Best-effort: seed the cover photo from Odoo so page 1 isn't empty.
+    if (!seedContent.hero_image_url) {
+      const { tryFetchOdooProductImage } = await import("./odoo-cover.server");
+      const cover = await tryFetchOdooProductImage(supabase, productId);
+      if (cover) seedContent.hero_image_url = cover.url;
+    }
+
     const { data: nextNum } = await supabase.rpc(
       "next_manual_version_number",
       { _manual_id: newManual.id },
