@@ -452,3 +452,146 @@ export const syncBomBySku = createServerFn({ method: "POST" })
     return syncBomBySkuImpl(context.supabase, data);
   });
 
+
+// ---------------- Placeholder cleanup ------------------------------------
+// The BOM sync creates a product row for every Odoo item that owns a BOM.
+// Items without an internal reference get an "ODOO-TMPL-<id>" stand-in SKU.
+// This re-checks those rows against Odoo: rename the ones that now have a
+// real code, flag the rest so they stay out of the catalog UI.
+export const backfillPlaceholderProducts = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => orgIdSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+
+    const { data: rows, error } = await supabase
+      .from("products")
+      .select("id, sku, name, erp_product_id, erp_connection_id")
+      .eq("organization_id", data.organizationId)
+      .like("sku", "ODOO-TMPL-%");
+    if (error) throw error;
+    if (!rows || rows.length === 0) {
+      return { ok: true as const, renamed: 0, hidden: 0, skipped: 0, total: 0 };
+    }
+
+    const { data: conn } = await supabase
+      .from("erp_connections")
+      .select("id, base_url, database, username")
+      .eq("organization_id", data.organizationId)
+      .eq("provider", "odoo")
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!conn) {
+      return { ok: false as const, error: "No active Odoo connection." };
+    }
+
+    const { data: cred, error: credErr } = await supabase.rpc(
+      "erp_read_credentials",
+      { _connection_id: conn.id },
+    );
+    if (credErr) return { ok: false as const, error: credErr.message };
+    const apiKey = (cred as { api_key?: string } | null)?.api_key;
+    if (!apiKey) return { ok: false as const, error: "Missing stored Odoo credential." };
+
+    const creds = {
+      baseUrl: conn.base_url,
+      database: conn.database ?? "",
+      username: conn.username,
+      apiKey,
+    };
+
+    const { odooAuthenticate, odooExecuteKw } = await import("./odoo-xmlrpc.server");
+
+    let renamed = 0;
+    let hidden = 0;
+    let skipped = 0;
+
+    try {
+      const uid = await odooAuthenticate(creds);
+
+      const tmplIds = Array.from(
+        new Set(
+          rows
+            .map((r) => Number(r.erp_product_id))
+            .filter((n) => Number.isFinite(n) && n > 0),
+        ),
+      );
+      const tmplRows = tmplIds.length
+        ? await odooExecuteKw<
+            Array<{ id: number; default_code: string | false; name: string }>
+          >(creds, uid, "product.template", "read", [tmplIds], {
+            fields: ["id", "default_code", "name"],
+            context: { active_test: false },
+          })
+        : [];
+      const byId = new Map(tmplRows.map((t) => [t.id, t]));
+
+      // SKUs already in use by other rows in this org.
+      const { data: allSkus } = await supabase
+        .from("products")
+        .select("id, sku")
+        .eq("organization_id", data.organizationId);
+      const takenSku = new Map((allSkus ?? []).map((p) => [p.sku.toUpperCase(), p.id]));
+
+      for (const row of rows) {
+        const tmpl = byId.get(Number(row.erp_product_id));
+        const code = tmpl?.default_code ? String(tmpl.default_code).toUpperCase() : null;
+
+        if (!code) {
+          const { error: hErr } = await supabase
+            .from("products")
+            .update({ is_sync_placeholder: true })
+            .eq("id", row.id);
+          if (hErr) skipped += 1;
+          else hidden += 1;
+          continue;
+        }
+
+        const owner = takenSku.get(code);
+        if (owner && owner !== row.id) {
+          skipped += 1;
+          continue;
+        }
+
+        const slugBase =
+          code.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") ||
+          `tmpl-${row.erp_product_id}`;
+
+        const { error: uErr } = await supabase
+          .from("products")
+          .update({
+            sku: code,
+            name: tmpl?.name ?? row.name,
+            template_sku: code,
+            web_slug: slugBase,
+            is_sync_placeholder: false,
+          })
+          .eq("id", row.id);
+        if (uErr) {
+          // Most likely a web_slug collision; retry with a unique suffix.
+          const { error: uErr2 } = await supabase
+            .from("products")
+            .update({
+              sku: code,
+              name: tmpl?.name ?? row.name,
+              template_sku: code,
+              web_slug: `${slugBase}-${row.erp_product_id}`,
+              is_sync_placeholder: false,
+            })
+            .eq("id", row.id);
+          if (uErr2) {
+            skipped += 1;
+            continue;
+          }
+        }
+        takenSku.set(code, row.id);
+        renamed += 1;
+      }
+
+      return { ok: true as const, renamed, hidden, skipped, total: rows.length };
+    } catch (e) {
+      return { ok: false as const, error: (e as Error).message };
+    }
+  });
