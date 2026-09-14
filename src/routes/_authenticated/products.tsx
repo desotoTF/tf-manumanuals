@@ -23,6 +23,11 @@ import {
 } from "@/lib/manuals.functions";
 import { lookupProductBySku } from "@/lib/products.functions";
 import { listTemplates } from "@/lib/templates.functions";
+import {
+  listEnabledImportModules,
+  startVideoImport,
+} from "@/lib/docsie.functions";
+import { VideoImportPanel } from "@/components/manual-editor/ImportReviewDialog";
 import { formatManualLabel } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
