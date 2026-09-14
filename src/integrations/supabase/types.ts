@@ -216,6 +216,62 @@ export type Database = {
           },
         ]
       }
+      integration_connections: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          credentials_version: number
+          id: string
+          is_active: boolean
+          last_test_at: string | null
+          last_test_error: string | null
+          last_test_status: string | null
+          organization_id: string
+          provider: Database["public"]["Enums"]["integration_provider"]
+          updated_at: string
+          vault_secret_id: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          credentials_version?: number
+          id?: string
+          is_active?: boolean
+          last_test_at?: string | null
+          last_test_error?: string | null
+          last_test_status?: string | null
+          organization_id: string
+          provider: Database["public"]["Enums"]["integration_provider"]
+          updated_at?: string
+          vault_secret_id?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          credentials_version?: number
+          id?: string
+          is_active?: boolean
+          last_test_at?: string | null
+          last_test_error?: string | null
+          last_test_status?: string | null
+          organization_id?: string
+          provider?: Database["public"]["Enums"]["integration_provider"]
+          updated_at?: string
+          vault_secret_id?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_connections_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invitations: {
         Row: {
           accepted_at: string | null
@@ -309,6 +365,95 @@ export type Database = {
           {
             foreignKeyName: "manual_assets_manual_version_id_fkey"
             columns: ["manual_version_id"]
+            isOneToOne: false
+            referencedRelation: "manual_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      manual_import_jobs: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          error: string | null
+          external_job_id: string | null
+          id: string
+          manual_id: string | null
+          organization_id: string
+          product_id: string | null
+          progress: number
+          provider: Database["public"]["Enums"]["integration_provider"]
+          raw_result: Json
+          result_title: string | null
+          source_url: string
+          status: Database["public"]["Enums"]["import_job_status"]
+          status_detail: string | null
+          updated_at: string
+          version_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          error?: string | null
+          external_job_id?: string | null
+          id?: string
+          manual_id?: string | null
+          organization_id: string
+          product_id?: string | null
+          progress?: number
+          provider?: Database["public"]["Enums"]["integration_provider"]
+          raw_result?: Json
+          result_title?: string | null
+          source_url: string
+          status?: Database["public"]["Enums"]["import_job_status"]
+          status_detail?: string | null
+          updated_at?: string
+          version_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          error?: string | null
+          external_job_id?: string | null
+          id?: string
+          manual_id?: string | null
+          organization_id?: string
+          product_id?: string | null
+          progress?: number
+          provider?: Database["public"]["Enums"]["integration_provider"]
+          raw_result?: Json
+          result_title?: string | null
+          source_url?: string
+          status?: Database["public"]["Enums"]["import_job_status"]
+          status_detail?: string | null
+          updated_at?: string
+          version_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manual_import_jobs_manual_id_fkey"
+            columns: ["manual_id"]
+            isOneToOne: false
+            referencedRelation: "manuals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "manual_import_jobs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "manual_import_jobs_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "manual_import_jobs_version_id_fkey"
+            columns: ["version_id"]
             isOneToOne: false
             referencedRelation: "manual_versions"
             referencedColumns: ["id"]
@@ -993,6 +1138,18 @@ export type Database = {
         }
         Returns: boolean
       }
+      integration_delete_connection: {
+        Args: { _connection_id: string }
+        Returns: undefined
+      }
+      integration_read_credentials: {
+        Args: { _connection_id: string }
+        Returns: Json
+      }
+      integration_store_credentials: {
+        Args: { _api_key: string; _connection_id: string }
+        Returns: string
+      }
       is_super_admin: { Args: never; Returns: boolean }
       next_manual_version_number: {
         Args: { _manual_id: string }
@@ -1013,6 +1170,15 @@ export type Database = {
         | "epicor"
         | "infor"
         | "other"
+      import_job_status:
+        | "queued"
+        | "submitted"
+        | "processing"
+        | "ready"
+        | "applied"
+        | "failed"
+        | "canceled"
+      integration_provider: "docsie"
       manual_asset_type: "image" | "diagram" | "video_reference"
       manual_lifecycle: "active" | "archived"
       manual_sync_status_kind:
@@ -1177,6 +1343,16 @@ export const Constants = {
         "infor",
         "other",
       ],
+      import_job_status: [
+        "queued",
+        "submitted",
+        "processing",
+        "ready",
+        "applied",
+        "failed",
+        "canceled",
+      ],
+      integration_provider: ["docsie"],
       manual_asset_type: ["image", "diagram", "video_reference"],
       manual_lifecycle: ["active", "archived"],
       manual_sync_status_kind: [
