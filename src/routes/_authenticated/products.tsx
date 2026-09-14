@@ -533,6 +533,19 @@ function CreateManualDialog({
   // TF###### product. Variants/parts are intentionally not shown here.
   const [selectedProduct, setSelectedProduct] = useState<string>("");
   const [looking, setLooking] = useState(false);
+  // Automated creation modules (Docsie video import).
+  const [source, setSource] = useState<"manual" | "docsie">("manual");
+  const [videoUrl, setVideoUrl] = useState("");
+  const [jobId, setJobId] = useState<string | null>(null);
+
+  const fetchModules = useServerFn(listEnabledImportModules);
+  const startImport = useServerFn(startVideoImport);
+  const modulesQuery = useQuery({
+    queryKey: ["import-modules", orgId],
+    queryFn: () => fetchModules({ data: { organizationId: orgId } }),
+    enabled: open,
+  });
+  const hasModules = (modulesQuery.data?.length ?? 0) > 0;
 
   // Reset on close.
   useEffect(() => {
@@ -543,6 +556,9 @@ function CreateManualDialog({
       setLookup(null);
       setSelectedProduct("");
       setLooking(false);
+      setSource("manual");
+      setVideoUrl("");
+      setJobId(null);
     }
   }, [open]);
 
