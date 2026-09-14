@@ -338,6 +338,26 @@ export interface ImportJobState extends ImportJobRow {
   chapters: (DocsieChapter & { suggestedLayout: "one_col" | "two_col" })[];
   /** Total images Docsie returned (all are added to the image library). */
   imageCount: number;
+  /** Top-level keys of Docsie's raw result — diagnostic only. */
+  payloadKeys: string[];
+}
+
+/** Every image URL a stored job's result carries, from anywhere in the payload. */
+function jobImages(job: Record<string, unknown>): string[] {
+  const rr = (job.raw_result ?? {}) as {
+    markdown?: string;
+    images?: unknown;
+    data?: unknown;
+    raw?: unknown;
+    extras?: unknown;
+  };
+  const stored = Array.isArray(rr.images) ? (rr.images as string[]) : [];
+  const found = collectAllImages(rr.markdown ?? "", {
+    data: rr.data ?? null,
+    raw: rr.raw ?? null,
+    extras: rr.extras ?? null,
+  });
+  return Array.from(new Set([...stored, ...found]));
 }
 
 /** Polled by the UI. Proxies Docsie status server-side and caches the result. */
