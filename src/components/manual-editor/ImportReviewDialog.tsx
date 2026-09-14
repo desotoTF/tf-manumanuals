@@ -156,9 +156,17 @@ export function VideoImportPanel({
         <CheckCircle2 className="h-4 w-4 text-emerald-600" />
         <span>
           {chapters.length} section{chapters.length === 1 ? "" : "s"} found
+          {job.data.imageCount
+            ? ` · ${job.data.imageCount} image${job.data.imageCount === 1 ? "" : "s"}`
+            : " · no images"}
           {job.data.result_title ? ` · ${job.data.result_title}` : ""}
         </span>
       </div>
+      <p className="text-xs text-muted-foreground">
+        {job.data.imageCount
+          ? "All images from the video are added to this manual's image library, so you can attach them to any step."
+          : "Docsie returned no still images for this video — add your own in the editor."}
+      </p>
 
       <div className="max-h-[45vh] space-y-3 overflow-y-auto rounded-md border border-border p-3">
         {(choices ?? []).map((c, i) => {
