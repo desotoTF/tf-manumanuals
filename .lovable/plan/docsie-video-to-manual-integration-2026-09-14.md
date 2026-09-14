@@ -5,12 +5,14 @@ Add Docsie as an optional, per-organization module. When it's switched on, the C
 ## What the user experiences
 
 **Settings → Integrations (new page, admin/owner only)**
+
 - Card per available module. First one: Docsie (Video to docs).
 - Toggle on/off, plus a field for the Docsie API key and optional workspace ID.
 - "Test connection" button confirms the key works before saving.
 - The key is stored encrypted in the vault, exactly like the ERP credentials — never shown again after saving, only "Replace key" / "Remove".
 
 **Create manual overlay**
+
 - A "Create from" dropdown appears at the top *only* when at least one automated module is enabled. Default: "Manual creation" (today's behavior, unchanged).
 - Choosing "Video (Docsie)" reveals a required "Video URL (YouTube)" field. The URL is validated as you type (recognized YouTube link) and re-checked server-side on submit; a bad or private/unavailable link blocks creation with a clear message.
 - SKU and product name behave exactly as today (SKU required, Odoo lookup fills the name). If Odoo returns nothing, we offer Docsie's generated title as the name once processing finishes, so the SKU + name format stays intact.
@@ -20,16 +22,19 @@ Add Docsie as an optional, per-organization module. When it's switched on, the C
 ## Technical approach
 
 **Docsie API** (verified against `app.docsie.io/schema/video/`, `/api_v2/003/`):
+
 - `POST /video-to-docs/submit/` with `video_url`, `quality`, `doc_style: "guide"`, `auto_publish_to_knowledge_base: false`, `intent: "export"` → returns `job_id`.
 - `GET /video-to-docs/{id}/status/` → `normalized_status`, `can_poll`, `error`.
 - `GET /video-to-docs/{id}/result/` → `title`, `markdown`, structured `data`, extracted image URLs.
 - Auth header format is confirmed against a live key during the first build step.
 
 **Storage**
+
 - New table `integration_connections` (org_id, provider enum `docsie`, is_active, workspace_id, vault_secret_id, last_test_at/status) + RLS mirroring `erp_connections`, with GRANTs and vault helper functions modeled on `erp_store_credentials` / `erp_read_credentials`.
 - New table `manual_import_jobs` (org_id, product_id, manual_id nullable, provider, source_url, external_job_id, status, progress, error, raw_result jsonb) so progress survives page reloads and a second user can see it.
 
 **Server functions** (`src/lib/docsie.functions.ts`, helpers in `docsie.server.ts`)
+
 - `listEnabledImportModules`, `saveDocsieConnection`, `testDocsieConnection`, `removeDocsieConnection`.
 - `validateVideoUrl` — shape check plus a YouTube oEmbed reachability probe.
 - `startVideoImport` — creates product + manual draft in an `importing` state, submits to Docsie, records the job.
@@ -40,6 +45,7 @@ Add Docsie as an optional, per-organization module. When it's switched on, the C
 A converter splits Docsie's markdown on `##` headings into chapters, maps paragraphs/lists to our rich-text step bodies, and attaches the first image of each chapter as the step image. Default layout guess: image + text when the chapter has an image, text-only otherwise.
 
 **Files touched**
+
 - new: migration, `src/lib/docsie.functions.ts`, `src/lib/docsie.server.ts`, `src/lib/docsie-markdown.ts`, `src/routes/_authenticated/settings.integrations.tsx`, `src/components/manual-editor/ImportReviewDialog.tsx`
 - edited: `src/routes/_authenticated/products.tsx` (Create manual overlay + progress panel + "Importing" row state), `src/components/AppSidebar.tsx` (Integrations link), `src/lib/manuals.functions.ts` (import-state manual creation)
 
@@ -47,4 +53,7 @@ A converter splits Docsie's markdown on `##` headings into chapters, maps paragr
 
 - You'll need to create the Docsie API key (Developer → API Keys, "Video-Docs only" scope is enough) when we start; I'll request it through the secure secret form.
 - Docsie jobs consume Docsie AI credits. I'll surface the credit balance on the Integrations card so nobody is surprised by a failed job.
-- A sample YouTube URL you've already run through Docsie would let me tune the chapter→layout mapping to real output rather than guesses.
+- A sample YouTube URL you've already run through Docsie would let me tune the chapter→layout mapping to real output rather than guesses.  
+  
+Video Install Example: [https://www.youtube.com/embed/c_s-fkNzvac](https://www.youtube.com/embed/c_s-fkNzvac)  
+Here's am install manual PDF of the same product. Note that this was NOT created with manumanuals, it was created prior. It's for reference to show the approx. expectation of what should be in the manual. Our layout supersedes this.
