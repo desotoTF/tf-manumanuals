@@ -141,7 +141,8 @@ export async function docsiePing(auth: DocsieAuth): Promise<void> {
     await docsieJobStatus(auth, "00000000-0000-0000-0000-000000000000");
   } catch (e) {
     const msg = (e as Error).message;
-    if (/\(401\)|\(403\)/.test(msg)) throw new Error("Invalid API key");
+    if (/\(401\)|\(403\)/.test(msg))
+      throw new Error(`Key rejected by Docsie — ${msg}`);
     // 404 / 400 means the key was accepted but the job doesn't exist.
     if (!/\(404\)|\(400\)|\(422\)/.test(msg)) throw e;
   }
