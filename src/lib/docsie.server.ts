@@ -93,6 +93,13 @@ export async function docsieSubmitVideo(
       language: "en",
       guide_generation_mode: "structured_v2",
       auto_publish_to_knowledge_base: false,
+      // Ask for video stills. Docsie deployments name this differently; unknown
+      // keys are ignored server-side, so we send the known variants.
+      include_screenshots: true,
+      include_images: true,
+      extract_frames: true,
+      screenshots: true,
+      generate_screenshots: true,
       ...(opts.title ? { book_title: opts.title } : {}),
       ...(auth.workspaceId ? { workspace_id: auth.workspaceId } : {}),
     },
@@ -123,16 +130,42 @@ export interface DocsieResultResponse {
   title?: string;
   markdown?: string;
   data?: unknown;
+  /** Full, unmodified response so we can find stills wherever Docsie puts them. */
+  raw?: unknown;
+  /** Extra payloads fetched from optional asset endpoints. */
+  extras?: unknown;
 }
 
 export async function docsieJobResult(
   auth: DocsieAuth,
   jobId: string,
 ): Promise<DocsieResultResponse> {
-  return request<DocsieResultResponse>(
+  const raw = await request<Record<string, unknown>>(
     `/video-to-docs/${encodeURIComponent(jobId)}/result/`,
     auth.apiKey,
   );
+
+  // Some deployments expose stills on a sibling endpoint rather than in the
+  // result body. Probe the likely ones; ignore anything that isn't there.
+  const extras: Record<string, unknown> = {};
+  for (const sub of ["screenshots", "assets", "images", "frames"]) {
+    try {
+      extras[sub] = await request<unknown>(
+        `/video-to-docs/${encodeURIComponent(jobId)}/${sub}/`,
+        auth.apiKey,
+      );
+    } catch {
+      /* endpoint not available on this deployment */
+    }
+  }
+
+  return {
+    title: raw.title as string | undefined,
+    markdown: raw.markdown as string | undefined,
+    data: raw.data,
+    raw,
+    extras,
+  };
 }
 
 /** Cheap credential check — hits status for a bogus job and treats auth errors as failure. */
