@@ -11,6 +11,7 @@ import {
   UserCircle2,
   LayoutTemplate,
   Filter,
+  Blocks,
 } from "lucide-react";
 
 import {
@@ -35,6 +36,7 @@ const settingsItems = [
   { title: "Team", url: "/settings/team", icon: Users },
   { title: "Templates", url: "/settings/templates", icon: LayoutTemplate },
   { title: "BOM settings", url: "/settings/bom-exclusions", icon: Filter },
+  { title: "Integrations", url: "/settings/integrations", icon: Blocks },
   { title: "ERP", url: "/settings/erp", icon: Plug },
 ];
 
