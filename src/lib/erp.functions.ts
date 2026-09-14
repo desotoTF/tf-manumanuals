@@ -237,6 +237,9 @@ export const syncBoms = createServerFn({ method: "POST" })
         const tmplRow = tmplRows[0];
         if (!tmplRow) continue;
 
+        // Items with no internal reference in Odoo (sub-assemblies, weldments)
+        // get a stand-in SKU and are flagged so they stay out of the catalog UI.
+        const hasRealSku = !!tmplRow.default_code;
         const sku =
           (tmplRow.default_code && String(tmplRow.default_code)) ||
           `ODOO-TMPL-${tmplRow.id}`;
