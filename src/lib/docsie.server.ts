@@ -7,25 +7,33 @@ export interface DocsieAuth {
   workspaceId?: string | null;
 }
 
-function headers(apiKey: string): Record<string, string> {
-  // Docsie accepts the key as a Token authorization header; some deployments
-  // also read `apikey`. Sending both keeps us compatible either way.
-  return {
-    Authorization: `Token ${apiKey}`,
-    apikey: apiKey,
+// Docsie deployments differ in how they read the API key. We probe the known
+// header shapes once per key and reuse whichever one is accepted.
+type Scheme = "token" | "bearer" | "apikey" | "x-api-key";
+const SCHEMES: Scheme[] = ["token", "bearer", "apikey", "x-api-key"];
+const schemeCache = new Map<string, Scheme>();
+
+function headers(apiKey: string, scheme: Scheme): Record<string, string> {
+  const base: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "application/json",
   };
+  if (scheme === "token") base.Authorization = `Token ${apiKey}`;
+  else if (scheme === "bearer") base.Authorization = `Bearer ${apiKey}`;
+  else if (scheme === "apikey") base.apikey = apiKey;
+  else base["X-API-KEY"] = apiKey;
+  return base;
 }
 
-async function request<T>(
+async function attempt(
   path: string,
   apiKey: string,
+  scheme: Scheme,
   init?: { method?: string; body?: unknown },
-): Promise<T> {
+): Promise<{ status: number; parsed: unknown; text: string }> {
   const res = await fetch(`${DOCSIE_BASE}${path}`, {
     method: init?.method ?? "GET",
-    headers: headers(apiKey),
+    headers: headers(apiKey, scheme),
     ...(init?.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
   });
   const text = await res.text();
@@ -35,16 +43,33 @@ async function request<T>(
   } catch {
     parsed = null;
   }
-  if (!res.ok) {
-    const detail =
-      (parsed as { detail?: string; error?: string } | null)?.detail ??
-      (parsed as { error?: string } | null)?.error ??
-      text.slice(0, 300);
-    throw new Error(
-      `Docsie request failed (${res.status}): ${detail || res.statusText}`,
-    );
+  return { status: res.status, parsed, text };
+}
+
+async function request<T>(
+  path: string,
+  apiKey: string,
+  init?: { method?: string; body?: unknown },
+): Promise<T> {
+  const order = schemeCache.has(apiKey)
+    ? [schemeCache.get(apiKey)!, ...SCHEMES.filter((s) => s !== schemeCache.get(apiKey))]
+    : SCHEMES;
+
+  let last: { status: number; parsed: unknown; text: string } | null = null;
+  for (const scheme of order) {
+    const r = await attempt(path, apiKey, scheme, init);
+    last = r;
+    if (r.status === 401 || r.status === 403) continue; // wrong header shape or bad key
+    schemeCache.set(apiKey, scheme);
+    if (r.status >= 200 && r.status < 300) return r.parsed as T;
+    break; // authenticated but the request itself failed
   }
-  return parsed as T;
+
+  const p = last?.parsed as { detail?: string; error?: string } | null;
+  const detail = p?.detail ?? p?.error ?? (last?.text ?? "").slice(0, 300);
+  throw new Error(
+    `Docsie request failed (${last?.status ?? 0}): ${detail || "unknown error"}`,
+  );
 }
 
 export interface DocsieSubmitResponse {
