@@ -410,7 +410,12 @@ export const getImportJob = createServerFn({ method: "POST" })
               status_detail: md ? "Ready to review" : "No content returned",
               error: md ? null : "Docsie returned no document content.",
               result_title: result.title ?? markdownTitle(md),
-              raw_result: { markdown: md, title: result.title ?? null },
+              raw_result: {
+                markdown: md,
+                title: result.title ?? null,
+                data: (result as { data?: unknown }).data ?? null,
+                images: collectAllImages(md, (result as { data?: unknown }).data),
+              },
             };
             await supabase
               .from("manual_import_jobs" as never)
