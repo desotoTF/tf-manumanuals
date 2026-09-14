@@ -636,10 +636,7 @@ export const applyVideoImport = createServerFn({ method: "POST" })
     // Import every frame Docsie returned into the manual's image library,
     // regardless of which sections the user kept, so they can be attached
     // to any step later. Keyed by URL so each file lands once.
-    const allImages = collectAllImages(
-      md,
-      (job.raw_result as { data?: unknown } | null)?.data,
-    );
+    const allImages = jobImages(job);
     const assetByUrl = new Map<string, string>();
     for (const url of allImages) {
       const assetId = await importImage(versionId, orgId, productId, url);
