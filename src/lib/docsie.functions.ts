@@ -7,6 +7,7 @@ import {
   parseDocsieMarkdown,
   guessLayout,
   markdownTitle,
+  collectAllImages,
   type DocsieChapter,
 } from "@/lib/docsie-markdown";
 import type { ManualContent, ManualStep, StepSlot } from "@/lib/types";
@@ -335,6 +336,8 @@ export const startVideoImport = createServerFn({ method: "POST" })
 
 export interface ImportJobState extends ImportJobRow {
   chapters: (DocsieChapter & { suggestedLayout: "one_col" | "two_col" })[];
+  /** Total images Docsie returned (all are added to the image library). */
+  imageCount: number;
 }
 
 /** Polled by the UI. Proxies Docsie status server-side and caches the result. */
@@ -410,7 +413,12 @@ export const getImportJob = createServerFn({ method: "POST" })
               status_detail: md ? "Ready to review" : "No content returned",
               error: md ? null : "Docsie returned no document content.",
               result_title: result.title ?? markdownTitle(md),
-              raw_result: { markdown: md, title: result.title ?? null },
+              raw_result: {
+                markdown: md,
+                title: result.title ?? null,
+                data: (result as { data?: unknown }).data ?? null,
+                images: collectAllImages(md, (result as { data?: unknown }).data),
+              },
             };
             await supabase
               .from("manual_import_jobs" as never)
@@ -462,6 +470,10 @@ export const getImportJob = createServerFn({ method: "POST" })
       source_url: job.source_url as string,
       created_at: job.created_at as string,
       chapters,
+      imageCount: collectAllImages(
+        md,
+        (job.raw_result as { data?: unknown } | null)?.data,
+      ).length,
     };
   });
 
@@ -592,6 +604,19 @@ export const applyVideoImport = createServerFn({ method: "POST" })
     const content = (version.content ?? {}) as unknown as ManualContent;
     const steps: ManualStep[] = Array.isArray(content.steps) ? [...content.steps] : [];
 
+    // Import every frame Docsie returned into the manual's image library,
+    // regardless of which sections the user kept, so they can be attached
+    // to any step later. Keyed by URL so each file lands once.
+    const allImages = collectAllImages(
+      md,
+      (job.raw_result as { data?: unknown } | null)?.data,
+    );
+    const assetByUrl = new Map<string, string>();
+    for (const url of allImages) {
+      const assetId = await importImage(versionId, orgId, productId, url);
+      if (assetId) assetByUrl.set(url, assetId);
+    }
+
     for (const choice of data.chapters) {
       if (!choice.include) continue;
       const chapter = byKey.get(choice.key);
@@ -610,7 +635,9 @@ export const applyVideoImport = createServerFn({ method: "POST" })
 
       const imageUrl = chapter.images[0];
       if (imageUrl) {
-        const assetId = await importImage(versionId, orgId, productId, imageUrl);
+        const assetId =
+          assetByUrl.get(imageUrl) ??
+          (await importImage(versionId, orgId, productId, imageUrl));
         if (assetId) {
           const target = slotCount > 1 ? slots[1] : slots[0];
           target.asset_id = assetId;

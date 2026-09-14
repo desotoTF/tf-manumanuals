@@ -147,3 +147,52 @@ export function markdownTitle(markdown: string): string | null {
   const m = (markdown ?? "").match(/^#\s+(.*)$/m);
   return m ? m[1].trim() : null;
 }
+
+/** Every image URL referenced in the markdown, in order, de-duplicated. */
+export function collectMarkdownImages(markdown: string): string[] {
+  const out: string[] = [];
+  for (const m of (markdown ?? "").matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)) {
+    if (!out.includes(m[1])) out.push(m[1]);
+  }
+  // Bare <img src="..."> tags Docsie sometimes emits.
+  for (const m of (markdown ?? "").matchAll(/<img[^>]+src=["'](https?:\/\/[^"']+)["']/gi)) {
+    if (!out.includes(m[1])) out.push(m[1]);
+  }
+  return out;
+}
+
+const IMG_EXT_RE = /\.(png|jpe?g|webp|gif)(\?|#|$)/i;
+
+/** Walks an arbitrary Docsie JSON payload and collects image-looking URLs. */
+export function collectPayloadImages(payload: unknown): string[] {
+  const out: string[] = [];
+  const seen = new Set<unknown>();
+  const walk = (node: unknown) => {
+    if (!node || typeof node !== "object") {
+      if (typeof node === "string" && /^https?:\/\//.test(node) && IMG_EXT_RE.test(node)) {
+        if (!out.includes(node)) out.push(node);
+      }
+      return;
+    }
+    if (seen.has(node)) return;
+    seen.add(node);
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    for (const v of Object.values(node as Record<string, unknown>)) {
+      if (typeof v === "string") {
+        if (/^https?:\/\//.test(v) && IMG_EXT_RE.test(v) && !out.includes(v)) out.push(v);
+      } else walk(v);
+    }
+  };
+  walk(payload);
+  return out;
+}
+
+/** All images from a finished Docsie result: markdown first, then payload extras. */
+export function collectAllImages(markdown: string, payload?: unknown): string[] {
+  const out = collectMarkdownImages(markdown);
+  for (const u of collectPayloadImages(payload)) if (!out.includes(u)) out.push(u);
+  return out;
+}
