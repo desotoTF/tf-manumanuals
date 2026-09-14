@@ -91,15 +91,11 @@ export async function docsieSubmitVideo(
       quality: opts.quality ?? "standard",
       doc_style: "guide",
       language: "en",
-      guide_generation_mode: "structured_v2",
+      // Docsie's documented hybrid path keeps the structured guide while also
+      // producing the extracted-image artifacts needed by manual steps.
+      guide_generation_mode: "hybrid_v2",
+      dokuta_annotations_enabled: true,
       auto_publish_to_knowledge_base: false,
-      // Ask for video stills. Docsie deployments name this differently; unknown
-      // keys are ignored server-side, so we send the known variants.
-      include_screenshots: true,
-      include_images: true,
-      extract_frames: true,
-      screenshots: true,
-      generate_screenshots: true,
       ...(opts.title ? { book_title: opts.title } : {}),
       ...(auth.workspaceId ? { workspace_id: auth.workspaceId } : {}),
     },
