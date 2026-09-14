@@ -336,6 +336,8 @@ export const startVideoImport = createServerFn({ method: "POST" })
 
 export interface ImportJobState extends ImportJobRow {
   chapters: (DocsieChapter & { suggestedLayout: "one_col" | "two_col" })[];
+  /** Total images Docsie returned (all are added to the image library). */
+  imageCount: number;
 }
 
 /** Polled by the UI. Proxies Docsie status server-side and caches the result. */
