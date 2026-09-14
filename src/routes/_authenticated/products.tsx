@@ -858,9 +858,17 @@ function CreateManualDialog({
             onClick={() => createMut.mutate()}
             disabled={!canCreate || createMut.isPending}
           >
-            {createMut.isPending ? "Creating…" : "Create manual"}
+            {createMut.isPending
+              ? source === "docsie"
+                ? "Starting…"
+                : "Creating…"
+              : source === "docsie"
+                ? "Create & import"
+                : "Create manual"}
           </Button>
         </DialogFooter>
+        </>
+        )}
       </DialogContent>
     </Dialog>
   );
