@@ -121,6 +121,8 @@ function ErpPage() {
         </CardContent>
       </Card>
 
+      {isAdmin && <PlaceholderCleanupCard orgId={orgId} onDone={refresh} />}
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Recent sync events</CardTitle>
