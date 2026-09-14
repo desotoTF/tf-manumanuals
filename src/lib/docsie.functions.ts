@@ -417,7 +417,13 @@ export const getImportJob = createServerFn({ method: "POST" })
                 markdown: md,
                 title: result.title ?? null,
                 data: (result as { data?: unknown }).data ?? null,
-                images: collectAllImages(md, (result as { data?: unknown }).data),
+                raw: (result as { raw?: unknown }).raw ?? null,
+                extras: (result as { extras?: unknown }).extras ?? null,
+                images: collectAllImages(md, {
+                  data: (result as { data?: unknown }).data ?? null,
+                  raw: (result as { raw?: unknown }).raw ?? null,
+                  extras: (result as { extras?: unknown }).extras ?? null,
+                }),
               },
             };
             await supabase
