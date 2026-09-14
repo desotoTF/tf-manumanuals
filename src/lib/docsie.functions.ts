@@ -635,7 +635,9 @@ export const applyVideoImport = createServerFn({ method: "POST" })
 
       const imageUrl = chapter.images[0];
       if (imageUrl) {
-        const assetId = await importImage(versionId, orgId, productId, imageUrl);
+        const assetId =
+          assetByUrl.get(imageUrl) ??
+          (await importImage(versionId, orgId, productId, imageUrl));
         if (assetId) {
           const target = slotCount > 1 ? slots[1] : slots[0];
           target.asset_id = assetId;
