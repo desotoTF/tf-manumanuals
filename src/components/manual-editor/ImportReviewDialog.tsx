@@ -167,6 +167,11 @@ export function VideoImportPanel({
           ? "All images from the video are added to this manual's image library, so you can attach them to any step."
           : "Docsie returned no still images for this video — add your own in the editor."}
       </p>
+      {!job.data.imageCount && job.data.payloadKeys?.length ? (
+        <p className="text-[11px] text-muted-foreground/80">
+          Returned fields: {job.data.payloadKeys.join(", ")}
+        </p>
+      ) : null}
 
       <div className="max-h-[45vh] space-y-3 overflow-y-auto rounded-md border border-border p-3">
         {(choices ?? []).map((c, i) => {

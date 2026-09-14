@@ -338,6 +338,26 @@ export interface ImportJobState extends ImportJobRow {
   chapters: (DocsieChapter & { suggestedLayout: "one_col" | "two_col" })[];
   /** Total images Docsie returned (all are added to the image library). */
   imageCount: number;
+  /** Top-level keys of Docsie's raw result — diagnostic only. */
+  payloadKeys: string[];
+}
+
+/** Every image URL a stored job's result carries, from anywhere in the payload. */
+function jobImages(job: Record<string, unknown>): string[] {
+  const rr = (job.raw_result ?? {}) as {
+    markdown?: string;
+    images?: unknown;
+    data?: unknown;
+    raw?: unknown;
+    extras?: unknown;
+  };
+  const stored = Array.isArray(rr.images) ? (rr.images as string[]) : [];
+  const found = collectAllImages(rr.markdown ?? "", {
+    data: rr.data ?? null,
+    raw: rr.raw ?? null,
+    extras: rr.extras ?? null,
+  });
+  return Array.from(new Set([...stored, ...found]));
 }
 
 /** Polled by the UI. Proxies Docsie status server-side and caches the result. */
@@ -417,7 +437,13 @@ export const getImportJob = createServerFn({ method: "POST" })
                 markdown: md,
                 title: result.title ?? null,
                 data: (result as { data?: unknown }).data ?? null,
-                images: collectAllImages(md, (result as { data?: unknown }).data),
+                raw: (result as { raw?: unknown }).raw ?? null,
+                extras: (result as { extras?: unknown }).extras ?? null,
+                images: collectAllImages(md, {
+                  data: (result as { data?: unknown }).data ?? null,
+                  raw: (result as { raw?: unknown }).raw ?? null,
+                  extras: (result as { extras?: unknown }).extras ?? null,
+                }),
               },
             };
             await supabase
@@ -470,10 +496,13 @@ export const getImportJob = createServerFn({ method: "POST" })
       source_url: job.source_url as string,
       created_at: job.created_at as string,
       chapters,
-      imageCount: collectAllImages(
-        md,
-        (job.raw_result as { data?: unknown } | null)?.data,
-      ).length,
+      imageCount: jobImages(job).length,
+      payloadKeys: Object.keys(
+        ((job.raw_result as { raw?: unknown } | null)?.raw as Record<
+          string,
+          unknown
+        > | null) ?? {},
+      ),
     };
   });
 
@@ -607,10 +636,7 @@ export const applyVideoImport = createServerFn({ method: "POST" })
     // Import every frame Docsie returned into the manual's image library,
     // regardless of which sections the user kept, so they can be attached
     // to any step later. Keyed by URL so each file lands once.
-    const allImages = collectAllImages(
-      md,
-      (job.raw_result as { data?: unknown } | null)?.data,
-    );
+    const allImages = jobImages(job);
     const assetByUrl = new Map<string, string>();
     for (const url of allImages) {
       const assetId = await importImage(versionId, orgId, productId, url);
