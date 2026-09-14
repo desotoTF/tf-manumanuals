@@ -161,32 +161,35 @@ export function collectMarkdownImages(markdown: string): string[] {
   return out;
 }
 
-const IMG_EXT_RE = /\.(png|jpe?g|webp|gif)(\?|#|$)/i;
+const IMG_EXT_RE = /\.(png|jpe?g|webp|gif|bmp|avif)(\?|#|$)/i;
+/** Keys whose string values are image URLs even without a file extension. */
+const IMG_KEY_RE =
+  /(image|img|screenshot|screen_shot|frame|still|thumb|thumbnail|snapshot|poster|photo|picture|asset)/i;
 
 /** Walks an arbitrary Docsie JSON payload and collects image-looking URLs. */
 export function collectPayloadImages(payload: unknown): string[] {
   const out: string[] = [];
   const seen = new Set<unknown>();
-  const walk = (node: unknown) => {
-    if (!node || typeof node !== "object") {
-      if (typeof node === "string" && /^https?:\/\//.test(node) && IMG_EXT_RE.test(node)) {
-        if (!out.includes(node)) out.push(node);
-      }
+  const add = (v: string) => {
+    if (/^https?:\/\//.test(v) && !out.includes(v)) out.push(v);
+  };
+  const walk = (node: unknown, keyHint: string) => {
+    if (typeof node === "string") {
+      if (IMG_EXT_RE.test(node) || IMG_KEY_RE.test(keyHint)) add(node);
       return;
     }
+    if (!node || typeof node !== "object") return;
     if (seen.has(node)) return;
     seen.add(node);
     if (Array.isArray(node)) {
-      node.forEach(walk);
+      node.forEach((n) => walk(n, keyHint));
       return;
     }
-    for (const v of Object.values(node as Record<string, unknown>)) {
-      if (typeof v === "string") {
-        if (/^https?:\/\//.test(v) && IMG_EXT_RE.test(v) && !out.includes(v)) out.push(v);
-      } else walk(v);
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+      walk(v, IMG_KEY_RE.test(k) ? k : /^(url|src|href|path|link)$/i.test(k) ? keyHint : k);
     }
   };
-  walk(payload);
+  walk(payload, "");
   return out;
 }
 
