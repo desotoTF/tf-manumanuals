@@ -619,8 +619,8 @@ function CreateManualDialog({
     effectiveSku;
 
   const createMut = useMutation({
-    mutationFn: () =>
-      createFromSku({
+    mutationFn: async () => {
+      const res = await createFromSku({
         data: {
           organizationId: orgId,
           sku: effectiveSku,
@@ -630,9 +630,29 @@ function CreateManualDialog({
           templateId: templateId === "__none" ? undefined : templateId,
           templateSku: effectiveTemplateSku,
         },
-      }),
+      });
+      if (source === "docsie") {
+        const job = await startImport({
+          data: {
+            organizationId: orgId,
+            productId: res.productId,
+            manualId: res.manualId,
+            versionId: res.versionId,
+            videoUrl: videoUrl.trim(),
+            title: name.trim(),
+          },
+        });
+        return { ...res, jobId: job.jobId };
+      }
+      return { ...res, jobId: null as string | null };
+    },
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["manuals", orgId] });
+      if (res.jobId) {
+        toast.success("Manual created — importing the video");
+        setJobId(res.jobId);
+        return;
+      }
       if (res.alreadyExisted) {
         toast.info("Manual already exists for this SKU — opening it.");
       } else {
@@ -648,20 +668,75 @@ function CreateManualDialog({
   });
 
   const canCreate =
-    sku.trim().length > 0 && name.trim().length > 0 && !needsVariantPick;
+    sku.trim().length > 0 &&
+    name.trim().length > 0 &&
+    !needsVariantPick &&
+    (source !== "docsie" || videoUrl.trim().length > 0);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create manual</DialogTitle>
+          <DialogTitle>
+            {jobId ? "Importing from video" : "Create manual"}
+          </DialogTitle>
           <DialogDescription>
-            Enter the product SKU. We'll look it up in Odoo to auto-fill the
-            name — edit it if you need to.
+            {jobId
+              ? "We're turning the video into draft sections you can review."
+              : "Enter the product SKU. We'll look it up in Odoo to auto-fill the name — edit it if you need to."}
           </DialogDescription>
         </DialogHeader>
 
+        {jobId ? (
+          <VideoImportPanel
+            jobId={jobId}
+            onCancel={() => onOpenChange(false)}
+            onDone={(productId) => {
+              qc.invalidateQueries({ queryKey: ["manuals", orgId] });
+              onOpenChange(false);
+              navigate({
+                to: "/products/$productId",
+                params: { productId },
+              });
+            }}
+          />
+        ) : (
+        <>
         <div className="space-y-4">
+          {hasModules && (
+            <div className="space-y-1">
+              <Label>Create from</Label>
+              <Select
+                value={source}
+                onValueChange={(v) => setSource(v as "manual" | "docsie")}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="manual">Manual creation</SelectItem>
+                  <SelectItem value="docsie">Video (Docsie)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {source === "docsie" && (
+            <div className="space-y-1">
+              <Label htmlFor="video-url">URL (YouTube)</Label>
+              <Input
+                id="video-url"
+                value={videoUrl}
+                onChange={(e) => setVideoUrl(e.target.value)}
+                placeholder="https://www.youtube.com/watch?v=…"
+              />
+              <p className="text-xs text-muted-foreground">
+                We check the link before starting. Processing can take a few
+                minutes.
+              </p>
+            </div>
+          )}
+
           <div className="space-y-1">
             <Label htmlFor="sku">SKU</Label>
             <div className="flex gap-2">
