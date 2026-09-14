@@ -930,6 +930,7 @@ export type Database = {
           erp_template_id: string | null
           id: string
           is_active: boolean
+          is_sync_placeholder: boolean
           name: string
           organization_id: string
           sku: string
@@ -945,6 +946,7 @@ export type Database = {
           erp_template_id?: string | null
           id?: string
           is_active?: boolean
+          is_sync_placeholder?: boolean
           name: string
           organization_id: string
           sku: string
@@ -960,6 +962,7 @@ export type Database = {
           erp_template_id?: string | null
           id?: string
           is_active?: boolean
+          is_sync_placeholder?: boolean
           name?: string
           organization_id?: string
           sku?: string

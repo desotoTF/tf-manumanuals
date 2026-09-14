@@ -11,6 +11,7 @@ import {
   rotateOdooCredentials,
   revokeOdooConnection,
   syncBoms,
+  backfillPlaceholderProducts,
 } from "@/lib/erp.functions";
 import {
   Card,
@@ -121,6 +122,8 @@ function ErpPage() {
         </CardContent>
       </Card>
 
+      {isAdmin && <PlaceholderCleanupCard orgId={orgId} onDone={refresh} />}
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Recent sync events</CardTitle>
@@ -159,6 +162,76 @@ function ErpPage() {
 }
 
 // --------------------------------------------------------------------------
+
+function PlaceholderCleanupCard({
+  orgId,
+  onDone,
+}: {
+  orgId: string;
+  onDone: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const cleanupFn = useServerFn(backfillPlaceholderProducts);
+
+  const run = useMutation({
+    mutationFn: () => cleanupFn({ data: { organizationId: orgId } }),
+    onSuccess: (res) => {
+      setConfirming(false);
+      if (!res.ok) {
+        toast.error(res.error ?? "Cleanup failed.");
+        return;
+      }
+      toast.success(
+        `${res.renamed} renamed · ${res.hidden} hidden${
+          res.skipped ? ` · ${res.skipped} skipped` : ""
+        }`,
+      );
+      onDone();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Clean up synced products</CardTitle>
+        <CardDescription>
+          The BOM sync creates a product for every Odoo item that has a parts
+          list. Items with no internal reference in Odoo get a stand-in name
+          like <span className="font-mono">ODOO-TMPL-111465</span>. This
+          re-checks them: any that now have a real SKU are renamed, the rest are
+          hidden from your product list. Nothing is deleted.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {confirming ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted-foreground">
+              Re-check every stand-in product against Odoo?
+            </span>
+            <Button size="sm" onClick={() => run.mutate()} disabled={run.isPending}>
+              {run.isPending && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+              Yes, clean up
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setConfirming(false)}
+              disabled={run.isPending}
+            >
+              Cancel
+            </Button>
+          </div>
+        ) : (
+          <Button size="sm" variant="outline" onClick={() => setConfirming(true)}>
+            <RefreshCcw className="mr-2 h-3.5 w-3.5" />
+            Clean up synced products
+          </Button>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 type Conn = Awaited<ReturnType<typeof listErpConnections>>[number];
 
