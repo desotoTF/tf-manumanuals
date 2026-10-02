@@ -1,0 +1,2542 @@
+// Manual workspace: Build (edit content) -> Review (preview + readiness, approve)
+// -> Publish (publish, visibility, link/PDF/QR, version history). Modes are UI
+// only; they map onto the existing draft/in_review/approved/published states.
+import { askPostPublishFeedback } from "@/components/FeedbackWidget";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { useManualTransfer } from "@/lib/use-manual-transfer";
+import {
+  getProductWorkspace,
+  getManualVersion,
+  createManualDraft,
+  cloneManual,
+  saveDraftContent,
+  transitionManualVersion,
+  addManualAsset,
+  removeManualAsset,
+  uploadManualAssetFile,
+  replaceManualAssetImage,
+  revertManualAssetImage,
+  uploadPublishedPdf,
+  uploadManualCoverImage,
+  fetchOdooCoverImage,
+  importLegacyManualFromPdf,
+  loadBomForManual,
+} from "@/lib/manuals.functions";
+import { syncBomBySku } from "@/lib/erp.functions";
+
+import { listTools, upsertTool } from "@/lib/tools.functions";
+import { PartsListEditor, ToolsListEditor } from "@/components/manual-editor/ManualListEditors";
+
+import { listTemplates } from "@/lib/templates.functions";
+import { useActiveOrg } from "@/components/AppShell";
+import {
+  emptyManualContent,
+  type ManualContent,
+  type ManualStep,
+  type StepLayout,
+  DEFAULT_STEP_LAYOUT,
+  newStep,
+  normalizeStep,
+} from "@/lib/types";
+import { useStepFigureMap } from "@/lib/figure-refs";
+import { FigureRefField } from "@/components/manual-editor/FigureRefField";
+import { StepLayoutEditor, StepLayoutSwitcher } from "@/components/manual-editor/StepLayoutEditor";
+import { usePartCatalog } from "@/lib/use-part-catalog";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import {
+  AlertTriangle,
+  Plus,
+  Save,
+  CheckCircle2,
+  Globe,
+  Trash2,
+  Upload,
+  Eye,
+  Download,
+  Pencil,
+  RotateCcw,
+  Settings,
+  Copy,
+  MoreHorizontal,
+  ChevronRight,
+} from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ImageEditorDialog } from "@/components/manual-editor/ImageEditorDialog";
+import { ToolsManagerDialog } from "@/components/manual-editor/ToolsManagerDialog";
+import { getMasterTemplate } from "@/lib/templates.functions";
+import { MasterManualPreview } from "@/components/manual/MasterManualPreview";
+import { ShareManualPanel } from "@/components/manual/ShareManualPanel";
+
+import { formatDistanceToNow } from "date-fns";
+
+export const Route = createFileRoute("/_authenticated/products/$productId")({
+  component: ProductEditorPage,
+});
+
+const STATE_VARIANT: Record<string, string> = {
+  draft: "bg-slate-500/15 text-slate-700 dark:text-slate-300",
+  in_review: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  approved: "bg-sky-500/15 text-sky-700 dark:text-sky-400",
+  published: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+  superseded: "bg-zinc-500/15 text-zinc-600 dark:text-zinc-400",
+};
+
+type Mode = "build" | "review" | "publish";
+const STATE_LABEL: Record<string, string> = {
+  draft: "Draft",
+  in_review: "In review",
+  approved: "Approved",
+  published: "Published",
+  superseded: "Superseded",
+};
+
+const baseTfSku = (sku: string): string => {
+  const match = sku.match(/\b(TF\d{6})\b/i);
+  return match ? match[1].toUpperCase() : sku;
+};
+
+async function waitForExportAssets(source: HTMLElement): Promise<void> {
+  await document.fonts?.ready.catch(() => undefined);
+  const images = Array.from(source.querySelectorAll<HTMLImageElement>("img"));
+  await Promise.all(
+    images.map(async (img) => {
+      if (img.complete && img.naturalWidth > 0) return;
+      try {
+        await img.decode();
+      } catch {
+        await new Promise<void>((resolve) => {
+          const done = () => resolve();
+          img.addEventListener("load", done, { once: true });
+          img.addEventListener("error", done, { once: true });
+          setTimeout(done, 2500);
+        });
+      }
+    }),
+  );
+}
+
+async function importWithRetry<T>(loader: () => Promise<T>, label: string, attempts = 3): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await loader();
+    } catch (err) {
+      lastErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      // Chunk load failure — usually a stale client after redeploy.
+      if (!/dynamically imported module|Failed to fetch|Importing a module script failed|ChunkLoadError/i.test(msg)) {
+        throw err;
+      }
+      await new Promise((r) => setTimeout(r, 400 * (i + 1)));
+    }
+  }
+  throw new Error(
+    `Couldn't load ${label}. The app was updated since this tab was opened — please refresh the page and try again. (${
+      lastErr instanceof Error ? lastErr.message : String(lastErr)
+    })`,
+  );
+}
+
+async function renderManualPagesPdf(source: HTMLElement): Promise<Blob> {
+  const { default: html2canvas } = await importWithRetry(() => import("html2canvas"), "PDF renderer");
+  const { default: jsPDF } = await importWithRetry(() => import("jspdf"), "PDF renderer");
+  await waitForExportAssets(source);
+  try {
+    await document.fonts.ready;
+  } catch {
+    /* ignore: fall back to whatever fonts are loaded */
+  }
+  const pages = Array.from(source.querySelectorAll<HTMLElement>("[data-manual-page='true']"));
+  if (pages.length === 0) throw new Error("No manual pages found to export");
+
+  const pdf = new jsPDF({ unit: "pt", format: "letter", orientation: "portrait" });
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+
+  for (const [index, page] of pages.entries()) {
+    const canvas = await html2canvas(page, {
+      scale: 2,
+      backgroundColor: "#ffffff",
+      useCORS: true,
+      allowTaint: false,
+      logging: false,
+      windowWidth: 900,
+      windowHeight: 1200,
+      onclone: (doc) => {
+        const safeColors: Record<string, string> = {
+          "--background": "#ffffff",
+          "--foreground": "#111827",
+          "--card": "#ffffff",
+          "--card-foreground": "#111827",
+          "--popover": "#ffffff",
+          "--popover-foreground": "#111827",
+          "--primary": "#111827",
+          "--primary-foreground": "#ffffff",
+          "--secondary": "#f3f4f6",
+          "--secondary-foreground": "#111827",
+          "--muted": "#f3f4f6",
+          "--muted-foreground": "#6b7280",
+          "--accent": "#f3f4f6",
+          "--accent-foreground": "#111827",
+          "--destructive": "#dc2626",
+          "--destructive-foreground": "#ffffff",
+          "--border": "#d9dde5",
+          "--input": "#d9dde5",
+          "--ring": "#94a3b8",
+          "--color-background": "#ffffff",
+          "--color-foreground": "#111827",
+          "--color-border": "#d9dde5",
+          "--color-muted": "#f3f4f6",
+          "--color-muted-foreground": "#6b7280",
+        };
+        for (const [key, value] of Object.entries(safeColors)) {
+          doc.documentElement.style.setProperty(key, value);
+          doc.body.style.setProperty(key, value);
+        }
+        doc.body.style.background = "#ffffff";
+        doc.body.style.color = "#111827";
+        doc.querySelectorAll<SVGElement>("[data-manual-page='true'] svg, [data-manual-page='true'] svg *").forEach((el) => {
+          const style = (el as SVGElement & { style: CSSStyleDeclaration }).style;
+          style.backgroundColor = "transparent";
+          style.color = "#111827";
+          style.borderColor = "transparent";
+          style.outlineColor = "transparent";
+          style.boxShadow = "none";
+        });
+        doc.querySelectorAll<HTMLElement>("[data-manual-page='true'], [data-manual-page='true'] *").forEach((el) => {
+          const style = doc.defaultView?.getComputedStyle(el);
+          if (!style) return;
+          const colorProps = ["color", "backgroundColor", "borderColor", "borderTopColor", "borderRightColor", "borderBottomColor", "borderLeftColor"] as const;
+          for (const prop of colorProps) {
+            const value = style[prop];
+            if (value && /oklch|lch|lab/i.test(value)) {
+              el.style[prop] = prop === "color" ? "#111827" : prop === "backgroundColor" ? "transparent" : "#d9dde5";
+            }
+          }
+        });
+      },
+    });
+    if (index > 0) pdf.addPage();
+    pdf.addImage(canvas.toDataURL("image/jpeg", 0.94), "JPEG", 0, 0, pageW, pageH);
+  }
+
+  return pdf.output("blob");
+}
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  const buf = await blob.arrayBuffer();
+  let binary = "";
+  const bytes = new Uint8Array(buf);
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunk, bytes.length)));
+  }
+  return btoa(binary);
+}
+
+function ProductEditorPage() {
+  const { productId } = Route.useParams();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const { orgId, isAdmin, orgSlug } = useActiveOrg();
+  const { map: partCatalogMap } = usePartCatalog(orgId, isAdmin);
+  const fetchWorkspace = useServerFn(getProductWorkspace);
+  const fetchVersion = useServerFn(getManualVersion);
+  const createDraft = useServerFn(createManualDraft);
+  const cloneManualFn = useServerFn(cloneManual);
+  const saveDraft = useServerFn(saveDraftContent);
+  const transition = useServerFn(transitionManualVersion);
+  const addAsset = useServerFn(addManualAsset);
+  const removeAsset = useServerFn(removeManualAsset);
+  const uploadAsset = useServerFn(uploadManualAssetFile);
+  const uploadPdf = useServerFn(uploadPublishedPdf);
+  const uploadCover = useServerFn(uploadManualCoverImage);
+  const fetchOdooCover = useServerFn(fetchOdooCoverImage);
+  const importPdf = useServerFn(importLegacyManualFromPdf);
+  const fetchTemplates = useServerFn(listTemplates);
+
+  const fetchMaster = useServerFn(getMasterTemplate);
+  const masterQuery = useQuery({
+    queryKey: ["master-template", orgId],
+    queryFn: () => fetchMaster({ data: { organizationId: orgId } }),
+  });
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const workspaceQuery = useQuery({
+    queryKey: ["product-workspace", productId],
+
+    queryFn: () => fetchWorkspace({ data: { productId } }),
+  });
+
+  const templatesQuery = useQuery({
+    queryKey: ["manual-templates", orgId],
+    queryFn: () => fetchTemplates({ data: { organizationId: orgId } }),
+  });
+
+  const fetchTools = useServerFn(listTools);
+  const createTool = useServerFn(upsertTool);
+  const loadBom = useServerFn(loadBomForManual);
+  const syncBom = useServerFn(syncBomBySku);
+
+  const toolsQuery = useQuery({
+    queryKey: ["tools", orgId],
+    queryFn: () => fetchTools({ data: { organizationId: orgId } }),
+  });
+  const upsertToolMut = useMutation({
+    mutationFn: (name: string) => createTool({ data: { organizationId: orgId, name } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tools", orgId] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+
+  const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
+  const [mode, setMode] = useState<Mode>("build");
+
+  // Pick the most recent version (draft preferred) when workspace loads, and
+  // recover if the selected version was deleted or became inaccessible.
+  useEffect(() => {
+    if (!workspaceQuery.data) return;
+    const versions = workspaceQuery.data.versions;
+    if (!versions.length) {
+      if (activeVersionId) {
+        setActiveVersionId(null);
+        loadedVersionRef.current = null;
+      }
+      return;
+    }
+    if (activeVersionId && versions.some((v) => v.id === activeVersionId)) return;
+    const draft = versions.find((v) => v.state === "draft");
+    setActiveVersionId(draft?.id ?? versions[0].id);
+    loadedVersionRef.current = null;
+  }, [workspaceQuery.data, activeVersionId]);
+
+  const versionQuery = useQuery({
+    queryKey: ["manual-version", activeVersionId],
+    queryFn: () => (activeVersionId ? fetchVersion({ data: { versionId: activeVersionId } }) : Promise.resolve(null)),
+    enabled: !!activeVersionId,
+  });
+
+  // Editable local content state mirrors the loaded version.
+  const [content, setContent] = useState<ManualContent>(emptyManualContent());
+  const [changeSummary, setChangeSummary] = useState("");
+
+  // Only seed local content state when the *version itself* changes.
+  // Asset refetches (uploads / adds / removes) also invalidate this
+  // query, but we must not clobber unsaved block edits in that case.
+  const loadedVersionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!versionQuery.data) return;
+    if (!versionQuery.data.version) {
+      if (activeVersionId) {
+        const deletedVersionId = activeVersionId;
+        setActiveVersionId(null);
+        loadedVersionRef.current = null;
+        qc.removeQueries({ queryKey: ["manual-version", deletedVersionId] });
+        qc.invalidateQueries({ queryKey: ["product-workspace", productId] });
+      }
+      return;
+    }
+    if (loadedVersionRef.current === versionQuery.data.version.id) return;
+    loadedVersionRef.current = versionQuery.data.version.id;
+    const c = {
+      ...emptyManualContent(),
+      ...((versionQuery.data.version.content ?? {}) as object),
+    } as ManualContent;
+    setContent(c);
+    setChangeSummary(versionQuery.data.version.change_summary ?? "");
+  }, [versionQuery.data, activeVersionId, productId, qc]);
+
+  const activeVersion = versionQuery.data?.version;
+  const assets = versionQuery.data?.assets ?? [];
+  const editable = activeVersion?.state === "draft" || activeVersion?.state === "in_review";
+
+  const createMut = useMutation({
+    mutationFn: (input: { manualId?: string; templateId?: string }) => createDraft({ data: { productId, ...input } }),
+    onSuccess: ({ versionId }) => {
+      setActiveVersionId(versionId);
+      qc.invalidateQueries({ queryKey: ["product-workspace", productId] });
+      setCreateOpen(false);
+      toast.success("Draft created");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const importMut = useMutation({
+    mutationFn: (input: { filename: string; pdfBase64: string; templateId?: string }) =>
+      importPdf({ data: { productId, ...input } }),
+    onSuccess: ({ versionId }) => {
+      setActiveVersionId(versionId);
+      qc.invalidateQueries({ queryKey: ["product-workspace", productId] });
+      setImportOpen(false);
+      toast.success("Manual imported — review the draft");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const transfer = useManualTransfer();
+  const cloneMut = useMutation({
+    mutationFn: () => cloneManualFn({ data: { manualId: primaryManual!.id, versionId: activeVersionId ?? undefined } }),
+    onSuccess: ({ versionId }) => {
+      setActiveVersionId(versionId);
+      loadedVersionRef.current = null;
+      qc.invalidateQueries({ queryKey: ["product-workspace", productId] });
+      toast.success("Manual cloned as a new draft");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const saveMut = useMutation({
+    mutationFn: () =>
+      saveDraft({
+        data: {
+          versionId: activeVersionId!,
+          content: content as unknown as Record<string, unknown>,
+          changeSummary: changeSummary || undefined,
+        },
+      }),
+    onSuccess: () => {
+      toast.success("Draft saved");
+      qc.invalidateQueries({ queryKey: ["manual-version", activeVersionId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const [publishingPdf, setPublishingPdf] = useState(false);
+
+  const transitionMut = useMutation({
+    mutationFn: (action: "submit" | "approve" | "publish" | "discard") =>
+      transition({ data: { versionId: activeVersionId!, action } }),
+    onSuccess: async (res, action) => {
+      toast.success(action === "discard" ? "Draft discarded" : `Moved to ${res.state}`);
+      const transitionedVersionId = activeVersionId;
+      if (action === "discard") {
+        setActiveVersionId(null);
+        if (transitionedVersionId) {
+          qc.removeQueries({ queryKey: ["manual-version", transitionedVersionId] });
+        }
+      }
+      qc.invalidateQueries({ queryKey: ["product-workspace", productId] });
+      if (action !== "discard") {
+        qc.invalidateQueries({ queryKey: ["manual-version", activeVersionId] });
+      }
+      // When publishing, render the same preview to PDF client-side and
+      // upload it so the public /manuals/:slug URL streams a real PDF.
+      if (action === "publish" && activeVersionId) {
+        try {
+          setPublishingPdf(true);
+          const node = document.getElementById("manual-pdf-source");
+          if (!node) {
+            toast.warning("Open the Preview once so the PDF can be generated.");
+            return;
+          }
+          const blob = await renderManualPagesPdf(node);
+          const dataBase64 = await blobToBase64(blob);
+          await uploadPdf({
+            data: {
+              versionId: activeVersionId,
+              filename: `${productId}.pdf`,
+              dataBase64,
+            },
+          });
+          toast.success("Public PDF updated");
+          askPostPublishFeedback();
+        } catch (e) {
+          console.error(e);
+          toast.error(`Published, but PDF render failed: ${(e as Error).message}`);
+        } finally {
+          setPublishingPdf(false);
+        }
+      }
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const addAssetMut = useMutation({
+    mutationFn: (input: { url: string; caption?: string }) =>
+      addAsset({
+        data: { versionId: activeVersionId!, url: input.url, caption: input.caption },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["manual-version", activeVersionId] });
+      toast.success("Image added");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const removeAssetMut = useMutation({
+    mutationFn: (assetId: string) => removeAsset({ data: { assetId } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["manual-version", activeVersionId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const uploadAssetMut = useMutation({
+    mutationFn: async (input: { file: File; caption?: string }) => {
+      const buf = await input.file.arrayBuffer();
+      // Convert to base64 in chunks to avoid call-stack blowups on large files.
+      let binary = "";
+      const bytes = new Uint8Array(buf);
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunk, bytes.length)));
+      }
+      const dataBase64 = btoa(binary);
+      return uploadAsset({
+        data: {
+          versionId: activeVersionId!,
+          filename: input.file.name,
+          contentType: input.file.type || "application/octet-stream",
+          dataBase64,
+          caption: input.caption,
+        },
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["manual-version", activeVersionId] });
+      toast.success("Image uploaded");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const replaceAssetImage = useServerFn(replaceManualAssetImage);
+  const revertAssetImage = useServerFn(revertManualAssetImage);
+
+  const replaceAssetMut = useMutation({
+    mutationFn: async (input: { assetId: string; blob: Blob }) => {
+      const buf = await input.blob.arrayBuffer();
+      let binary = "";
+      const bytes = new Uint8Array(buf);
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunk, bytes.length)));
+      }
+      return replaceAssetImage({
+        data: {
+          assetId: input.assetId,
+          filename: `edited-${Date.now()}.png`,
+          contentType: "image/png",
+          dataBase64: btoa(binary),
+        },
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["manual-version", activeVersionId] });
+      toast.success("Edited image saved");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const revertAssetMut = useMutation({
+    mutationFn: (assetId: string) => revertAssetImage({ data: { assetId } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["manual-version", activeVersionId] });
+      toast.success("Reverted to original");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  if (workspaceQuery.isLoading) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (workspaceQuery.error)
+    return <p className="text-sm text-destructive">{(workspaceQuery.error as Error).message}</p>;
+
+  const ws = workspaceQuery.data!;
+  const manuals = ws.manuals;
+  const primaryManual = manuals[0];
+  const isOutOfSync = ws.status?.status === "out_of_sync";
+
+  const draftVersion = ws.versions.find((v) => v.state === "draft");
+  const publishedVersion = ws.versions.find((v) => v.state === "published");
+  const publicPath = ws.product.web_slug
+    ? orgSlug
+      ? `/m/${orgSlug}/${ws.product.web_slug}`
+      : `/manuals/${ws.product.web_slug}`
+    : null;
+  const stateLabel = activeVersion ? STATE_LABEL[activeVersion.state] ?? activeVersion.state : null;
+  const stateChip =
+    activeVersion?.state === "published" && isOutOfSync ? "Published · Needs review" : stateLabel;
+  const untitledSteps = content.steps.filter((s) => !s.title?.trim()).length;
+  const readiness: Array<{ label: string; ok: boolean; detail: string }> = [
+    {
+      label: "Cover image",
+      ok: !!content.hero_image_url,
+      detail: content.hero_image_url ? "Added" : "Needs attention — no cover image",
+    },
+    {
+      label: "Manual title",
+      ok: !!ws.product.name?.trim(),
+      detail: ws.product.name?.trim() || "Missing",
+    },
+    {
+      label: "Steps",
+      ok: content.steps.length > 0 && untitledSteps === 0,
+      detail:
+        content.steps.length === 0
+          ? "No steps yet"
+          : untitledSteps
+            ? `${content.steps.length} step${content.steps.length === 1 ? "" : "s"} · ${untitledSteps} without a title`
+            : `${content.steps.length} step${content.steps.length === 1 ? "" : "s"}`,
+    },
+    {
+      label: "Images",
+      ok: true,
+      detail: `${assets.length} image${assets.length === 1 ? "" : "s"} attached`,
+    },
+    {
+      label: "Warnings & callouts",
+      ok: true,
+      detail: `${content.warnings.length} warning${content.warnings.length === 1 ? "" : "s"}`,
+    },
+    {
+      label: "Change summary",
+      ok: !!changeSummary.trim(),
+      detail: changeSummary.trim() ? "Written" : "Recommended — describe what changed",
+    },
+  ];
+  if (ws.status?.status && ws.status.status !== "no_manual") {
+    readiness.push({
+      label: "Connected product data",
+      ok: !isOutOfSync,
+      detail: isOutOfSync ? "BOM changed since last publish" : "In sync",
+    });
+  }
+  const blocking = readiness.filter((r) => !r.ok && r.label !== "Change summary");
+
+  const assetMap: Record<string, { url: string | null; caption?: string | null }> = {};
+  for (const a of assets as Array<{ id: string; url: string | null; metadata: any }>) {
+    assetMap[a.id] = { url: a.url, caption: a.metadata?.caption ?? null };
+  }
+  const partCatalogLookup: Record<string, { alias?: string | null; imageUrl?: string | null }> = {};
+  for (const p of [...content.parts, ...content.hardware_kit]) {
+    const c = partCatalogMap.get(p.part_number);
+    if (c) partCatalogLookup[p.part_number] = { alias: c.alias, imageUrl: c.image_url };
+  }
+  const previewMeta = {
+    sku: ws.product.sku,
+    name: ws.product.name,
+    variant: ws.product.description ?? undefined,
+    versionLabel: activeVersion ? String(activeVersion.version_number) : undefined,
+  };
+
+  const MODES: Array<{ id: Mode; label: string }> = [
+    { id: "build", label: "Build" },
+    { id: "review", label: "Review" },
+    { id: "publish", label: "Publish" },
+  ];
+
+  return (
+    <div className="space-y-5">
+      {/* ---------- Header ---------- */}
+      <header className="space-y-3">
+        <nav aria-label="Breadcrumb" className="text-xs text-muted-foreground">
+          <button type="button" onClick={() => navigate({ to: "/products" })} className="hover:underline">
+            Manuals
+          </button>
+          <span className="mx-1.5" aria-hidden>/</span>
+          <span className="text-foreground">{ws.product.name}</span>
+        </nav>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="font-display text-2xl font-medium tracking-tight text-ink sm:text-3xl">{ws.product.name}</h1>
+            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+              {stateChip && (
+                <Badge variant="secondary" className={STATE_VARIANT[activeVersion!.state] ?? ""}>
+                  {stateChip}
+                </Badge>
+              )}
+              {activeVersion && <span>v{activeVersion.version_number}</span>}
+              {activeVersion && (
+                <span>
+                  · Updated {formatDistanceToNow(new Date(activeVersion.updated_at), { addSuffix: true })}
+                </span>
+              )}
+              {ws.product.sku && !ws.product.sku.startsWith("MM-") && (
+                <span className="font-mono text-xs">· {ws.product.sku}</span>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {!primaryManual ? (
+              <>
+                <Button onClick={() => setCreateOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" /> Create manual
+                </Button>
+                <Button variant="outline" onClick={() => setImportOpen(true)}>
+                  <Upload className="mr-2 h-4 w-4" /> Import from PDF
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => setPreviewOpen(true)}>
+                  <Eye className="mr-2 h-4 w-4" /> Preview
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon" aria-label="More manual actions">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    {!draftVersion && (
+                      <DropdownMenuItem
+                        disabled={createMut.isPending}
+                        onSelect={() => createMut.mutate({ manualId: primaryManual.id })}
+                      >
+                        <Plus className="mr-2 h-4 w-4" /> New draft version
+                      </DropdownMenuItem>
+                    )}
+                    {activeVersion && (
+                      <DropdownMenuItem disabled={cloneMut.isPending} onSelect={() => cloneMut.mutate()}>
+                        <Copy className="mr-2 h-4 w-4" /> Clone manual
+                      </DropdownMenuItem>
+                    )}
+                    {activeVersion && (
+                      <DropdownMenuItem
+                        onSelect={async () => {
+                          const t = toast.loading("Preparing export…");
+                          try {
+                            const r = await transfer.exportManual(primaryManual.id, activeVersion.id);
+                            toast.success(r.missing ? `Exported — ${r.missing} image(s) couldn't be included` : "Manual exported", { id: t });
+                          } catch (e) {
+                            toast.error(e instanceof Error ? e.message : String(e), { id: t });
+                          }
+                        }}
+                      >
+                        <Download className="mr-2 h-4 w-4" /> Export this version (.zip)
+                      </DropdownMenuItem>
+                    )}
+                    {publicPath && publishedVersion && (
+                      <DropdownMenuItem asChild>
+                        <a href={publicPath} target="_blank" rel="noreferrer">
+                          <Globe className="mr-2 h-4 w-4" /> Open public page
+                        </a>
+                      </DropdownMenuItem>
+                    )}
+                    {activeVersion?.state === "draft" && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          disabled={transitionMut.isPending}
+                          onSelect={() => {
+                            if (confirm("Discard this draft? This cannot be undone.")) transitionMut.mutate("discard");
+                          }}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" /> Discard draft
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            )}
+          </div>
+        </div>
+
+        {activeVersion && (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div role="tablist" aria-label="Manual workflow" className="inline-flex items-center rounded-lg border border-border bg-card p-1">
+              {MODES.map((m, i) => (
+                <div key={m.id} className="flex items-center">
+                  {i > 0 && <ChevronRight className="mx-0.5 h-3.5 w-3.5 text-muted-foreground" aria-hidden />}
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={mode === m.id}
+                    onClick={() => setMode(m.id)}
+                    className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                      mode === m.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    <span
+                      className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] ${
+                        mode === m.id ? "bg-primary-foreground/20" : "bg-muted"
+                      }`}
+                    >
+                      {i + 1}
+                    </span>
+                    {m.label}
+                  </button>
+                </div>
+              ))}
+            </div>
+            {mode === "build" && (
+              <div className="flex items-center gap-2">
+                {!editable && (
+                  <span className="text-xs text-muted-foreground">
+                    This version is {stateLabel?.toLowerCase()} and read-only.
+                  </span>
+                )}
+                <Button size="sm" onClick={() => saveMut.mutate()} disabled={!editable || saveMut.isPending}>
+                  <Save className="mr-2 h-4 w-4" /> {saveMut.isPending ? "Saving…" : "Save draft"}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </header>
+
+      <ManualPreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        branding={masterQuery.data?.branding ?? {}}
+        meta={previewMeta}
+        content={content}
+        assets={assetMap}
+        partCatalog={partCatalogLookup}
+      />
+      {/* Hidden always-mounted preview so publish can render PDF
+          without the user opening the dialog first. */}
+      {activeVersion && (
+        <div aria-hidden style={{ position: "fixed", left: "-10000px", top: 0, width: 900, pointerEvents: "none" }}>
+          <div id="manual-pdf-source">
+            <MasterManualPreview
+              branding={masterQuery.data?.branding ?? {}}
+              meta={previewMeta}
+              content={content}
+              assets={assetMap}
+              partCatalog={partCatalogLookup}
+              pdfSafe
+            />
+          </div>
+        </div>
+      )}
+
+      <CreateManualDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        templates={templatesQuery.data ?? []}
+        onSubmit={(templateId) => createMut.mutate({ templateId })}
+        submitting={createMut.isPending}
+      />
+      <ImportPdfDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        templates={templatesQuery.data ?? []}
+        onSubmit={(payload) => importMut.mutate(payload)}
+        submitting={importMut.isPending}
+      />
+
+      {!activeVersion && (
+        <Card>
+          <CardContent className="py-12 text-center text-sm text-muted-foreground">
+            {primaryManual
+              ? "No editable version selected. Use the … menu to start a new draft version."
+              : "No manual yet. Click “Create manual” to start version 1, or import an existing PDF."}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ---------- BUILD ---------- */}
+      {activeVersion && mode === "build" && (
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+          <section aria-label="Manual content">
+            <ContentEditor
+              content={content}
+              setContent={setContent}
+              editable={!!editable}
+              assets={assets}
+              onAddAsset={(url, caption) => addAssetMut.mutate({ url, caption })}
+              onRemoveAsset={(id) => removeAssetMut.mutate(id)}
+              onUploadAsset={(file, caption) => uploadAssetMut.mutateAsync({ file, caption })}
+              uploadingAsset={uploadAssetMut.isPending}
+              onReplaceAsset={(assetId, blob) => replaceAssetMut.mutateAsync({ assetId, blob })}
+              onRevertAsset={(assetId) => revertAssetMut.mutate(assetId)}
+              replacingAsset={replaceAssetMut.isPending}
+              tools={toolsQuery.data ?? []}
+              onCreateTool={async (name) => {
+                const created = await upsertToolMut.mutateAsync(name);
+                return created;
+              }}
+              creatingTool={upsertToolMut.isPending}
+              onLoadBom={async () => {
+                const result = await loadBom({ data: { productId } });
+                const hasExisting = content.parts.length > 0 || content.hardware_kit.length > 0;
+                if (
+                  hasExisting &&
+                  !confirm(
+                    `Replace current Parts (${content.parts.length}) and Hardware Kit (${content.hardware_kit.length}) with ${result.parts.length} + ${result.hardware_kit.length} from the BOM?`,
+                  )
+                ) {
+                  return;
+                }
+                setContent({ ...content, parts: result.parts, hardware_kit: result.hardware_kit });
+                if (result.hardwareBomMissing && result.hardwareSku) {
+                  toast.warning(`Hardware Kit BOM for ${result.hardwareSku} hasn't been synced yet.`);
+                } else if (result.parts.length === 0 && result.hardware_kit.length === 0) {
+                  toast.info("BOM is empty for this product.");
+                } else {
+                  toast.success(
+                    `Loaded ${result.parts.length} parts${
+                      result.hardware_kit.length ? ` + ${result.hardware_kit.length} hardware` : ""
+                    }${result.excluded.length ? ` (${result.excluded.length} excluded)` : ""}`,
+                  );
+                }
+              }}
+              productSku={baseTfSku(ws.product.sku)}
+              onSearchBom={async (searchSku: string) => {
+                const res = await syncBom({ data: { organizationId: orgId, sku: searchSku.trim().toUpperCase() } });
+                if (!res.ok) {
+                  toast.error(res.error ?? "Could not search Odoo");
+                  return;
+                }
+                if (!res.found) {
+                  toast.info(`No BOM found in Odoo for ${searchSku}.`);
+                  return;
+                }
+                const loaded = await loadBom({ data: { productId } });
+                setContent({ ...content, parts: loaded.parts, hardware_kit: loaded.hardware_kit });
+                const totalLoaded = loaded.parts.length + loaded.hardware_kit.length;
+                toast.success(`Loaded ${totalLoaded} BOM line${totalLoaded === 1 ? "" : "s"} from ${searchSku}`);
+              }}
+            />
+          </section>
+
+          <aside className="space-y-4" aria-label="Manual pages">
+            {isOutOfSync && (
+              <Card className="border-amber/40 bg-amber-soft">
+                <CardContent className="flex gap-2 py-3 text-xs">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-ink" />
+                  <div>
+                    <p className="font-medium text-amber-ink">Connected BOM changed</p>
+                    <p className="mt-1 text-muted-foreground">
+                      The latest BOM differs from the published manual. Update Parts in a new draft to bring it into sync.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            {primaryManual && (
+              <CoverImageCard
+                manualId={primaryManual.id}
+                imageUrl={content.hero_image_url ?? null}
+                editable={!!editable}
+                hasOdooLink={true}
+                onSet={async (url) => {
+                  setContent({ ...content, hero_image_url: url });
+                  try {
+                    await saveDraft({
+                      data: {
+                        versionId: activeVersionId!,
+                        content: { ...(content as unknown as Record<string, unknown>), hero_image_url: url },
+                        changeSummary: changeSummary || undefined,
+                      },
+                    });
+                    qc.invalidateQueries({ queryKey: ["manual-version", activeVersionId] });
+                  } catch (e) {
+                    toast.error((e as Error).message);
+                  }
+                }}
+                uploadCover={(args) => uploadCover({ data: { manualId: primaryManual.id, ...args } })}
+                fetchFromOdoo={() => fetchOdooCover({ data: { manualId: primaryManual.id } })}
+              />
+            )}
+            <PartsPageCard
+              content={content}
+              editable={!!editable}
+              onChange={(next: ManualContent) => setContent(next)}
+              assets={assets as Array<{ id: string; url: string | null; metadata: { caption?: string } | null; type?: string }>}
+              onInlineUpload={async (file) => {
+                const asset = (await uploadAssetMut.mutateAsync({ file })) as { id?: string } | null | undefined;
+                return asset?.id ?? null;
+              }}
+            />
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" onClick={() => setMode("review")}>
+                Continue to Review <ChevronRight className="ml-1 h-4 w-4" />
+              </Button>
+            </div>
+          </aside>
+        </div>
+      )}
+
+      {/* ---------- REVIEW ---------- */}
+      {activeVersion && mode === "review" && (
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <section aria-label="Manual preview" className="overflow-x-auto rounded-lg border border-border bg-muted/40 p-3 sm:p-6">
+            <div className="mx-auto max-w-[900px] bg-card shadow-sm">
+              <MasterManualPreview
+                branding={masterQuery.data?.branding ?? {}}
+                meta={previewMeta}
+                content={content}
+                assets={assetMap}
+                partCatalog={partCatalogLookup}
+              />
+            </div>
+          </section>
+          <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start" aria-label="Readiness">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">
+                  {blocking.length === 0 ? "Ready to publish" : "Review these items first"}
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">Based on this version's content.</p>
+              </CardHeader>
+              <CardContent className="space-y-2.5">
+                <ul className="space-y-2">
+                  {readiness.map((r) => (
+                    <li key={r.label} className="flex items-start gap-2 text-sm">
+                      {r.ok ? (
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-teal-ink" aria-label="Complete" />
+                      ) : (
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-ink" aria-label="Needs attention" />
+                      )}
+                      <div>
+                        <p className="font-medium">{r.label}</p>
+                        <p className="text-xs text-muted-foreground">{r.detail}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <div>
+                  <label htmlFor="change-summary" className="mb-1 block text-xs font-medium">
+                    Change summary
+                  </label>
+                  <Textarea
+                    id="change-summary"
+                    rows={3}
+                    value={changeSummary}
+                    onChange={(e) => setChangeSummary(e.target.value)}
+                    disabled={!editable}
+                    placeholder="What changed in this revision?"
+                  />
+                  {editable && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="mt-1 h-7 px-2 text-xs"
+                      onClick={() => saveMut.mutate()}
+                      disabled={saveMut.isPending}
+                    >
+                      <Save className="mr-1 h-3.5 w-3.5" /> Save
+                    </Button>
+                  )}
+                </div>
+                <Separator />
+                <div className="grid gap-2">
+                  {(activeVersion.state === "draft" || activeVersion.state === "in_review") && (
+                    <Button onClick={() => transitionMut.mutate("approve")} disabled={transitionMut.isPending}>
+                      <CheckCircle2 className="mr-2 h-4 w-4" /> Approve this version
+                    </Button>
+                  )}
+                  {activeVersion.state !== "draft" && activeVersion.state !== "in_review" && (
+                    <Button onClick={() => setMode("publish")}>
+                      Continue to Publish <ChevronRight className="ml-1 h-4 w-4" />
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="sm" onClick={() => setMode("build")}>
+                    Back to Build
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </aside>
+        </div>
+      )}
+
+      {/* ---------- PUBLISH ---------- */}
+      {activeVersion && mode === "publish" && (
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+          <section className="space-y-5">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">
+                  Version {activeVersion.version_number} · {stateLabel}
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Publishing makes this approved version available at your stable manual URL. Draft changes are never
+                  published automatically.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {(activeVersion.state === "approved" ||
+                  activeVersion.state === "in_review" ||
+                  activeVersion.state === "published") ? (
+                  <Button
+                    variant={activeVersion.state === "published" ? "outline" : "default"}
+                    onClick={() => transitionMut.mutate("publish")}
+                    disabled={transitionMut.isPending || publishingPdf}
+                  >
+                    <Globe className="mr-2 h-4 w-4" />
+                    {activeVersion.state === "published" ? "Re-publish this version" : "Publish version"}
+                    {publishingPdf ? " (rendering PDF…)" : ""}
+                  </Button>
+                ) : activeVersion.state === "draft" ? (
+                  <div className="flex flex-wrap items-center gap-3 rounded-md bg-muted/60 p-3 text-sm">
+                    <span>Approve this draft in Review before publishing.</span>
+                    <Button size="sm" variant="outline" onClick={() => setMode("review")}>
+                      Go to Review
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    This version was replaced by a newer published version and can't be published again.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            {primaryManual && publicPath ? (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">Visibility, link and outputs</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {publishedVersion && (
+                    <a
+                      href={publicPath}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center text-sm font-medium text-primary hover:underline"
+                    >
+                      <Globe className="mr-1.5 h-4 w-4" /> Open published manual
+                    </a>
+                  )}
+                  <ShareManualPanel
+                    manualId={primaryManual.id}
+                    publicPath={publicPath}
+                    isPublished={!!publishedVersion}
+                    canEdit={isAdmin}
+                  />
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardContent className="py-6 text-sm text-muted-foreground">
+                  This manual doesn't have a web address yet, so sharing options aren't available.
+                </CardContent>
+              </Card>
+            )}
+          </section>
+
+          <aside aria-label="Version history">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Version history</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1 text-xs">
+                {ws.versions.map((v) => (
+                  <button
+                    key={v.id}
+                    onClick={() => setActiveVersionId(v.id)}
+                    aria-current={activeVersionId === v.id}
+                    className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                      activeVersionId === v.id ? "bg-muted" : ""
+                    }`}
+                  >
+                    <span className="font-medium">
+                      {v.state === "draft" ? "Draft" : `v${v.version_number}`}
+                      <span className="ml-1.5 font-normal text-muted-foreground">
+                        {formatDistanceToNow(new Date(v.updated_at ?? v.created_at), { addSuffix: true })}
+                      </span>
+                    </span>
+                    <Badge variant="secondary" className={STATE_VARIANT[v.state] ?? ""}>
+                      {STATE_LABEL[v.state] ?? v.state}
+                    </Badge>
+                  </button>
+                ))}
+              </CardContent>
+            </Card>
+          </aside>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- Structured content editor ----------
+
+function ContentEditor({
+  content,
+  setContent,
+  editable,
+  assets,
+  onAddAsset,
+  onRemoveAsset,
+  onUploadAsset,
+  uploadingAsset,
+  onReplaceAsset,
+  onRevertAsset,
+  replacingAsset,
+  tools,
+  onCreateTool,
+  creatingTool,
+  onLoadBom,
+  onSearchBom,
+  productSku,
+}: {
+  content: ManualContent;
+  setContent: (c: ManualContent) => void;
+  editable: boolean;
+  assets: { id: string; type: string; url: string | null; metadata: any }[];
+  onAddAsset: (url: string, caption?: string) => void;
+  onRemoveAsset: (id: string) => void;
+  onUploadAsset: (file: File, caption?: string) => Promise<unknown>;
+  uploadingAsset: boolean;
+  onReplaceAsset: (assetId: string, blob: Blob) => Promise<unknown>;
+  onRevertAsset: (assetId: string) => void;
+  replacingAsset: boolean;
+  tools: import("@/lib/tools.functions").ToolRow[];
+  onCreateTool: (name: string) => Promise<{ id: string; name: string; spec: string | null }>;
+  creatingTool: boolean;
+  onLoadBom: () => Promise<void>;
+  onSearchBom: (sku: string) => Promise<void>;
+  productSku: string;
+}) {
+  const [tab, setTab] = useState<"steps" | "images" | "parts" | "tools">("steps");
+  const [manageToolsOpen, setManageToolsOpen] = useState(false);
+  const { orgId } = useActiveOrg();
+
+  // Asset list (for image pickers + the Images tab). Figure numbering
+  // is now driven by placement inside steps, not by this list's order.
+  const figureSources = useMemo(
+    () =>
+      assets
+        .filter((a) => a.type === "image" || a.url)
+        .map((a) => ({
+          asset_id: a.id,
+          caption: (a.metadata?.caption as string | undefined) ?? null,
+          url: a.url ?? null,
+        })),
+    [assets],
+  );
+  const figMap = useStepFigureMap(content.steps);
+
+  const update = <K extends keyof ManualContent>(key: K, value: ManualContent[K]) =>
+    setContent({ ...content, [key]: value });
+
+  const TABS = [
+    { id: "steps", label: "Steps" },
+    { id: "images", label: "Images" },
+    { id: "parts", label: "Parts" },
+    { id: "tools", label: "Tools" },
+  ] as const;
+
+  return (
+    <div className="space-y-3">
+      {/* Tab bar — pulled out of the step card */}
+      <div className="flex flex-wrap items-center gap-1">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+              tab === t.id ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+        {tab === "tools" && orgId && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-1"
+            onClick={() => setManageToolsOpen(true)}
+            title="Manage tools library"
+            aria-label="Manage tools library"
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
+
+      {orgId && (
+        <ToolsManagerDialog
+          open={manageToolsOpen}
+          onOpenChange={setManageToolsOpen}
+          organizationId={orgId}
+        />
+      )}
+
+      <Card>
+        <CardContent className="space-y-3 pt-4">
+          {tab === "steps" && (
+            <StepsEditor
+              steps={content.steps}
+              setSteps={(s) => update("steps", s)}
+              editable={editable}
+              images={figureSources}
+              figMap={figMap}
+              onInlineUpload={async (file) => {
+                const asset = (await onUploadAsset(file)) as { id?: string } | null | undefined;
+                return asset?.id ?? null;
+              }}
+            />
+          )}
+          {tab === "images" && (
+            <ImagesPanel
+              assets={assets}
+              editable={editable}
+              onAdd={onAddAsset}
+              onRemove={onRemoveAsset}
+              onUpload={onUploadAsset}
+              uploading={uploadingAsset}
+              onReplace={onReplaceAsset}
+              onRevert={onRevertAsset}
+              replacing={replacingAsset}
+              figMap={figMap}
+            />
+          )}
+          {tab === "parts" && (
+            <PartsTabPanel
+              content={content}
+              update={update}
+              editable={editable}
+              productSku={productSku}
+              onLoadBom={onLoadBom}
+              onSearchBom={onSearchBom}
+            />
+          )}
+          {tab === "tools" && (
+            <ToolsListEditor
+              items={content.tools}
+              setItems={(items) => update("tools", items)}
+              editable={editable}
+              tools={tools}
+              onCreateTool={onCreateTool}
+              creating={creatingTool}
+            />
+          )}
+          {null}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function StepsEditor({
+  steps,
+  setSteps,
+  editable,
+  images,
+  figMap,
+  onInlineUpload,
+}: {
+  steps: ManualContent["steps"];
+  setSteps: (s: ManualContent["steps"]) => void;
+  editable: boolean;
+  images: { asset_id: string; caption?: string | null; url?: string | null }[];
+  figMap: Map<string, number>;
+  onInlineUpload?: (file: File) => Promise<string | null>;
+}) {
+  // Whatever layout the user last picked becomes the default for the next
+  // step. Seeded from the most recent step's layout, falling back to the
+  // global default.
+  const [nextLayout, setNextLayout] = useState<StepLayout>(() => {
+    const last = steps[steps.length - 1];
+    return (last?.layout as StepLayout | undefined) ?? DEFAULT_STEP_LAYOUT;
+  });
+
+  return (
+    <div>
+      {steps.map((s, i) => {
+        const normalized = normalizeStep(s);
+        return (
+          <div key={s.id}>
+            <div className="py-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-semibold text-muted-foreground">Step {i + 1}</span>
+                {editable && (
+                  <div className="flex gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={i === 0}
+                      onClick={() => {
+                        const next = [...steps];
+                        [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                        setSteps(next);
+                      }}
+                    >
+                      ↑
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={i === steps.length - 1}
+                      onClick={() => {
+                        const next = [...steps];
+                        [next[i + 1], next[i]] = [next[i], next[i + 1]];
+                        setSteps(next);
+                      }}
+                    >
+                      ↓
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setSteps(steps.filter((_, j) => j !== i))}
+                      className="text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+              <div className="mb-2 flex items-center gap-2">
+                <Input
+                  value={s.title}
+                  onChange={(e) => {
+                    const next = [...steps];
+                    next[i] = { ...s, title: e.target.value };
+                    setSteps(next);
+                  }}
+                  disabled={!editable}
+                  placeholder="Step title"
+                  className="flex-1"
+                />
+                <StepLayoutSwitcher
+                  step={normalized}
+                  disabled={!editable}
+                  onChange={(next: ManualStep) => {
+                    const arr = [...steps];
+                    arr[i] = next;
+                    setSteps(arr);
+                    if (next.layout) setNextLayout(next.layout);
+                  }}
+                />
+              </div>
+              <StepLayoutEditor
+                step={normalized}
+                disabled={!editable}
+                images={images}
+                figMap={figMap}
+                onInlineUpload={onInlineUpload}
+                hideLayoutSwitcher
+                onChange={(next: ManualStep) => {
+                  const arr = [...steps];
+                  arr[i] = next;
+                  setSteps(arr);
+                  if (next.layout) setNextLayout(next.layout);
+                }}
+              />
+            </div>
+            {i < steps.length - 1 && <hr className="border-border" />}
+          </div>
+        );
+      })}
+      {editable && (
+        <div className="pt-2">
+          <Button variant="outline" size="sm" onClick={() => setSteps([...steps, newStep(nextLayout)])}>
+            <Plus className="mr-2 h-4 w-4" /> Add step
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SimpleListEditor<T extends Record<string, any>>({
+  items,
+  setItems,
+  editable,
+  columns,
+  empty,
+}: {
+  items: T[];
+  setItems: (items: T[]) => void;
+  editable: boolean;
+  columns: { key: keyof T & string; label: string; placeholder?: string; numeric?: boolean }[];
+  empty: () => T;
+}) {
+  return (
+    <div className="space-y-2">
+      {items.length === 0 && <p className="text-xs text-muted-foreground">None yet.</p>}
+      {items.map((row, i) => (
+        <div key={i} className="flex flex-wrap items-center gap-2">
+          {columns.map((c) => (
+            <Input
+              key={c.key}
+              value={row[c.key] ?? ""}
+              placeholder={c.placeholder ?? c.label}
+              disabled={!editable}
+              onChange={(e) => {
+                const next = [...items];
+                const v = c.numeric ? Number(e.target.value) : e.target.value;
+                next[i] = { ...row, [c.key]: v } as T;
+                setItems(next);
+              }}
+              className="h-8 max-w-[180px] text-sm"
+            />
+          ))}
+          {editable && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setItems(items.filter((_, j) => j !== i))}
+              className="text-destructive"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      ))}
+      {editable && (
+        <Button variant="outline" size="sm" onClick={() => setItems([...items, empty()])}>
+          <Plus className="mr-2 h-4 w-4" /> Add row
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function WarningsEditor({
+  warnings,
+  setWarnings,
+  editable,
+  images,
+  figMap,
+}: {
+  warnings: ManualContent["warnings"];
+  setWarnings: (w: ManualContent["warnings"]) => void;
+  editable: boolean;
+  images: { asset_id: string; caption?: string | null }[];
+  figMap: Map<string, number>;
+}) {
+  return (
+    <div className="space-y-2">
+      {warnings.map((w, i) => (
+        <div key={i} className="flex items-start gap-2">
+          <Select
+            value={w.severity}
+            onValueChange={(v: any) => {
+              const next = [...warnings];
+              next[i] = { ...w, severity: v };
+              setWarnings(next);
+            }}
+            disabled={!editable}
+          >
+            <SelectTrigger className="h-8 w-28 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="info">Info</SelectItem>
+              <SelectItem value="caution">Caution</SelectItem>
+              <SelectItem value="danger">Danger</SelectItem>
+            </SelectContent>
+          </Select>
+          <FigureRefField
+            rows={2}
+            value={w.body}
+            disabled={!editable}
+            className="flex-1"
+            images={images}
+            figMap={figMap}
+            onChange={(v) => {
+              const next = [...warnings];
+              next[i] = { ...w, body: v };
+              setWarnings(next);
+            }}
+          />
+
+          {editable && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setWarnings(warnings.filter((_, j) => j !== i))}
+              className="text-destructive"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      ))}
+      {editable && (
+        <Button variant="outline" size="sm" onClick={() => setWarnings([...warnings, { severity: "info", body: "" }])}>
+          <Plus className="mr-2 h-4 w-4" /> Add warning
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function truncateMiddle(s: string, max = 30): string {
+  if (!s) return "";
+  if (s.length <= max) return s;
+  return s.slice(0, max - 1) + "…";
+}
+
+function ImagesPanel({
+  assets,
+  editable,
+  onAdd,
+  onRemove,
+  onUpload,
+  uploading,
+  onReplace,
+  onRevert,
+  replacing,
+  figMap,
+}: {
+  assets: { id: string; type: string; url: string | null; metadata: any }[];
+  editable: boolean;
+  onAdd: (url: string, caption?: string) => void;
+  onRemove: (id: string) => void;
+  onUpload: (file: File, caption?: string) => Promise<unknown>;
+  uploading: boolean;
+  onReplace: (assetId: string, blob: Blob) => Promise<unknown>;
+  onRevert: (assetId: string) => void;
+  replacing: boolean;
+  figMap: Map<string, number>;
+}) {
+  const [editingAsset, setEditingAsset] = useState<{ id: string; url: string } | null>(null);
+  const [url, setUrl] = useState("");
+  const [caption, setCaption] = useState("");
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const zipRef = useRef<HTMLInputElement | null>(null);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
+
+  const handleFiles = async (files: FileList | File[]) => {
+    const list = Array.from(files);
+    if (list.length === 0) return;
+    setBulkProgress({ done: 0, total: list.length });
+    let done = 0;
+    for (const f of list) {
+      const cap = f.name.replace(/\.[^.]+$/, "");
+      try {
+        await onUpload(f, cap);
+      } catch (e) {
+        toast.error(`Failed: ${f.name} — ${(e as Error).message}`);
+      }
+      done += 1;
+      setBulkProgress({ done, total: list.length });
+    }
+    setBulkProgress(null);
+    setCaption("");
+  };
+
+  const handleZip = async (file: File) => {
+    try {
+      const { default: JSZip } = await import("jszip");
+      const zip = await JSZip.loadAsync(file);
+      const entries: { name: string; blob: Blob; type: string }[] = [];
+      const imageExt = /\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i;
+      const tasks: Promise<void>[] = [];
+      zip.forEach((relPath, entry) => {
+        if (entry.dir) return;
+        if (!imageExt.test(relPath)) return;
+        // Skip macOS metadata noise
+        if (relPath.startsWith("__MACOSX/") || relPath.includes("/.DS_Store")) return;
+        const ext = relPath.match(/\.([^.]+)$/)?.[1].toLowerCase() ?? "png";
+        const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "svg" ? "image/svg+xml" : `image/${ext}`;
+        tasks.push(
+          entry.async("blob").then((blob) => {
+            entries.push({
+              name: relPath.split("/").pop() ?? relPath,
+              blob: new Blob([blob], { type: mime }),
+              type: mime,
+            });
+          }),
+        );
+      });
+      await Promise.all(tasks);
+      entries.sort((a, b) => a.name.localeCompare(b.name));
+      if (entries.length === 0) {
+        toast.warning("No images found in ZIP");
+        return;
+      }
+      const files = entries.map((e) => new File([e.blob], e.name, { type: e.type }));
+      await handleFiles(files);
+      toast.success(`Imported ${entries.length} images from ZIP`);
+    } catch (e) {
+      toast.error(`ZIP import failed: ${(e as Error).message}`);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      {assets.length === 0 && <p className="text-xs text-muted-foreground">No images attached.</p>}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        {assets.map((a) => {
+          const figNum = figMap.get(a.id);
+          return (
+            <figure key={a.id} className="rounded-md border border-border p-2">
+              {a.url && (
+                <img src={a.url} alt={a.metadata?.caption ?? ""} className="aspect-video w-full rounded object-cover" />
+              )}
+              <figcaption className="mt-1 space-y-0.5 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-foreground shrink-0">{figNum ? `Fig. ${figNum}` : "Unused"}</span>
+                  <span className="truncate text-muted-foreground">{a.metadata?.caption ?? ""}</span>
+                </div>
+                {a.url && (
+                  <a
+                    href={a.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={a.url}
+                    className="block truncate text-primary underline underline-offset-2 hover:opacity-80"
+                  >
+                    {truncateMiddle(a.url, 30)}
+                  </a>
+                )}
+              </figcaption>
+              {editable && (
+                <div className="mt-1 flex gap-1">
+                  {a.url && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setEditingAsset({ id: a.id, url: a.url! })}
+                      className="h-7 flex-1 text-xs"
+                    >
+                      <Pencil className="mr-1 h-3 w-3" /> Edit
+                    </Button>
+                  )}
+                  {a.metadata?.edited && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onRevert(a.id)}
+                      className="h-7 flex-1 text-xs"
+                      title="Restore original image"
+                    >
+                      <RotateCcw className="mr-1 h-3 w-3" /> Revert
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => onRemove(a.id)}
+                    className="h-7 text-destructive"
+                    aria-label="Remove image"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+            </figure>
+          );
+        })}
+      </div>
+
+      {editable && (
+        <div className="space-y-3 rounded-md border border-dashed border-border p-3">
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground">Upload image files</p>
+            <Input
+              placeholder="Caption applies to single-file uploads only"
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
+              className="h-8 max-w-md text-sm"
+            />
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={async (e) => {
+                const files = e.target.files;
+                if (!files || files.length === 0) return;
+                try {
+                  if (files.length === 1) {
+                    await onUpload(files[0], caption.trim() || undefined);
+                    setCaption("");
+                  } else {
+                    await handleFiles(files);
+                  }
+                } finally {
+                  if (fileRef.current) fileRef.current.value = "";
+                }
+              }}
+            />
+            <input
+              ref={zipRef}
+              type="file"
+              accept=".zip,application/zip"
+              className="hidden"
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                try {
+                  await handleZip(f);
+                } finally {
+                  if (zipRef.current) zipRef.current.value = "";
+                }
+              }}
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" disabled={uploading || !!bulkProgress} onClick={() => fileRef.current?.click()}>
+                <Plus className="mr-2 h-4 w-4" />
+                {bulkProgress
+                  ? `Uploading ${bulkProgress.done}/${bulkProgress.total}…`
+                  : uploading
+                    ? "Uploading…"
+                    : "Choose image(s)"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={uploading || !!bulkProgress}
+                onClick={() => zipRef.current?.click()}
+              >
+                <Upload className="mr-2 h-4 w-4" /> Upload from ZIP
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-2 border-t border-border pt-3">
+            <p className="text-xs font-semibold text-muted-foreground">…or paste an image URL</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                placeholder="https://image-url.jpg"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                className="h-8 max-w-sm text-sm"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  if (!url.trim()) return;
+                  onAdd(url.trim(), caption.trim() || undefined);
+                  setUrl("");
+                  setCaption("");
+                }}
+              >
+                Add by URL
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      <ImageEditorDialog
+        open={!!editingAsset}
+        onOpenChange={(v) => !v && setEditingAsset(null)}
+        imageUrl={editingAsset?.url ?? null}
+        saving={replacing}
+        onSave={async (blob) => {
+          if (!editingAsset) return;
+          await onReplace(editingAsset.id, blob);
+          setEditingAsset(null);
+        }}
+      />
+    </div>
+  );
+}
+
+// ---------- Create / Import dialogs ----------
+
+type TemplateOption = {
+  id: string;
+  name: string;
+  layout: string;
+  is_default: boolean;
+};
+
+function TemplatePicker({
+  templates,
+  value,
+  onChange,
+}: {
+  templates: TemplateOption[];
+  value: string | undefined;
+  onChange: (v: string | undefined) => void;
+}) {
+  const hasDefault = templates.some((t) => t.is_default);
+  return (
+    <Select value={value ?? "__none__"} onValueChange={(v) => onChange(v === "__none__" ? undefined : v)}>
+      <SelectTrigger>
+        <SelectValue placeholder="Pick a template" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="__none__">None — blank{!hasDefault ? " · default" : ""}</SelectItem>
+        {templates.map((t) => (
+          <SelectItem key={t.id} value={t.id}>
+            {t.name}
+            {t.is_default ? " · default" : ""}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function CreateManualDialog({
+  open,
+  onOpenChange,
+  templates,
+  onSubmit,
+  submitting,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  templates: TemplateOption[];
+  onSubmit: (templateId: string | undefined) => void;
+  submitting: boolean;
+}) {
+  const defaultId = templates.find((t) => t.is_default)?.id;
+  const [templateId, setTemplateId] = useState<string | undefined>(defaultId);
+  useEffect(() => {
+    if (open) setTemplateId(defaultId);
+  }, [open, defaultId]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Create manual</DialogTitle>
+          <DialogDescription>Pick a template to pre-fill sections, or start blank.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <Label>Template</Label>
+          <TemplatePicker templates={templates} value={templateId} onChange={setTemplateId} />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={() => onSubmit(templateId)} disabled={submitting}>
+            <Plus className="mr-2 h-4 w-4" />
+            {submitting ? "Creating…" : "Create draft"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ImportPdfDialog({
+  open,
+  onOpenChange,
+  templates,
+  onSubmit,
+  submitting,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  templates: TemplateOption[];
+  onSubmit: (input: { filename: string; pdfBase64: string; templateId?: string }) => void;
+  submitting: boolean;
+}) {
+  const defaultId = templates.find((t) => t.is_default)?.id;
+  const [templateId, setTemplateId] = useState<string | undefined>(defaultId);
+  const [file, setFile] = useState<File | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setTemplateId(defaultId);
+      setFile(null);
+    }
+  }, [open, defaultId]);
+
+  const handleSubmit = async () => {
+    if (!file) {
+      toast.error("Pick a PDF file");
+      return;
+    }
+    if (file.type !== "application/pdf") {
+      toast.error("Only PDF files are supported");
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error("PDF too large (max 20 MB)");
+      return;
+    }
+    // base64 encode in-browser
+    const buf = await file.arrayBuffer();
+    let binary = "";
+    const bytes = new Uint8Array(buf);
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunk, bytes.length)));
+    }
+    const pdfBase64 = btoa(binary);
+    onSubmit({ filename: file.name, pdfBase64, templateId });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Import legacy manual from PDF</DialogTitle>
+          <DialogDescription>
+            We'll upload the PDF, extract the steps / parts / warnings with AI, and create a new draft for you to clean
+            up.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <Label>PDF file (max 20 MB)</Label>
+            <Input type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            {file && (
+              <p className="text-xs text-muted-foreground">
+                {file.name} · {(file.size / 1024 / 1024).toFixed(2)} MB
+              </p>
+            )}
+          </div>
+          <div className="space-y-1">
+            <Label>Template</Label>
+            <TemplatePicker templates={templates} value={templateId} onChange={setTemplateId} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={submitting || !file}>
+            <Upload className="mr-2 h-4 w-4" />
+            {submitting ? "Importing…" : "Import"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ManualPreviewDialog({
+  open,
+  onOpenChange,
+  branding,
+  meta,
+  content,
+  assets,
+  partCatalog,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  branding: unknown;
+  meta: { sku: string; name: string; variant?: string; versionLabel?: string };
+  content: ManualContent;
+  assets?: Record<string, { url: string | null; caption?: string | null }>;
+  partCatalog?: Record<string, { alias?: string | null; imageUrl?: string | null }>;
+}) {
+  const [savingPdf, setSavingPdf] = useState(false);
+  const handleSavePdf = async () => {
+    const node = document.getElementById("manual-print-area");
+    if (!node) return;
+    setSavingPdf(true);
+    try {
+      const blob = await renderManualPagesPdf(node);
+      const filename = `${meta.sku}-${meta.versionLabel ? `v${meta.versionLabel}` : "manual"}.pdf`;
+      // Use a blob + anchor click so the browser reliably prompts a download
+      // (jsPDF.save() can be swallowed by some popup/download blockers).
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      console.error("[Save as PDF] failed:", err);
+      const message = err instanceof Error ? err.message : String(err);
+      toast.error(
+        /tainted|cross-origin|CORS/i.test(message)
+          ? "Couldn't save PDF: an image blocked cross-origin capture. Re-upload the image or contact support."
+          : `Couldn't save PDF: ${message || "unknown export error"}`,
+      );
+    } finally {
+      setSavingPdf(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden p-0 flex flex-col">
+        <DialogHeader className="px-6 pt-6 flex-row items-center justify-between space-y-0">
+          <DialogTitle>Manual preview</DialogTitle>
+          <Button size="sm" onClick={handleSavePdf} disabled={savingPdf} className="mr-8">
+            <Download className="mr-2 h-4 w-4" />
+            {savingPdf ? "Saving…" : "Save as PDF"}
+          </Button>
+        </DialogHeader>
+        <div className="overflow-y-auto flex-1 bg-muted/30 py-4" id="manual-print-area">
+          <MasterManualPreview
+            branding={branding}
+            meta={meta}
+            content={content}
+            assets={assets}
+            partCatalog={partCatalog}
+            pdfSafe
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------- Cover image card (page 1 hero) ----------
+function CoverImageCard({
+  imageUrl,
+  editable,
+  hasOdooLink,
+  onSet,
+  uploadCover,
+  fetchFromOdoo,
+}: {
+  manualId: string;
+  imageUrl: string | null;
+  editable: boolean;
+  hasOdooLink: boolean;
+  onSet: (url: string | null) => void | Promise<void>;
+  uploadCover: (args: { filename: string; contentType: string; dataBase64: string }) => Promise<{ url: string }>;
+  fetchFromOdoo: () => Promise<{ url: string }>;
+}) {
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [busy, setBusy] = useState<"upload" | "odoo" | "remove" | null>(null);
+
+  const handleFile = async (file: File) => {
+    setBusy("upload");
+    try {
+      const buf = await file.arrayBuffer();
+      let binary = "";
+      const bytes = new Uint8Array(buf);
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunk, bytes.length)));
+      }
+      const dataBase64 = btoa(binary);
+      const res = await uploadCover({
+        filename: file.name,
+        contentType: file.type || "image/png",
+        dataBase64,
+      });
+      await onSet(res.url);
+      toast.success("Cover image updated");
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(null);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  return (
+    <Card className="mb-4">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">Cover image (page 1)</CardTitle>
+      </CardHeader>
+      <CardContent className="flex items-center gap-4">
+        <div className="flex h-32 w-32 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">
+          {imageUrl ? (
+            <img src={imageUrl} alt="Cover" className="h-full w-full object-contain" />
+          ) : (
+            <span className="px-2 text-center text-[11px] text-muted-foreground">No cover image</span>
+          )}
+        </div>
+        <div className="flex flex-1 flex-col gap-2">
+          <p className="text-xs text-muted-foreground">
+            Shown on page 1 between the SKU and the company footer. Use a high-resolution product image.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void handleFile(f);
+              }}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!editable || busy !== null}
+              onClick={() => fileRef.current?.click()}
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              {busy === "upload" ? "Uploading…" : "Replace"}
+            </Button>
+            {hasOdooLink && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!editable || busy !== null}
+                onClick={async () => {
+                  setBusy("odoo");
+                  try {
+                    const res = await fetchFromOdoo();
+                    await onSet(res.url);
+                    toast.success("Pulled product image from Odoo");
+                  } catch (e) {
+                    toast.error((e as Error).message);
+                  } finally {
+                    setBusy(null);
+                  }
+                }}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                {busy === "odoo" ? "Fetching…" : "Odoo fetch"}
+              </Button>
+            )}
+            {imageUrl && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-destructive hover:text-destructive"
+                disabled={!editable || busy !== null}
+                onClick={async () => {
+                  setBusy("remove");
+                  try {
+                    await onSet(null);
+                  } finally {
+                    setBusy(null);
+                  }
+                }}
+              >
+                <Trash2 className="mr-2 h-4 w-4" /> Remove
+              </Button>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---- Parts tab ----
+// Shows Parts + Hardware Kit editors with a "Load from BOM" button and
+// a Search-by-SKU input that re-runs the Odoo BOM pull for any SKU
+// (handy when the parent SKU has no BOM but `${parent}.x` does, or vice
+// versa). When the manual has no parts AND no hardware, a one-time
+// dismissible alert points the user at these controls.
+function PartsTabPanel({
+  content,
+  update,
+  editable,
+  productSku,
+  onLoadBom,
+  onSearchBom,
+}: {
+  content: ManualContent;
+  update: <K extends keyof ManualContent>(k: K, v: ManualContent[K]) => void;
+  editable: boolean;
+  productSku: string;
+  onLoadBom: () => Promise<void>;
+  onSearchBom: (sku: string) => Promise<void>;
+}) {
+  const { orgId, isAdmin } = useActiveOrg();
+  const { controls: catalogControls } = usePartCatalog(orgId, isAdmin);
+  const dismissKey = `manumanuals.noBomDismissed.${productSku}`;
+  const [dismissed, setDismissed] = useState(false);
+  useEffect(() => {
+    try {
+      setDismissed(localStorage.getItem(dismissKey) === "1");
+    } catch {
+      // ignore
+    }
+  }, [dismissKey]);
+  const [searchSku, setSearchSku] = useState("");
+  const [searching, setSearching] = useState(false);
+
+  const noBom = content.parts.length === 0 && content.hardware_kit.length === 0;
+
+  return (
+    <div className="space-y-6">
+      {noBom && !dismissed && editable && (
+        <div className="flex items-start gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+          <div className="flex-1">
+            <p className="font-medium text-amber-900 dark:text-amber-300">No BOM loaded yet</p>
+            <p className="mt-1 text-muted-foreground">
+              We couldn't find a BOM for <span className="font-mono">{productSku}</span> or{" "}
+              <span className="font-mono">{productSku}.x</span>. Try "Load from BOM" again, search by a different SKU
+              below, or add parts manually.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              try {
+                localStorage.setItem(dismissKey, "1");
+              } catch {
+                // ignore
+              }
+              setDismissed(true);
+            }}
+          >
+            Dismiss
+          </Button>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold">Parts</h3>
+          <p className="text-xs text-muted-foreground">
+            From the BOM of <span className="font-mono">{productSku}</span>. Hardware Kit comes from{" "}
+            <span className="font-mono">{productSku}.x</span>.
+          </p>
+        </div>
+        {editable && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              onLoadBom().catch((e: Error) => toast.error(e.message));
+            }}
+          >
+            <Upload className="mr-2 h-4 w-4" /> Load from BOM
+          </Button>
+        )}
+      </div>
+
+      {editable && (
+        <div className="flex flex-wrap items-end gap-2 rounded-md border border-dashed p-3">
+          <div className="flex-1 min-w-[180px]">
+            <label className="text-xs font-medium text-muted-foreground">Search BOM by SKU</label>
+            <Input
+              value={searchSku}
+              onChange={(e) => setSearchSku(e.target.value)}
+              placeholder="e.g. TF300601 or TF300601.x"
+              className="mt-1 font-mono"
+            />
+          </div>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={searching || searchSku.trim().length === 0}
+            onClick={async () => {
+              setSearching(true);
+              try {
+                await onSearchBom(searchSku.trim());
+              } catch (e) {
+                toast.error((e as Error).message);
+              } finally {
+                setSearching(false);
+              }
+            }}
+          >
+            {searching ? "Searching…" : "Search Odoo"}
+          </Button>
+        </div>
+      )}
+
+      <PartsListEditor
+        items={content.parts}
+        setItems={(items) => update("parts", items)}
+        editable={editable}
+        emptyHint="No parts yet. Click 'Load from BOM' to autofill, or add manually."
+        rowKeyPrefix="part"
+        catalog={catalogControls}
+      />
+
+      <Separator />
+
+      <div>
+        <h3 className="text-sm font-semibold">Hardware Kit</h3>
+        <p className="mb-2 text-xs text-muted-foreground">
+          Sourced from <span className="font-mono">{productSku}.x</span> BOM lines.
+        </p>
+      </div>
+      <PartsListEditor
+        items={content.hardware_kit}
+        setItems={(items) => update("hardware_kit", items)}
+        editable={editable}
+        emptyHint="No hardware kit lines. Load BOM or add manually."
+        rowKeyPrefix="hw"
+        catalog={catalogControls}
+      />
+    </div>
+  );
+}
+
+// ---------- Parts & Tools page card (page 2 sidebar) ----------
+// Mirrors CoverImageCard styling. Provides:
+//   * Add step  — appends a one-column step rendered on page 2 below the
+//     parts + tools + BOM images block. Overflow continues onto page 3.
+//   * Add callout  — none / info / caution / danger. Always available.
+function PartsPageCard({
+  content,
+  editable,
+  onChange,
+  assets,
+  onInlineUpload,
+}: {
+  content: ManualContent;
+  editable: boolean;
+  onChange: (next: ManualContent) => void;
+  assets: Array<{ id: string; url: string | null; metadata: { caption?: string } | null; type?: string }>;
+  onInlineUpload: (file: File) => Promise<string | null>;
+}) {
+  const figureSources = useMemo(
+    () =>
+      assets
+        .filter((a) => a.type === "image" || a.url)
+        .map((a) => ({
+          asset_id: a.id,
+          caption: a.metadata?.caption ?? null,
+          url: a.url ?? null,
+        })),
+    [assets],
+  );
+  const figMap = useStepFigureMap(content.parts_page_steps ?? []);
+  const callout = content.parts_page_callout ?? null;
+  const steps = content.parts_page_steps ?? [];
+  const severity = callout?.severity ?? "none";
+
+  const updateCallout = (v: string) => {
+    if (v === "none") {
+      onChange({ ...content, parts_page_callout: null });
+      return;
+    }
+    onChange({
+      ...content,
+      parts_page_callout: {
+        severity: v as "info" | "caution" | "danger",
+        body: callout?.body ?? "",
+      },
+    });
+  };
+
+  const addStep = () => {
+    onChange({
+      ...content,
+      parts_page_steps: [...steps, newStep("one_col")],
+    });
+  };
+
+  const updateStep = (i: number, next: ManualStep) => {
+    const arr = [...steps];
+    arr[i] = next;
+    onChange({ ...content, parts_page_steps: arr });
+  };
+
+  const removeStep = (i: number) => {
+    onChange({
+      ...content,
+      parts_page_steps: steps.filter((_, j) => j !== i),
+    });
+  };
+
+  return (
+    <Card className="mb-4">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">Parts &amp; Tools Page (2)</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-xs">
+        <div className="flex flex-col gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="justify-start"
+            onClick={addStep}
+            disabled={!editable}
+          >
+            <Plus className="mr-2 h-4 w-4" /> Add step
+          </Button>
+
+          <div className="flex items-center gap-2">
+            <Label className="whitespace-nowrap text-xs">Add callout</Label>
+            <Select
+              value={severity}
+              onValueChange={updateCallout}
+              disabled={!editable}
+            >
+              <SelectTrigger className="h-8 flex-1 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                <SelectItem value="info">Info</SelectItem>
+                <SelectItem value="caution">Caution</SelectItem>
+                <SelectItem value="danger">Danger</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {callout && callout.severity !== ("none" as never) && (
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Callout text</Label>
+            <Textarea
+              rows={2}
+              value={callout.body}
+              disabled={!editable}
+              onChange={(e) =>
+                onChange({
+                  ...content,
+                  parts_page_callout: {
+                    severity: callout.severity,
+                    body: e.target.value,
+                  },
+                })
+              }
+              placeholder="Callout body — shown above the Parts / Tools table"
+            />
+          </div>
+        )}
+
+        {steps.length > 0 && (
+          <div className="space-y-3 border-t border-border pt-2">
+            <div className="text-xs font-medium text-muted-foreground">
+              Extra steps on page 2 ({steps.length})
+            </div>
+            {steps.map((s, i) => (
+              <div
+                key={s.id}
+                className="space-y-2 rounded-md border border-border p-2"
+              >
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={s.title}
+                    onChange={(e) =>
+                      updateStep(i, { ...s, title: e.target.value })
+                    }
+                    disabled={!editable}
+                    placeholder="Step title"
+                    className="h-8 flex-1 text-xs"
+                  />
+                  {editable && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive"
+                      onClick={() => removeStep(i)}
+                      aria-label="Remove step"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+                <StepLayoutEditor
+                  step={s}
+                  disabled={!editable}
+                  images={figureSources}
+                  figMap={figMap}
+                  onInlineUpload={onInlineUpload}
+                  hideLayoutSwitcher
+                  hideCallout
+                  onChange={(next) => updateStep(i, next)}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

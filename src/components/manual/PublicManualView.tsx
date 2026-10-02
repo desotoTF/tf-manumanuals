@@ -1,0 +1,280 @@
+// Shared public manual renderer used by both /manuals/$slug and the
+// org-branded /m/$orgSlug/$slug route.
+import { useMemo } from "react";
+import { format } from "date-fns";
+import { Factory, AlertTriangle, ShieldAlert, Info } from "lucide-react";
+import { StepLayoutView } from "@/components/manual/StepLayoutView";
+import { useStepFigureMap } from "@/lib/figure-refs";
+import type { ManualContent } from "@/lib/types";
+
+export type PublicManualAsset = {
+  id: string;
+  type?: string;
+  url: string | null;
+  metadata: unknown;
+};
+
+export type PublicManualViewProps = {
+  product: { sku: string; name: string; description?: string | null };
+  version: {
+    version_number: number;
+    published_at?: string | null;
+    content?: unknown;
+  };
+  assets: PublicManualAsset[];
+  layout?: "classic" | "compact" | "field_guide" | "service_card";
+  brandName?: string | null;
+  pdfUrl?: string | null;
+};
+
+export function PublicManualView({
+  product,
+  version,
+  assets,
+  layout = "classic",
+  brandName,
+  pdfUrl,
+}: PublicManualViewProps) {
+  const content = (version.content ?? {}) as Partial<ManualContent>;
+  const publishedAt = version.published_at
+    ? format(new Date(version.published_at), "MMM d, yyyy")
+    : null;
+
+  const assetMap = useMemo(() => {
+    const map: Record<string, { url: string | null; caption?: string | null }> = {};
+    for (const a of assets) {
+      map[a.id] = {
+        url: a.url,
+        caption: (a.metadata as { caption?: string } | null)?.caption ?? null,
+      };
+    }
+    return map;
+  }, [assets]);
+  const figMap = useStepFigureMap(content.steps);
+
+  const maxW =
+    layout === "compact"
+      ? "max-w-2xl"
+      : layout === "field_guide"
+        ? "max-w-4xl"
+        : layout === "service_card"
+          ? "max-w-xl"
+          : "max-w-3xl";
+  const titleSize =
+    layout === "field_guide" ? "text-4xl" : layout === "service_card" ? "text-2xl" : "text-3xl";
+  const spacing = layout === "compact" || layout === "service_card" ? "space-y-5" : "space-y-8";
+
+  return (
+    <div className="min-h-screen bg-background">
+      <header className="border-b border-border bg-card">
+        <div className={`mx-auto flex ${maxW} items-center gap-2 px-6 py-4 text-sm`}>
+          <Factory className="h-4 w-4 text-primary" />
+          <span className="font-medium">{brandName || "Manual Build"}</span>
+          <span className="text-muted-foreground">·</span>
+          <span className="font-mono text-xs text-muted-foreground">{product.sku}</span>
+          <div className="ml-auto flex gap-2 print:hidden">
+            {pdfUrl && (
+              <a
+                href={pdfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                Download PDF
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-accent"
+            >
+              Print
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <article className={`mx-auto ${maxW} ${spacing} px-6 py-10`}>
+        <div>
+          <h1 className={`${titleSize} font-semibold tracking-tight`}>{product.name}</h1>
+          {product.description && <p className="mt-2 text-muted-foreground">{product.description}</p>}
+          <p className="mt-3 text-xs text-muted-foreground">
+            Version {version.version_number}
+            {publishedAt && <> · Published {publishedAt}</>}
+          </p>
+        </div>
+
+        {content.warnings && content.warnings.length > 0 && (
+          <section className="space-y-2">
+            {content.warnings.map((w, i) => {
+              const map = {
+                info: {
+                  icon: Info,
+                  cls: "border-sky-500/40 bg-sky-500/5 text-sky-700 dark:text-sky-300",
+                },
+                caution: {
+                  icon: AlertTriangle,
+                  cls: "border-amber-500/40 bg-amber-500/5 text-amber-700 dark:text-amber-300",
+                },
+                danger: {
+                  icon: ShieldAlert,
+                  cls: "border-rose-500/40 bg-rose-500/5 text-rose-700 dark:text-rose-300",
+                },
+              }[w.severity];
+              const Icon = map.icon;
+              return (
+                <div key={i} className={`flex items-start gap-3 rounded-md border p-3 text-sm ${map.cls}`}>
+                  <Icon className="mt-0.5 h-4 w-4 shrink-0" />
+                  <p>{w.body}</p>
+                </div>
+              );
+            })}
+          </section>
+        )}
+
+        {content.tools && content.tools.length > 0 && (
+          <section>
+            <h2 className="mb-3 text-lg font-semibold">Tools required</h2>
+            <ul className="grid grid-cols-1 gap-1 text-sm sm:grid-cols-2">
+              {content.tools.map((t, i) => (
+                <li key={i} className="rounded-md border border-border px-3 py-2">
+                  <span className="font-medium">{t.name}</span>
+                  {t.spec && <span className="ml-2 text-xs text-muted-foreground">{t.spec}</span>}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {content.parts && content.parts.length > 0 && (
+          <section>
+            <h2 className="mb-3 text-lg font-semibold">Parts list</h2>
+            <div className="overflow-x-auto rounded-md border border-border">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-left text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2">Part #</th>
+                    <th className="px-3 py-2">Qty</th>
+                    <th className="px-3 py-2">Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {content.parts.map((p, i) => (
+                    <tr key={i} className="border-t border-border">
+                      <td className="px-3 py-2 font-mono">{p.part_number}</td>
+                      <td className="px-3 py-2">{p.qty}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{p.description ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {content.hardware_kit && content.hardware_kit.length > 0 && (
+          <section>
+            <h2 className="mb-3 text-lg font-semibold">Hardware kit</h2>
+            <div className="overflow-x-auto rounded-md border border-border">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-left text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2">Part #</th>
+                    <th className="px-3 py-2">Qty</th>
+                    <th className="px-3 py-2">Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {content.hardware_kit.map((p, i) => (
+                    <tr key={i} className="border-t border-border">
+                      <td className="px-3 py-2 font-mono">{p.part_number}</td>
+                      <td className="px-3 py-2">{p.qty}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{p.description ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {content.steps && content.steps.length > 0 && (
+          <section>
+            <h2 className="mb-3 text-lg font-semibold">Installation steps</h2>
+            <ol className="space-y-4">
+              {content.steps.map((s, i) => (
+                <li key={s.id ?? i} className="rounded-md border border-border p-4">
+                  <div className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
+                    Step {i + 1}
+                  </div>
+                  <h3 className="mb-3 text-base font-semibold">{s.title}</h3>
+                  <StepLayoutView step={s} assets={assetMap} figMap={figMap} />
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
+
+        {content.torque_specs && content.torque_specs.length > 0 && (
+          <section>
+            <h2 className="mb-3 text-lg font-semibold">Torque specifications</h2>
+            <div className="overflow-x-auto rounded-md border border-border">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-left text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2">Fastener</th>
+                    <th className="px-3 py-2">Value</th>
+                    <th className="px-3 py-2">Sequence</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {content.torque_specs.map((t, i) => (
+                    <tr key={i} className="border-t border-border">
+                      <td className="px-3 py-2">{t.fastener}</td>
+                      <td className="px-3 py-2 font-mono">
+                        {t.value} {t.unit}
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground">{t.sequence ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {assets.length > 0 && (
+          <section>
+            <h2 className="mb-3 text-lg font-semibold">Reference images</h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {assets
+                .filter((a) => a.url)
+                .map((a) => {
+                  const caption = (a.metadata as { caption?: string } | null)?.caption ?? null;
+                  return (
+                    <figure key={a.id} className="overflow-hidden rounded-md border border-border">
+                      <img
+                        src={a.url!}
+                        alt={caption ?? ""}
+                        className="aspect-video w-full object-cover"
+                        loading="lazy"
+                      />
+                      {caption && (
+                        <figcaption className="border-t border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                          {caption}
+                        </figcaption>
+                      )}
+                    </figure>
+                  );
+                })}
+            </div>
+          </section>
+        )}
+      </article>
+
+      <footer className="border-t border-border py-6 text-center text-xs text-muted-foreground">
+        {brandName ? `Published by ${brandName}` : "Powered by ThumperFab"}
+      </footer>
+    </div>
+  );
+}

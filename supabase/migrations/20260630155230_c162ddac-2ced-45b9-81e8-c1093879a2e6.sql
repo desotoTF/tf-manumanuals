@@ -1,0 +1,1 @@
+ALTER TABLE public.manual_versions ADD COLUMN IF NOT EXISTS published_pdf_url text;

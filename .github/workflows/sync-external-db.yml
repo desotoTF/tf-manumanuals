@@ -1,0 +1,83 @@
+# Applies any new supabase/migrations/*.sql files to the EXTERNAL Supabase
+# project after each push to main. Idempotent: tracks applied filenames in a
+# `_lovable_applied_migrations` ledger table inside the external DB.
+#
+# One-time setup:
+# 1. In the external Supabase project: Settings -> Database -> Connection string
+#    -> copy the "Session pooler" URI (looks like
+#    postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres).
+#    The session pooler works for DDL; the transaction pooler (port 6543) does not.
+# 2. In THIS GitHub repo: Settings -> Secrets and variables -> Actions ->
+#    New repository secret -> name: EXTERNAL_SUPABASE_DB_URL, value: the URI above.
+# 3. Push to main. The workflow runs automatically; first run creates the
+#    ledger table and applies every existing migration in order.
+name: Sync migrations to external Supabase
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**.sql"
+      - ".github/workflows/sync-external-db.yml"
+  workflow_dispatch:
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify secret is present
+        env:
+          EXTERNAL_SUPABASE_DB_URL: ${{ secrets.EXTERNAL_SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$EXTERNAL_SUPABASE_DB_URL" ]; then
+            echo "ERROR: EXTERNAL_SUPABASE_DB_URL secret is not set."
+            echo "Add it under Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+          echo "Secret present (length: ${#EXTERNAL_SUPABASE_DB_URL})."
+
+      - name: Install psql client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Bootstrap ledger table
+        env:
+          PGURL: ${{ secrets.EXTERNAL_SUPABASE_DB_URL }}
+        run: |
+          psql "$PGURL" -v ON_ERROR_STOP=1 -c "
+            CREATE TABLE IF NOT EXISTS public._lovable_applied_migrations (
+              filename   text PRIMARY KEY,
+              applied_at timestamptz NOT NULL DEFAULT now()
+            );
+          "
+
+      - name: Apply new migrations in order
+        env:
+          PGURL: ${{ secrets.EXTERNAL_SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          applied_any=0
+          for f in $(ls supabase/migrations/*.sql 2>/dev/null | sort); do
+            name="$(basename "$f")"
+            already=$(psql "$PGURL" -tAc \
+              "SELECT 1 FROM public._lovable_applied_migrations WHERE filename = '$name'")
+            if [ "$already" = "1" ]; then
+              echo "skip  $name (already applied)"
+              continue
+            fi
+            echo "apply $name"
+            # Wrap the file + ledger insert in a single transaction.
+            # If the migration itself uses BEGIN/COMMIT, remove the outer wrap by
+            # editing the migration; most Lovable migrations are plain DDL.
+            psql "$PGURL" -v ON_ERROR_STOP=1 --single-transaction \
+              -f "$f" \
+              -c "INSERT INTO public._lovable_applied_migrations(filename) VALUES ('$name');"
+            applied_any=1
+          done
+          if [ "$applied_any" = "0" ]; then
+            echo "No new migrations to apply."
+          fi
